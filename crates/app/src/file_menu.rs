@@ -94,7 +94,7 @@ impl Workspace {
         self.collapsed_objects.clear();
         self.cut_enabled = false;
         self.renderer.set_highlight(None);
-        self.model_name = "кубик 20 мм".into();
+        self.model_name = crate::i18n::tr("кубик 20 мм").into();
         self.path = None;
         self.untitled = false;
         self.save_target = None;

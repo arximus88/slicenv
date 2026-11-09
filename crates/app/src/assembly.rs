@@ -366,9 +366,9 @@ impl Workspace {
                     .flex_col()
                     .p(px(12.))
                     .gap(px(8.))
-                    .child(div().text_sm().text_color(zed().text_muted).child(
+                    .child(div().text_sm().text_color(zed().text_muted).child(crate::i18n::tr(
                     "Порожнє поле успадковує значення. Зміни стосуються всіх копій цього об’єкта.",
-                ));
+                )));
                 for (_, label, input) in &fields {
                     body = body.child(ui::prop_row(
                         *label,
