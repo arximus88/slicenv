@@ -1,0 +1,18 @@
+[package]
+name = "moonraker"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Клієнт Moonraker HTTP API для принтерів Klipper (без GUI)"
+
+# HTTP/1.1 на std::net для http://; https:// — через системний curl, як у `cloud`.
+# Жодних нових мережевих крейтів: Moonraker у LAN майже завжди на plain http.
+[dependencies]
+paths.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+# Лише фейковий сервер у examples/: синтетичний JPEG-кадр «камери».
+image = { workspace = true, features = ["jpeg"] }

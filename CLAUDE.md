@@ -14,11 +14,12 @@
 | `geometry` | CSG-прев’ю через Manifold (`manifold-csg`) |
 | `lan` | принтери Bambu Lab у LAN на чистому Rust ([docs/LAN.md](docs/LAN.md)) |
 | `cloud` | Bambu Cloud через офіційний плагін Bambu Lab ([docs/CLOUD.md](docs/CLOUD.md)) |
+| `moonraker` | принтери Klipper через Moonraker HTTP API, без GUI ([docs/KLIPPER.md](docs/KLIPPER.md)) |
 | `mcp` | бінарник `slicenv-mcp` (stdio) ([docs/MCP.md](docs/MCP.md)) |
 | `paths` | каталоги XDG / ОС, міграція `bambu-lab → slicenv`, змінні середовища |
 | `perf` | бюджети продуктивності без вікна (`cargo run --release -p perf`) |
 
-`paths project settings slicer gcode geometry mcp cloud lan` не залежать від wgpu/GPUI — CI це перевіряє (`cargo tree`). Не тягни туди GUI.
+`paths project settings slicer gcode geometry mcp cloud lan moonraker` не залежать від wgpu/GPUI — CI це перевіряє (`cargo tree`). Не тягни туди GUI.
 
 ## Перевірка
 Перед комітом — skill `verify` (`bash .claude/skills/verify/verify.sh`): переклади, clippy, тести, підсумок passed/failed. Окремо:

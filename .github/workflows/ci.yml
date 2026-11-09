@@ -61,7 +61,7 @@ jobs:
           shared-key: headless
       - name: Без GPU-залежностей
         run: |
-          for crate in paths project settings slicer gcode geometry mcp cloud lan; do
+          for crate in paths project settings slicer gcode geometry mcp cloud lan moonraker; do
             if cargo tree -p "$crate" -e normal --prefix none | grep -Eq '^(wgpu|gpui-pre|gpui-component) '; then
               echo "::error::$crate тягне wgpu/GPUI"; exit 1
             fi
@@ -69,7 +69,7 @@ jobs:
       - name: Збірка й тести
         run: >-
           cargo test --locked
-          -p paths -p project -p settings -p slicer -p gcode -p geometry -p mcp -p cloud -p lan
+          -p paths -p project -p settings -p slicer -p gcode -p geometry -p mcp -p cloud -p lan -p moonraker
 
   workspace:
     runs-on: ubuntu-latest

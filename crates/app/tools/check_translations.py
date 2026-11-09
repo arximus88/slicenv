@@ -17,6 +17,8 @@ SOURCES = [
     # Тексти помилок LAN показуються через tr(LanError::key()/detail()).
     ROOT / "crates/lan/src/error.rs",
     ROOT / "crates/lan/src/tls.rs",
+    # Помилки Klipper/Moonraker: tr(MoonrakerError::key()).
+    ROOT / "crates/moonraker/src/error.rs",
 ]
 CYRILLIC = re.compile(r"[А-Яа-яІіЇїЄєҐґ]")
 LITERAL = re.compile(r'"((?:[^"\\\n]|\\.)*)"')

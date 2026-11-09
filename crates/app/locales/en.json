@@ -1525,5 +1525,18 @@
   "Новий проєкт, ще не збережено — правий клік: зберегти чи закрити": "New project, not saved yet — right-click to save or close",
   "ще не збережено": "not saved yet",
   "Параметри змінено — нарізка застаріла": "Settings changed — slice is outdated",
-  "Перерізати": "Re-slice"
+  "Перерізати": "Re-slice",
+  "Адреса принтера — host або host:порт, напр. 192.168.1.60:7125 чи http://ender.local": "Printer address — host or host:port, e.g. 192.168.1.60:7125 or http://ender.local",
+  "API-ключ Moonraker — латинські літери й цифри без пробілів": "Moonraker API key — Latin letters and digits without spaces",
+  "Недопустима назва файлу для принтера": "Invalid file name for the printer",
+  "Принтер Klipper недоступний: перевір адресу й порт (Moonraker зазвичай на 7125) і що принтер увімкнений": "Klipper printer is unreachable: check the address and port (Moonraker usually listens on 7125) and that the printer is on",
+  "Moonraker не відповів вчасно": "Moonraker did not respond in time",
+  "Moonraker відхилив доступ (401): потрібен правильний API-ключ або дозвіл для цієї мережі в trusted_clients": "Moonraker denied access (401): a valid API key or a trusted_clients entry for this network is required",
+  "Klipper не готовий до друку": "Klipper is not ready to print",
+  "Файл з такою назвою вже є на принтері": "A file with this name already exists on the printer",
+  "Принтер уже друкує: дочекайся кінця або скасуй поточне завдання": "The printer is already printing: wait for it to finish or cancel the current job",
+  "Moonraker повернув помилку": "Moonraker returned an error",
+  "З’єднання обірвалося під час передачі файлу": "The connection dropped while sending the file",
+  "Неочікувана відповідь Moonraker": "Unexpected response from Moonraker",
+  "Для https потрібна програма curl: встановіть її або використайте http": "https requires curl: install it or use http"
 }
