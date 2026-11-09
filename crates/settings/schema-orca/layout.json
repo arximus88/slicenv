@@ -1,0 +1,4049 @@
+{
+  "process": [
+    {
+      "title": "Quality",
+      "icon": "custom-gcode_quality",
+      "groups": [
+        {
+          "title": "Layer height",
+          "icon": "param_layer_height",
+          "lines": [
+            {
+              "options": [
+                "layer_height"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_print_height"
+              ]
+            },
+            {
+              "options": [
+                "enable_mixed_color_sublayer"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Line width",
+          "icon": "param_line_width",
+          "lines": [
+            {
+              "options": [
+                "line_width"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_line_width"
+              ]
+            },
+            {
+              "options": [
+                "outer_wall_line_width"
+              ]
+            },
+            {
+              "options": [
+                "inner_wall_line_width"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_line_width"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_line_width"
+              ]
+            },
+            {
+              "options": [
+                "internal_solid_infill_line_width"
+              ]
+            },
+            {
+              "options": [
+                "support_line_width"
+              ]
+            },
+            {
+              "options": [
+                "bridge_line_width"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Seam",
+          "icon": "param_seam",
+          "lines": [
+            {
+              "options": [
+                "seam_position"
+              ]
+            },
+            {
+              "options": [
+                "staggered_inner_seams"
+              ]
+            },
+            {
+              "options": [
+                "seam_gap"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_type"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_conditional"
+              ]
+            },
+            {
+              "options": [
+                "scarf_angle_threshold"
+              ]
+            },
+            {
+              "options": [
+                "scarf_overhang_threshold"
+              ]
+            },
+            {
+              "options": [
+                "scarf_joint_speed"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_start_height"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_entire_loop"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_min_length"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_steps"
+              ]
+            },
+            {
+              "options": [
+                "scarf_joint_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_inner_walls"
+              ]
+            },
+            {
+              "options": [
+                "role_based_wipe_speed"
+              ]
+            },
+            {
+              "options": [
+                "wipe_speed"
+              ]
+            },
+            {
+              "options": [
+                "wipe_on_loops"
+              ]
+            },
+            {
+              "options": [
+                "wipe_inward"
+              ]
+            },
+            {
+              "options": [
+                "wipe_inward_distance"
+              ]
+            },
+            {
+              "options": [
+                "wipe_before_external_loop"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Precision",
+          "icon": "param_precision",
+          "lines": [
+            {
+              "options": [
+                "slice_closing_radius"
+              ]
+            },
+            {
+              "options": [
+                "resolution"
+              ]
+            },
+            {
+              "options": [
+                "enable_arc_fitting"
+              ]
+            },
+            {
+              "options": [
+                "xy_hole_compensation"
+              ]
+            },
+            {
+              "options": [
+                "xy_contour_compensation"
+              ]
+            },
+            {
+              "options": [
+                "elefant_foot_compensation"
+              ]
+            },
+            {
+              "options": [
+                "elefant_foot_layers_density"
+              ]
+            },
+            {
+              "options": [
+                "elefant_foot_compensation_layers"
+              ]
+            },
+            {
+              "options": [
+                "precise_outer_wall"
+              ]
+            },
+            {
+              "options": [
+                "precise_z_height"
+              ]
+            },
+            {
+              "options": [
+                "hole_to_polyhole"
+              ]
+            },
+            {
+              "options": [
+                "hole_to_polyhole_threshold"
+              ]
+            },
+            {
+              "options": [
+                "hole_to_polyhole_twisted"
+              ]
+            },
+            {
+              "options": [
+                "hole_to_polyhole_max_edges"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Ironing",
+          "icon": "param_ironing",
+          "lines": [
+            {
+              "options": [
+                "ironing_type"
+              ]
+            },
+            {
+              "options": [
+                "ironing_pattern"
+              ]
+            },
+            {
+              "options": [
+                "ironing_flow"
+              ]
+            },
+            {
+              "options": [
+                "ironing_spacing"
+              ]
+            },
+            {
+              "options": [
+                "ironing_inset"
+              ]
+            },
+            {
+              "options": [
+                "ironing_angle"
+              ]
+            },
+            {
+              "options": [
+                "ironing_angle_fixed"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Z contouring",
+          "icon": "param_z_contouring",
+          "lines": [
+            {
+              "options": [
+                "zaa_enabled"
+              ]
+            },
+            {
+              "options": [
+                "zaa_minimize_perimeter_height"
+              ]
+            },
+            {
+              "options": [
+                "zaa_min_z"
+              ]
+            },
+            {
+              "options": [
+                "zaa_dont_alternate_fill_direction"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Wall generator",
+          "icon": "param_wall_generator",
+          "lines": [
+            {
+              "options": [
+                "wall_generator"
+              ]
+            },
+            {
+              "options": [
+                "wall_transition_angle"
+              ]
+            },
+            {
+              "options": [
+                "wall_transition_filter_deviation"
+              ]
+            },
+            {
+              "options": [
+                "wall_transition_length"
+              ]
+            },
+            {
+              "options": [
+                "wall_distribution_count"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_min_bead_width"
+              ]
+            },
+            {
+              "options": [
+                "min_bead_width"
+              ]
+            },
+            {
+              "options": [
+                "min_feature_size"
+              ]
+            },
+            {
+              "options": [
+                "min_length_factor"
+              ]
+            },
+            {
+              "options": [
+                "wall_maximum_resolution"
+              ]
+            },
+            {
+              "options": [
+                "wall_maximum_deviation"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Walls and surfaces",
+          "icon": "param_wall_surface",
+          "lines": [
+            {
+              "options": [
+                "wall_sequence"
+              ]
+            },
+            {
+              "options": [
+                "is_infill_first"
+              ]
+            },
+            {
+              "options": [
+                "wall_direction"
+              ]
+            },
+            {
+              "options": [
+                "print_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "top_solid_infill_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "bottom_solid_infill_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "set_other_flow_ratios"
+              ]
+            },
+            {
+              "options": [
+                "first_layer_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "outer_wall_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "inner_wall_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "overhang_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "internal_solid_infill_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "gap_fill_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "support_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "only_one_wall_first_layer"
+              ]
+            },
+            {
+              "options": [
+                "only_one_wall_top"
+              ]
+            },
+            {
+              "options": [
+                "min_width_top_surface"
+              ]
+            },
+            {
+              "options": [
+                "reduce_crossing_wall"
+              ]
+            },
+            {
+              "options": [
+                "max_travel_detour_distance"
+              ]
+            },
+            {
+              "options": [
+                "small_area_infill_flow_compensation"
+              ]
+            },
+            {
+              "options": [
+                "small_area_infill_flow_compensation_model"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Bridging",
+          "icon": "param_bridge",
+          "lines": [
+            {
+              "options": [
+                "bridge_flow"
+              ]
+            },
+            {
+              "options": [
+                "internal_bridge_flow"
+              ]
+            },
+            {
+              "options": [
+                "bridge_density"
+              ]
+            },
+            {
+              "options": [
+                "internal_bridge_density"
+              ]
+            },
+            {
+              "options": [
+                "thick_bridges"
+              ]
+            },
+            {
+              "options": [
+                "thick_internal_bridges"
+              ]
+            },
+            {
+              "options": [
+                "enable_extra_bridge_layer"
+              ]
+            },
+            {
+              "options": [
+                "dont_filter_internal_bridges"
+              ]
+            },
+            {
+              "options": [
+                "counterbore_hole_bridging"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Overhangs",
+          "icon": "param_overhang",
+          "lines": [
+            {
+              "options": [
+                "detect_overhang_wall"
+              ]
+            },
+            {
+              "options": [
+                "unsupported_wall_last"
+              ]
+            },
+            {
+              "options": [
+                "make_overhang_printable"
+              ]
+            },
+            {
+              "options": [
+                "make_overhang_printable_angle"
+              ]
+            },
+            {
+              "options": [
+                "make_overhang_printable_hole_size"
+              ]
+            },
+            {
+              "options": [
+                "extra_perimeters_on_overhangs"
+              ]
+            },
+            {
+              "options": [
+                "overhang_reverse"
+              ]
+            },
+            {
+              "options": [
+                "overhang_reverse_internal_only"
+              ]
+            },
+            {
+              "options": [
+                "overhang_reverse_threshold"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Strength",
+      "icon": "custom-gcode_strength",
+      "groups": [
+        {
+          "title": "Walls",
+          "icon": "param_wall",
+          "lines": [
+            {
+              "options": [
+                "wall_loops"
+              ]
+            },
+            {
+              "options": [
+                "alternate_extra_wall"
+              ]
+            },
+            {
+              "options": [
+                "detect_thin_wall"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Top/bottom shells",
+          "icon": "param_shell",
+          "lines": [
+            {
+              "options": [
+                "top_shell_layers"
+              ]
+            },
+            {
+              "options": [
+                "top_shell_thickness"
+              ]
+            },
+            {
+              "options": [
+                "top_color_penetration_layers"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_density"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_pattern"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_fill_order"
+              ]
+            },
+            {
+              "options": [
+                "top_layer_direction"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_expansion"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_expansion_margin"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_expansion_direction"
+              ]
+            },
+            {
+              "options": [
+                "bottom_shell_layers"
+              ]
+            },
+            {
+              "options": [
+                "bottom_shell_thickness"
+              ]
+            },
+            {
+              "options": [
+                "bottom_color_penetration_layers"
+              ]
+            },
+            {
+              "options": [
+                "bottom_surface_density"
+              ]
+            },
+            {
+              "options": [
+                "bottom_surface_pattern"
+              ]
+            },
+            {
+              "options": [
+                "bottom_surface_fill_order"
+              ]
+            },
+            {
+              "options": [
+                "bottom_layer_direction"
+              ]
+            },
+            {
+              "options": [
+                "center_of_surface_pattern"
+              ]
+            },
+            {
+              "options": [
+                "top_bottom_infill_wall_overlap"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Infill",
+          "icon": "param_infill",
+          "lines": [
+            {
+              "options": [
+                "sparse_infill_density"
+              ]
+            },
+            {
+              "options": [
+                "fill_multiline"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_pattern"
+              ]
+            },
+            {
+              "options": [
+                "adaptive_infill_mode"
+              ]
+            },
+            {
+              "options": [
+                "adaptive_infill_interior_density"
+              ]
+            },
+            {
+              "options": [
+                "adaptive_infill_gradient"
+              ]
+            },
+            {
+              "options": [
+                "gyroid_optimized"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_smooth_factor"
+              ]
+            },
+            {
+              "options": [
+                "infill_direction"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_rotate_template"
+              ]
+            },
+            {
+              "options": [
+                "skin_infill_density"
+              ]
+            },
+            {
+              "options": [
+                "skeleton_infill_density"
+              ]
+            },
+            {
+              "options": [
+                "infill_lock_depth"
+              ]
+            },
+            {
+              "options": [
+                "skin_infill_depth"
+              ]
+            },
+            {
+              "options": [
+                "skin_infill_line_width"
+              ]
+            },
+            {
+              "options": [
+                "skeleton_infill_line_width"
+              ]
+            },
+            {
+              "options": [
+                "symmetric_infill_y_axis"
+              ]
+            },
+            {
+              "options": [
+                "infill_complete_top"
+              ]
+            },
+            {
+              "options": [
+                "infill_shift_step"
+              ]
+            },
+            {
+              "options": [
+                "lateral_lattice_angle_1"
+              ]
+            },
+            {
+              "options": [
+                "lateral_lattice_angle_2"
+              ]
+            },
+            {
+              "options": [
+                "infill_overhang_angle"
+              ]
+            },
+            {
+              "options": [
+                "lightning_overhang_angle"
+              ]
+            },
+            {
+              "options": [
+                "lightning_prune_angle"
+              ]
+            },
+            {
+              "options": [
+                "lightning_straightening_angle"
+              ]
+            },
+            {
+              "options": [
+                "infill_anchor_max"
+              ]
+            },
+            {
+              "options": [
+                "infill_anchor"
+              ]
+            },
+            {
+              "options": [
+                "internal_solid_infill_pattern"
+              ]
+            },
+            {
+              "options": [
+                "solid_infill_direction"
+              ]
+            },
+            {
+              "options": [
+                "solid_infill_rotate_template"
+              ]
+            },
+            {
+              "options": [
+                "gap_fill_target"
+              ]
+            },
+            {
+              "options": [
+                "filter_out_gap_fill"
+              ]
+            },
+            {
+              "options": [
+                "separated_infills"
+              ]
+            },
+            {
+              "options": [
+                "infill_wall_overlap"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Advanced",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "align_infill_direction_to_model"
+              ]
+            },
+            {
+              "options": [
+                "extra_solid_infills"
+              ]
+            },
+            {
+              "options": [
+                "bridge_angle"
+              ]
+            },
+            {
+              "options": [
+                "internal_bridge_angle"
+              ]
+            },
+            {
+              "options": [
+                "relative_bridge_angle"
+              ]
+            },
+            {
+              "options": [
+                "minimum_sparse_infill_area"
+              ]
+            },
+            {
+              "options": [
+                "infill_combination"
+              ]
+            },
+            {
+              "options": [
+                "infill_combination_max_layer_height"
+              ]
+            },
+            {
+              "options": [
+                "detect_narrow_internal_solid_infill"
+              ]
+            },
+            {
+              "options": [
+                "ensure_vertical_shell_thickness"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Speed",
+      "icon": "custom-gcode_speed",
+      "groups": [
+        {
+          "title": "First layer speed",
+          "icon": "param_speed_first",
+          "lines": [
+            {
+              "options": [
+                "initial_layer_speed"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_infill_speed"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_travel_speed"
+              ]
+            },
+            {
+              "options": [
+                "slow_down_layers"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Other layers speed",
+          "icon": "param_speed",
+          "lines": [
+            {
+              "options": [
+                "outer_wall_speed"
+              ]
+            },
+            {
+              "options": [
+                "inner_wall_speed"
+              ]
+            },
+            {
+              "options": [
+                "small_perimeter_speed"
+              ]
+            },
+            {
+              "options": [
+                "small_perimeter_threshold"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_speed"
+              ]
+            },
+            {
+              "options": [
+                "internal_solid_infill_speed"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_speed"
+              ]
+            },
+            {
+              "options": [
+                "gap_infill_speed"
+              ]
+            },
+            {
+              "options": [
+                "ironing_speed"
+              ]
+            },
+            {
+              "options": [
+                "support_speed"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_speed"
+              ]
+            },
+            {
+              "options": [
+                "small_support_perimeter_speed"
+              ]
+            },
+            {
+              "options": [
+                "small_support_perimeter_threshold"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Overhang speed",
+          "icon": "param_overhang_speed",
+          "lines": [
+            {
+              "options": [
+                "enable_overhang_speed"
+              ]
+            },
+            {
+              "options": [
+                "slowdown_for_curled_perimeters"
+              ]
+            },
+            {
+              "options": [
+                "overhang_1_4_speed",
+                "overhang_2_4_speed",
+                "overhang_3_4_speed",
+                "overhang_4_4_speed"
+              ]
+            },
+            {
+              "options": [
+                "bridge_speed",
+                "internal_bridge_speed"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Travel speed",
+          "icon": "param_travel_speed",
+          "lines": [
+            {
+              "options": [
+                "travel_speed"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Acceleration",
+          "icon": "param_acceleration",
+          "lines": [
+            {
+              "options": [
+                "default_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "outer_wall_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "inner_wall_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "bridge_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "internal_solid_infill_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_travel_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "travel_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "accel_to_decel_enable"
+              ]
+            },
+            {
+              "options": [
+                "accel_to_decel_factor"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Junction Deviation",
+          "icon": "param_junction_deviation",
+          "lines": [
+            {
+              "options": [
+                "default_junction_deviation"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Jerk(XY)",
+          "icon": "param_jerk",
+          "lines": [
+            {
+              "options": [
+                "default_jerk"
+              ]
+            },
+            {
+              "options": [
+                "outer_wall_jerk"
+              ]
+            },
+            {
+              "options": [
+                "inner_wall_jerk"
+              ]
+            },
+            {
+              "options": [
+                "infill_jerk"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_jerk"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_jerk"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_travel_jerk"
+              ]
+            },
+            {
+              "options": [
+                "travel_jerk"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Advanced",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "max_volumetric_extrusion_rate_slope"
+              ]
+            },
+            {
+              "options": [
+                "max_volumetric_extrusion_rate_slope_segment_length"
+              ]
+            },
+            {
+              "options": [
+                "extrusion_rate_smoothing_external_perimeter_only"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Support",
+      "icon": "custom-gcode_support",
+      "groups": [
+        {
+          "title": "Support",
+          "icon": "param_support",
+          "lines": [
+            {
+              "options": [
+                "enable_support"
+              ]
+            },
+            {
+              "options": [
+                "support_type"
+              ]
+            },
+            {
+              "options": [
+                "support_style"
+              ]
+            },
+            {
+              "options": [
+                "support_threshold_angle"
+              ]
+            },
+            {
+              "options": [
+                "support_threshold_overlap"
+              ]
+            },
+            {
+              "options": [
+                "raft_first_layer_density"
+              ]
+            },
+            {
+              "options": [
+                "raft_first_layer_expansion"
+              ]
+            },
+            {
+              "options": [
+                "support_on_build_plate_only"
+              ]
+            },
+            {
+              "options": [
+                "support_critical_regions_only"
+              ]
+            },
+            {
+              "options": [
+                "support_remove_small_overhang"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Raft",
+          "icon": "param_raft",
+          "lines": [
+            {
+              "options": [
+                "raft_layers"
+              ]
+            },
+            {
+              "options": [
+                "raft_contact_distance"
+              ]
+            },
+            {
+              "options": [
+                "raft_expansion"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Filament for Supports",
+          "icon": "param_support_filament",
+          "lines": [
+            {
+              "options": [
+                "support_filament"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_filament"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_not_for_body"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Support ironing",
+          "icon": "param_ironing",
+          "lines": [
+            {
+              "options": [
+                "support_ironing"
+              ]
+            },
+            {
+              "options": [
+                "support_ironing_pattern"
+              ]
+            },
+            {
+              "options": [
+                "support_ironing_flow"
+              ]
+            },
+            {
+              "options": [
+                "support_ironing_spacing"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Advanced",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "support_top_z_distance"
+              ]
+            },
+            {
+              "options": [
+                "support_bottom_z_distance"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_wall_count"
+              ]
+            },
+            {
+              "options": [
+                "support_base_pattern"
+              ]
+            },
+            {
+              "options": [
+                "support_base_pattern_spacing"
+              ]
+            },
+            {
+              "options": [
+                "support_angle"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_top_layers"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_bottom_layers"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_pattern"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_spacing"
+              ]
+            },
+            {
+              "options": [
+                "support_bottom_interface_spacing"
+              ]
+            },
+            {
+              "options": [
+                "support_expansion"
+              ]
+            },
+            {
+              "options": [
+                "support_object_xy_distance"
+              ]
+            },
+            {
+              "options": [
+                "support_object_first_layer_gap"
+              ]
+            },
+            {
+              "options": [
+                "bridge_no_support"
+              ]
+            },
+            {
+              "options": [
+                "max_bridge_length"
+              ]
+            },
+            {
+              "options": [
+                "independent_support_layer_height"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Tree supports",
+          "icon": "param_support_tree",
+          "lines": [
+            {
+              "options": [
+                "tree_support_tip_diameter"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_branch_distance"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_branch_distance_organic"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_top_rate"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_branch_diameter"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_branch_diameter_organic"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_branch_diameter_angle"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_branch_angle"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_branch_angle_organic"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_angle_slow"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_auto_brim"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_brim_width"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Multimaterial",
+      "icon": "custom-gcode_multi_material",
+      "groups": [
+        {
+          "title": "Prime tower",
+          "icon": "param_tower",
+          "lines": [
+            {
+              "options": [
+                "enable_prime_tower"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_skip_points"
+              ]
+            },
+            {
+              "options": [
+                "enable_tower_interface_features"
+              ]
+            },
+            {
+              "options": [
+                "enable_tower_interface_cooldown_during_tower"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_enable_framework"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_width"
+              ]
+            },
+            {
+              "options": [
+                "belt_purge_tower_width"
+              ]
+            },
+            {
+              "options": [
+                "prime_volume"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_brim_width"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_infill_gap"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_rotation_angle"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_bridging"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_extra_spacing"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_extra_flow"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_max_purge_speed"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_wall_type"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_cone_angle"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_extra_rib_length"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_rib_width"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_fillet_wall"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_no_sparse_layers"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_sparse_layers_combination"
+              ]
+            },
+            {
+              "options": [
+                "single_extruder_multi_material_priming"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Filament for Features",
+          "icon": "param_filament_for_features",
+          "lines": [
+            {
+              "options": [
+                "outer_wall_filament_id"
+              ]
+            },
+            {
+              "options": [
+                "inner_wall_filament_id"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_filament_id"
+              ]
+            },
+            {
+              "options": [
+                "internal_solid_filament_id"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_filament_id"
+              ]
+            },
+            {
+              "options": [
+                "bottom_surface_filament_id"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_filament"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Ooze prevention",
+          "icon": "param_ooze_prevention",
+          "lines": [
+            {
+              "options": [
+                "ooze_prevention"
+              ]
+            },
+            {
+              "options": [
+                "standby_temperature_delta"
+              ]
+            },
+            {
+              "options": [
+                "preheat_time"
+              ]
+            },
+            {
+              "options": [
+                "preheat_steps"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Flush options",
+          "icon": "param_flush",
+          "lines": [
+            {
+              "options": [
+                "flush_into_infill"
+              ]
+            },
+            {
+              "options": [
+                "flush_into_objects"
+              ]
+            },
+            {
+              "options": [
+                "flush_into_support"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Advanced",
+          "icon": "advanced",
+          "lines": [
+            {
+              "options": [
+                "interlocking_beam"
+              ]
+            },
+            {
+              "options": [
+                "toolchange_ordering"
+              ]
+            },
+            {
+              "options": [
+                "toolchange_cyclic_order"
+              ]
+            },
+            {
+              "options": [
+                "toolchange_cyclic_first_layer"
+              ]
+            },
+            {
+              "options": [
+                "interface_shells"
+              ]
+            },
+            {
+              "options": [
+                "mmu_segmented_region_max_width"
+              ]
+            },
+            {
+              "options": [
+                "mmu_segmented_region_interlocking_depth"
+              ]
+            },
+            {
+              "options": [
+                "interlocking_beam_width"
+              ]
+            },
+            {
+              "options": [
+                "interlocking_orientation"
+              ]
+            },
+            {
+              "options": [
+                "interlocking_beam_layer_count"
+              ]
+            },
+            {
+              "options": [
+                "interlocking_depth"
+              ]
+            },
+            {
+              "options": [
+                "interlocking_boundary_avoidance"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Others",
+      "icon": "custom-gcode_other",
+      "groups": [
+        {
+          "title": "Skirt",
+          "icon": "param_skirt",
+          "lines": [
+            {
+              "options": [
+                "skirt_loops"
+              ]
+            },
+            {
+              "options": [
+                "skirt_type"
+              ]
+            },
+            {
+              "options": [
+                "min_skirt_length"
+              ]
+            },
+            {
+              "options": [
+                "skirt_distance"
+              ]
+            },
+            {
+              "options": [
+                "skirt_start_angle"
+              ]
+            },
+            {
+              "options": [
+                "skirt_speed"
+              ]
+            },
+            {
+              "options": [
+                "skirt_height"
+              ]
+            },
+            {
+              "options": [
+                "draft_shield"
+              ]
+            },
+            {
+              "options": [
+                "single_loop_draft_shield"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Brim",
+          "icon": "param_adhension",
+          "lines": [
+            {
+              "options": [
+                "brim_type"
+              ]
+            },
+            {
+              "options": [
+                "brim_width"
+              ]
+            },
+            {
+              "options": [
+                "leading_brim_length"
+              ]
+            },
+            {
+              "options": [
+                "extra_brim_width"
+              ]
+            },
+            {
+              "options": [
+                "brim_object_gap"
+              ]
+            },
+            {
+              "options": [
+                "brim_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "brim_use_efc_outline"
+              ]
+            },
+            {
+              "options": [
+                "combine_brims"
+              ]
+            },
+            {
+              "options": [
+                "brim_ears_max_angle"
+              ]
+            },
+            {
+              "options": [
+                "brim_ears_detection_length"
+              ]
+            },
+            {
+              "options": [
+                "brim_ears_outer_only"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Special mode",
+          "icon": "param_special",
+          "lines": [
+            {
+              "options": [
+                "slicing_mode"
+              ]
+            },
+            {
+              "options": [
+                "print_sequence"
+              ]
+            },
+            {
+              "options": [
+                "print_order"
+              ]
+            },
+            {
+              "options": [
+                "spiral_mode"
+              ]
+            },
+            {
+              "options": [
+                "spiral_mode_smooth"
+              ]
+            },
+            {
+              "options": [
+                "spiral_mode_max_xy_smoothing"
+              ]
+            },
+            {
+              "options": [
+                "spiral_starting_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "spiral_finishing_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "timelapse_type"
+              ]
+            },
+            {
+              "options": [
+                "enable_wrapping_detection"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Fuzzy skin",
+          "icon": "fuzzy_skin",
+          "lines": [
+            {
+              "options": [
+                "fuzzy_skin"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_mode"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_noise_type"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_point_distance"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_thickness"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_scale"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_octaves"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_persistence"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_ripples_per_layer"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_ripple_offset"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_layers_between_ripple_offset"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_first_layer"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "G-code output",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "reduce_infill_retraction"
+              ]
+            },
+            {
+              "options": [
+                "gcode_add_line_number"
+              ]
+            },
+            {
+              "options": [
+                "gcode_comments"
+              ]
+            },
+            {
+              "options": [
+                "high_precision_gcode"
+              ]
+            },
+            {
+              "options": [
+                "gcode_label_objects"
+              ]
+            },
+            {
+              "options": [
+                "exclude_object"
+              ]
+            },
+            {
+              "options": [
+                "exclude_object_tolerance"
+              ]
+            },
+            {
+              "options": [
+                "filename_format"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Change extrusion role G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "process_change_extrusion_role_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Post-processing Scripts",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "post_process"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Slicing Pipeline Plugin",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "slicing_pipeline_plugin"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Plugin Configuration",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "print_plugin_config_overrides"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Notes",
+          "icon": "note",
+          "lines": [
+            {
+              "options": [
+                "notes"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    }
+  ],
+  "filament": [
+    {
+      "title": "Filament",
+      "icon": "custom-gcode_filament",
+      "groups": [
+        {
+          "title": "Basic information",
+          "icon": "param_information",
+          "lines": [
+            {
+              "options": [
+                "filament_type"
+              ]
+            },
+            {
+              "options": [
+                "filament_vendor"
+              ]
+            },
+            {
+              "options": [
+                "filament_soluble"
+              ]
+            },
+            {
+              "options": [
+                "filament_is_support"
+              ]
+            },
+            {
+              "options": [
+                "filament_change_length"
+              ]
+            },
+            {
+              "options": [
+                "required_nozzle_HRC"
+              ]
+            },
+            {
+              "options": [
+                "default_filament_colour"
+              ]
+            },
+            {
+              "options": [
+                "filament_diameter"
+              ]
+            },
+            {
+              "options": [
+                "filament_adhesiveness_category"
+              ]
+            },
+            {
+              "options": [
+                "filament_density"
+              ]
+            },
+            {
+              "options": [
+                "filament_shrink"
+              ]
+            },
+            {
+              "options": [
+                "filament_shrinkage_compensation_z"
+              ]
+            },
+            {
+              "options": [
+                "filament_cost"
+              ]
+            },
+            {
+              "options": [
+                "temperature_vitrification"
+              ]
+            },
+            {
+              "options": [
+                "idle_temperature"
+              ]
+            },
+            {
+              "options": [
+                "nozzle_temperature_range_low",
+                "nozzle_temperature_range_high"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Flow ratio and Pressure Advance",
+          "icon": "param_flow_ratio_and_pressure_advance",
+          "lines": [
+            {
+              "options": [
+                "pellet_flow_coefficient"
+              ]
+            },
+            {
+              "options": [
+                "filament_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "enable_pressure_advance"
+              ]
+            },
+            {
+              "options": [
+                "pressure_advance"
+              ]
+            },
+            {
+              "options": [
+                "adaptive_pressure_advance"
+              ]
+            },
+            {
+              "options": [
+                "adaptive_pressure_advance_overhangs"
+              ]
+            },
+            {
+              "options": [
+                "adaptive_pressure_advance_bridges"
+              ]
+            },
+            {
+              "options": [
+                "adaptive_pressure_advance_model"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Print chamber temperature",
+          "icon": "param_chamber_temp",
+          "lines": [
+            {
+              "options": [
+                "activate_chamber_temp_control"
+              ]
+            },
+            {
+              "options": [
+                "chamber_temperature",
+                "chamber_minimal_temperature"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Print temperature",
+          "icon": "param_extruder_temp",
+          "lines": [
+            {
+              "options": [
+                "nozzle_temperature_initial_layer",
+                "nozzle_temperature"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Bed temperature",
+          "icon": "param_bed_temp",
+          "lines": [
+            {
+              "options": [
+                "supertack_plate_temp_initial_layer",
+                "supertack_plate_temp"
+              ]
+            },
+            {
+              "options": [
+                "cool_plate_temp_initial_layer",
+                "cool_plate_temp"
+              ]
+            },
+            {
+              "options": [
+                "textured_cool_plate_temp_initial_layer",
+                "textured_cool_plate_temp"
+              ]
+            },
+            {
+              "options": [
+                "eng_plate_temp_initial_layer",
+                "eng_plate_temp"
+              ]
+            },
+            {
+              "options": [
+                "hot_plate_temp_initial_layer",
+                "hot_plate_temp"
+              ]
+            },
+            {
+              "options": [
+                "textured_plate_temp_initial_layer",
+                "textured_plate_temp"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Volumetric speed limitation",
+          "icon": "param_volumetric_speed",
+          "lines": [
+            {
+              "options": [
+                "filament_adaptive_volumetric_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_max_volumetric_speed"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Cooling",
+      "icon": "custom-gcode_cooling_fan",
+      "groups": [
+        {
+          "title": "Cooling for specific layer",
+          "icon": "param_cooling_specific_layer",
+          "lines": [
+            {
+              "options": [
+                "close_fan_the_first_x_layers"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_fan_speed"
+              ]
+            },
+            {
+              "options": [
+                "full_fan_speed_layer"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Part cooling fan",
+          "icon": "param_cooling_part_fan",
+          "lines": [
+            {
+              "options": [
+                "fan_min_speed",
+                "fan_cooling_layer_time"
+              ]
+            },
+            {
+              "options": [
+                "fan_max_speed",
+                "slow_down_layer_time"
+              ]
+            },
+            {
+              "options": [
+                "reduce_fan_stop_start_freq"
+              ]
+            },
+            {
+              "options": [
+                "slow_down_for_layer_cooling"
+              ]
+            },
+            {
+              "options": [
+                "dont_slow_down_outer_wall"
+              ]
+            },
+            {
+              "options": [
+                "slow_down_min_speed"
+              ]
+            },
+            {
+              "options": [
+                "enable_overhang_bridge_fan"
+              ]
+            },
+            {
+              "options": [
+                "overhang_fan_threshold"
+              ]
+            },
+            {
+              "options": [
+                "overhang_fan_speed"
+              ]
+            },
+            {
+              "options": [
+                "internal_bridge_fan_speed"
+              ]
+            },
+            {
+              "options": [
+                "support_material_interface_fan_speed"
+              ]
+            },
+            {
+              "options": [
+                "ironing_fan_speed"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Auxiliary part cooling fan",
+          "icon": "param_cooling_aux_fan",
+          "lines": [
+            {
+              "options": [
+                "additional_cooling_fan_speed"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Exhaust fan",
+          "icon": "param_cooling_exhaust",
+          "lines": [
+            {
+              "options": [
+                "activate_air_filtration"
+              ]
+            },
+            {
+              "options": [
+                "activate_air_filtration_during_print",
+                "during_print_exhaust_fan_speed"
+              ]
+            },
+            {
+              "options": [
+                "activate_air_filtration_on_completion",
+                "complete_print_exhaust_fan_speed"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Setting Overrides",
+      "icon": "custom-gcode_setting_override",
+      "groups": [
+        {
+          "title": "Retraction",
+          "icon": "param_retraction",
+          "lines": [
+            {
+              "options": [
+                "filament_retraction_length"
+              ]
+            },
+            {
+              "options": [
+                "filament_z_hop"
+              ]
+            },
+            {
+              "options": [
+                "filament_z_hop_types"
+              ]
+            },
+            {
+              "options": [
+                "filament_retract_lift_above"
+              ]
+            },
+            {
+              "options": [
+                "filament_retract_lift_below"
+              ]
+            },
+            {
+              "options": [
+                "filament_retract_lift_enforce"
+              ]
+            },
+            {
+              "options": [
+                "filament_retraction_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_deretraction_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_retract_restart_extra"
+              ]
+            },
+            {
+              "options": [
+                "filament_retraction_minimum_travel"
+              ]
+            },
+            {
+              "options": [
+                "filament_retract_when_changing_layer"
+              ]
+            },
+            {
+              "options": [
+                "filament_wipe"
+              ]
+            },
+            {
+              "options": [
+                "filament_wipe_distance"
+              ]
+            },
+            {
+              "options": [
+                "filament_retract_before_wipe"
+              ]
+            },
+            {
+              "options": [
+                "filament_retract_after_wipe"
+              ]
+            },
+            {
+              "options": [
+                "filament_long_retractions_when_cut"
+              ]
+            },
+            {
+              "options": [
+                "filament_retraction_distances_when_cut"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Retraction when switching material",
+          "icon": "param_retraction_material_change",
+          "lines": [
+            {
+              "options": [
+                "filament_retract_length_toolchange"
+              ]
+            },
+            {
+              "options": [
+                "filament_retract_restart_extra_toolchange"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Ironing",
+          "icon": "param_ironing",
+          "lines": [
+            {
+              "options": [
+                "filament_ironing_flow"
+              ]
+            },
+            {
+              "options": [
+                "filament_ironing_spacing"
+              ]
+            },
+            {
+              "options": [
+                "filament_ironing_inset"
+              ]
+            },
+            {
+              "options": [
+                "filament_ironing_speed"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Advanced",
+      "icon": "custom-gcode_advanced",
+      "groups": [
+        {
+          "title": "Filament start G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "filament_start_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Change extrusion role G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "filament_change_extrusion_role_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Filament end G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "filament_end_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Plugin Configuration",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "filament_plugin_config_overrides"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Multimaterial",
+      "icon": "custom-gcode_multi_material",
+      "groups": [
+        {
+          "title": "Wipe tower parameters",
+          "icon": "param_tower",
+          "lines": [
+            {
+              "options": [
+                "filament_minimal_purge_on_wipe_tower"
+              ]
+            },
+            {
+              "options": [
+                "filament_tower_interface_pre_extrusion_dist"
+              ]
+            },
+            {
+              "options": [
+                "filament_tower_interface_pre_extrusion_length"
+              ]
+            },
+            {
+              "options": [
+                "filament_tower_ironing_area"
+              ]
+            },
+            {
+              "options": [
+                "filament_tower_interface_purge_volume"
+              ]
+            },
+            {
+              "options": [
+                "filament_tower_interface_print_temp"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Multi Filament",
+          "icon": "",
+          "lines": [
+            {
+              "options": [
+                "long_retractions_when_ec"
+              ]
+            },
+            {
+              "options": [
+                "retraction_distances_when_ec"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Tool change parameters with single extruder MM printers",
+          "icon": "param_toolchange",
+          "lines": [
+            {
+              "options": [
+                "filament_loading_speed_start"
+              ]
+            },
+            {
+              "options": [
+                "filament_loading_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_unloading_speed_start"
+              ]
+            },
+            {
+              "options": [
+                "filament_unloading_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_toolchange_delay"
+              ]
+            },
+            {
+              "options": [
+                "filament_cooling_moves"
+              ]
+            },
+            {
+              "options": [
+                "filament_cooling_initial_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_cooling_final_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_stamping_loading_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_stamping_distance"
+              ]
+            },
+            {
+              "options": [
+                "filament_ramming_parameters"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Tool change parameters with multi extruder MM printers",
+          "icon": "param_toolchange_multi_extruder",
+          "lines": [
+            {
+              "options": [
+                "filament_multitool_ramming"
+              ]
+            },
+            {
+              "options": [
+                "filament_multitool_ramming_volume"
+              ]
+            },
+            {
+              "options": [
+                "filament_multitool_ramming_flow"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Dependencies",
+      "icon": "advanced",
+      "groups": [
+        {
+          "title": "Compatible printers",
+          "icon": "param_dependencies_printers",
+          "lines": [
+            {
+              "options": [
+                "compatible_printers"
+              ]
+            },
+            {
+              "options": [
+                "compatible_printers_condition"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Compatible process profiles",
+          "icon": "param_dependencies_presets",
+          "lines": [
+            {
+              "options": [
+                "compatible_prints"
+              ]
+            },
+            {
+              "options": [
+                "compatible_prints_condition"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Notes",
+      "icon": "custom-gcode_note",
+      "groups": [
+        {
+          "title": "Notes",
+          "icon": "note",
+          "lines": [
+            {
+              "options": [
+                "filament_notes"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    }
+  ],
+  "machine": [
+    {
+      "title": "Basic information",
+      "icon": "custom-gcode_object-info",
+      "groups": [
+        {
+          "title": "Printable space",
+          "icon": "param_printable_space",
+          "lines": [
+            {
+              "options": [
+                "printable_area"
+              ]
+            },
+            {
+              "options": [
+                "parallel_printheads_count"
+              ]
+            },
+            {
+              "options": [
+                "bed_exclude_area"
+              ]
+            },
+            {
+              "options": [
+                "bed_exclude_volumes"
+              ]
+            },
+            {
+              "options": [
+                "bed_exclude_volume_mode"
+              ]
+            },
+            {
+              "options": [
+                "printable_height"
+              ]
+            },
+            {
+              "options": [
+                "support_multi_bed_types"
+              ]
+            },
+            {
+              "options": [
+                "best_object_pos"
+              ]
+            },
+            {
+              "options": [
+                "z_offset"
+              ]
+            },
+            {
+              "options": [
+                "preferred_orientation"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Advanced",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "printer_structure"
+              ]
+            },
+            {
+              "options": [
+                "gcode_flavor"
+              ]
+            },
+            {
+              "options": [
+                "gcode_skip_config_block"
+              ]
+            },
+            {
+              "options": [
+                "pellet_modded_printer"
+              ]
+            },
+            {
+              "options": [
+                "bbl_use_printhost"
+              ]
+            },
+            {
+              "options": [
+                "printer_agent"
+              ]
+            },
+            {
+              "options": [
+                "use_3mf"
+              ]
+            },
+            {
+              "options": [
+                "scan_first_layer"
+              ]
+            },
+            {
+              "options": [
+                "enable_power_loss_recovery"
+              ]
+            },
+            {
+              "options": [
+                "disable_m73"
+              ]
+            },
+            {
+              "options": [
+                "thumbnails"
+              ]
+            },
+            {
+              "options": [
+                "use_relative_e_distances"
+              ]
+            },
+            {
+              "options": [
+                "use_firmware_retraction"
+              ]
+            },
+            {
+              "options": [
+                "time_cost"
+              ]
+            },
+            {
+              "options": [
+                "build_plate_tilt_x"
+              ]
+            },
+            {
+              "options": [
+                "build_plate_tilt_y"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Belt printer",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "belt_printer"
+              ]
+            },
+            {
+              "options": [
+                "belt_printer_infinite_y"
+              ]
+            },
+            {
+              "options": [
+                "belt_slice_rotation_angle"
+              ]
+            },
+            {
+              "options": [
+                "belt_slice_rotation"
+              ]
+            },
+            {
+              "options": [
+                "belt_support_floor_offset"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Machine frame transforms",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "gcode_remap_x"
+              ]
+            },
+            {
+              "options": [
+                "gcode_remap_y"
+              ]
+            },
+            {
+              "options": [
+                "gcode_remap_z"
+              ]
+            },
+            {
+              "options": [
+                "belt_frame_tilt_decouple"
+              ]
+            },
+            {
+              "options": [
+                "belt_frame_tilt_angle"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Plugin Configuration",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "printer_plugin_config_overrides"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Cooling Fan",
+          "icon": "param_cooling_fan",
+          "lines": [
+            {
+              "options": [
+                "fan_speedup_time",
+                "fan_speedup_overhangs"
+              ]
+            },
+            {
+              "options": [
+                "fan_kickstart"
+              ]
+            },
+            {
+              "options": [
+                "part_cooling_fan_min_pwm"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Extruder Clearance",
+          "icon": "param_extruder_clearance",
+          "lines": [
+            {
+              "options": [
+                "extruder_clearance_radius"
+              ]
+            },
+            {
+              "options": [
+                "extruder_clearance_dist_to_rod"
+              ]
+            },
+            {
+              "options": [
+                "extruder_clearance_height_to_rod"
+              ]
+            },
+            {
+              "options": [
+                "extruder_clearance_height_to_lid"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Adaptive bed mesh",
+          "icon": "param_adaptive_mesh",
+          "lines": [
+            {
+              "options": [
+                "bed_mesh_min"
+              ]
+            },
+            {
+              "options": [
+                "bed_mesh_max"
+              ]
+            },
+            {
+              "options": [
+                "bed_mesh_probe_distance"
+              ]
+            },
+            {
+              "options": [
+                "adaptive_bed_mesh_margin"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Accessory",
+          "icon": "param_accessory",
+          "lines": [
+            {
+              "options": [
+                "nozzle_hrc"
+              ]
+            },
+            {
+              "options": [
+                "auxiliary_fan"
+              ]
+            },
+            {
+              "options": [
+                "fan_direction"
+              ]
+            },
+            {
+              "options": [
+                "support_chamber_temp_control"
+              ]
+            },
+            {
+              "options": [
+                "support_air_filtration"
+              ]
+            },
+            {
+              "options": [
+                "cooling_filter_enabled"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Machine G-code",
+      "icon": "custom-gcode_gcode",
+      "groups": [
+        {
+          "title": "File header G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "file_start_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Machine start G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "machine_start_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Machine end G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "machine_end_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Printing by object G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "printing_by_object_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Before layer change G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "before_layer_change_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Layer change G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "layer_change_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Timelapse G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "time_lapse_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Clumping Detection G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "wrapping_detection_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Change filament G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "change_filament_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Change extrusion role G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "change_extrusion_role_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Pause G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "machine_pause_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Template Custom G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "template_custom_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Multimaterial",
+      "icon": "custom-gcode_multi_material",
+      "groups": [
+        {
+          "title": "Single extruder multi-material setup",
+          "icon": "param_multi_material",
+          "lines": [
+            {
+              "options": [
+                "single_extruder_multi_material"
+              ]
+            },
+            {
+              "options": [
+                "extruders_count"
+              ]
+            },
+            {
+              "options": [
+                "manual_filament_change"
+              ]
+            },
+            {
+              "options": [
+                "bed_temperature_formula"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Wipe tower",
+          "icon": "param_tower",
+          "lines": [
+            {
+              "options": [
+                "wipe_tower_type"
+              ]
+            },
+            {
+              "options": [
+                "purge_in_prime_tower"
+              ]
+            },
+            {
+              "options": [
+                "enable_filament_ramming"
+              ]
+            },
+            {
+              "options": [
+                "tool_change_on_wipe_tower"
+              ]
+            },
+            {
+              "options": [
+                "wait_for_temp_on_wipe_tower"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Belt purge tower",
+          "icon": "param_tower",
+          "lines": [
+            {
+              "options": [
+                "enable_belt_purge_tower"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Single extruder multi-material parameters",
+          "icon": "param_settings",
+          "lines": [
+            {
+              "options": [
+                "cooling_tube_retraction"
+              ]
+            },
+            {
+              "options": [
+                "cooling_tube_length"
+              ]
+            },
+            {
+              "options": [
+                "parking_pos_retraction"
+              ]
+            },
+            {
+              "options": [
+                "extra_loading_move"
+              ]
+            },
+            {
+              "options": [
+                "high_current_on_filament_swap"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Advanced",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "machine_load_filament_time"
+              ]
+            },
+            {
+              "options": [
+                "machine_unload_filament_time"
+              ]
+            },
+            {
+              "options": [
+                "machine_tool_change_time"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "IDEX/IQEX Configuration",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "is_imex"
+              ]
+            },
+            {
+              "options": [
+                "imex_firmware_managed_zones"
+              ]
+            },
+            {
+              "options": [
+                "imex_gantry_count"
+              ]
+            },
+            {
+              "options": [
+                "imex_tools_per_gantry"
+              ]
+            },
+            {
+              "options": [
+                "imex_tool_layout"
+              ]
+            },
+            {
+              "options": [
+                "imex_nozzle_clearance_x"
+              ]
+            },
+            {
+              "options": [
+                "imex_nozzle_clearance_y"
+              ]
+            },
+            {
+              "options": [
+                "imex_carriage_margin"
+              ]
+            },
+            {
+              "options": [
+                "imex_pre_slice_warnings"
+              ]
+            },
+            {
+              "options": [
+                "imex_viz_theme"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Extruder",
+      "icon": "custom-gcode_extruder",
+      "groups": [
+        {
+          "title": "Basic information",
+          "icon": "param_information",
+          "lines": [
+            {
+              "options": [
+                "nozzle_diameter"
+              ]
+            },
+            {
+              "options": [
+                "nozzle_type"
+              ]
+            },
+            {
+              "options": [
+                "nozzle_volume"
+              ]
+            },
+            {
+              "options": [
+                "extruder_printable_height"
+              ]
+            },
+            {
+              "options": [
+                "extruder_printable_area"
+              ]
+            },
+            {
+              "options": [
+                "extruder_bed_exclude_volumes"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Layer height limits",
+          "icon": "param_layer_height",
+          "lines": [
+            {
+              "options": [
+                "min_layer_height"
+              ]
+            },
+            {
+              "options": [
+                "max_layer_height"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Position",
+          "icon": "param_position",
+          "lines": [
+            {
+              "options": [
+                "extruder_offset"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Retraction",
+          "icon": "param_retraction",
+          "lines": [
+            {
+              "options": [
+                "retraction_length"
+              ]
+            },
+            {
+              "options": [
+                "retract_restart_extra"
+              ]
+            },
+            {
+              "options": [
+                "retraction_speed"
+              ]
+            },
+            {
+              "options": [
+                "deretraction_speed"
+              ]
+            },
+            {
+              "options": [
+                "retraction_minimum_travel"
+              ]
+            },
+            {
+              "options": [
+                "retract_when_changing_layer"
+              ]
+            },
+            {
+              "options": [
+                "wipe"
+              ]
+            },
+            {
+              "options": [
+                "wipe_distance"
+              ]
+            },
+            {
+              "options": [
+                "retract_before_wipe"
+              ]
+            },
+            {
+              "options": [
+                "retract_after_wipe"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Z-Hop",
+          "icon": "param_extruder_lift_enforcement",
+          "lines": [
+            {
+              "options": [
+                "retract_lift_enforce"
+              ]
+            },
+            {
+              "options": [
+                "z_hop_types"
+              ]
+            },
+            {
+              "options": [
+                "z_hop"
+              ]
+            },
+            {
+              "options": [
+                "travel_slope"
+              ]
+            },
+            {
+              "options": [
+                "retract_lift_above"
+              ]
+            },
+            {
+              "options": [
+                "retract_lift_below"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Retraction when switching material",
+          "icon": "param_retraction_material_change",
+          "lines": [
+            {
+              "options": [
+                "retract_length_toolchange"
+              ]
+            },
+            {
+              "options": [
+                "retract_restart_extra_toolchange"
+              ]
+            },
+            {
+              "options": [
+                "long_retractions_when_cut"
+              ]
+            },
+            {
+              "options": [
+                "retraction_distances_when_cut"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Motion ability",
+      "icon": "custom-gcode_motion",
+      "groups": [
+        {
+          "title": "Advanced",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "emit_machine_limits_to_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Resonance Compensation",
+          "icon": "param_resonance_avoidance",
+          "lines": [
+            {
+              "options": [
+                "resonance_avoidance"
+              ]
+            },
+            {
+              "options": [
+                "min_resonance_avoidance_speed",
+                "max_resonance_avoidance_speed"
+              ]
+            },
+            {
+              "options": [
+                "input_shaping_emit"
+              ]
+            },
+            {
+              "options": [
+                "input_shaping_type"
+              ]
+            },
+            {
+              "options": [
+                "input_shaping_freq_x",
+                "input_shaping_freq_y"
+              ]
+            },
+            {
+              "options": [
+                "input_shaping_damp_x",
+                "input_shaping_damp_y"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Speed limitation",
+          "icon": "param_speed",
+          "lines": [
+            {
+              "options": [
+                "machine_max_speed_x"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_speed_y"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_speed_z"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_speed_e"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Acceleration limitation",
+          "icon": "param_acceleration",
+          "lines": [
+            {
+              "options": [
+                "machine_max_acceleration_x"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_acceleration_y"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_acceleration_z"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_acceleration_e"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_acceleration_extruding"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_acceleration_retracting"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_acceleration_travel"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Jerk limitation",
+          "icon": "param_jerk",
+          "lines": [
+            {
+              "options": [
+                "machine_max_junction_deviation"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_jerk_x"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_jerk_y"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_jerk_z"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_jerk_e"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    },
+    {
+      "title": "Notes",
+      "icon": "custom-gcode_note",
+      "groups": [
+        {
+          "title": "Notes",
+          "icon": "note",
+          "lines": [
+            {
+              "options": [
+                "printer_notes"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    }
+  ]
+}

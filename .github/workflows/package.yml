@@ -1,0 +1,133 @@
+# Пакети Linux: лише збирає й кладе в artifacts. НІЧОГО НЕ ПУБЛІКУЄ — ні GitHub Release,
+# ні AUR, ні Flathub/Snap Store. Публікація — окремим кроком за packaging/README.md.
+name: Пакети
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  linux:
+    # Найстаріший доступний LTS-образ: бінарник вимагає glibc не новішу за ту, на якій
+    # зібраний (22.04 → glibc 2.35, працює на Debian 12+, Ubuntu 22.04+, Fedora 36+).
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - name: Системні бібліотеки й інструменти пакування
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config cmake clang libssl-dev libzstd-dev \
+            libfontconfig-dev libfreetype-dev \
+            libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev \
+            librsvg2-bin desktop-file-utils appstream rpm file binutils
+      - name: linuxdeploy і appimagetool (лише завантаження інструментів)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 -o "$HOME/.local/bin/linuxdeploy" \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -fsSL --retry 5 --retry-all-errors --retry-delay 10 -o "$HOME/.local/bin/appimagetool" \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x "$HOME/.local/bin/linuxdeploy" "$HOME/.local/bin/appimagetool"
+          echo "$HOME/.local/bin" >>"$GITHUB_PATH"
+          # На раннері немає FUSE для AppImage-інструментів.
+          echo "APPIMAGE_EXTRACT_AND_RUN=1" >>"$GITHUB_ENV"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: package
+      - name: tar.gz, AppImage, .deb, .rpm
+        run: tools/package.sh tar appimage deb rpm
+      - name: Перевірка вмісту
+        run: |
+          set -x
+          tar -tzf dist/slicenv-*-linux.tar.gz | head -50
+          dpkg-deb -I dist/slicenv_*_amd64.deb
+          dpkg-deb -c dist/slicenv_*_amd64.deb
+          rpm -qlp dist/slicenv-*.rpm
+          dist/Slicenv-*.AppImage --appimage-extract-and-run --version
+          dist/Slicenv-*.AppImage --appimage-extract-and-run mcp --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slicenv-linux-x86_64
+          if-no-files-found: error
+          path: |
+            dist/*.tar.gz
+            dist/*.tar.gz.sha256
+            dist/*.AppImage
+            dist/*.AppImage.sha256
+            dist/*.deb
+            dist/*.rpm
+
+  aur:
+    # slicenv-bin з tarball попереднього job; makepkg працює лише не від root.
+    needs: linux
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      # git — до checkout: без нього actions/checkout завантажує дерево через REST API без
+      # .git, і `git diff` нижче падає з usage-помилкою, видаючи хибне «.SRCINFO застарів».
+      - name: git і python
+        run: pacman -Syu --noconfirm --needed git python
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: slicenv-linux-x86_64
+          path: dist
+      - name: makepkg slicenv-bin (без встановлення)
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          useradd -m builder
+          chown -R builder: "$GITHUB_WORKSPACE"
+          su builder -c "cd '$GITHUB_WORKSPACE' && tools/package.sh aur-bin srcinfo"
+          git -C "$GITHUB_WORKSPACE" diff --exit-code packaging/aur || \
+            { echo '::warning::.SRCINFO застарів — оновіть tools/package.sh srcinfo'; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slicenv-aur
+          if-no-files-found: error
+          # .SRCINFO — прихований файл; upload-artifact@v4 без цього його мовчки пропускає.
+          include-hidden-files: true
+          path: |
+            dist/*.pkg.tar.*
+            packaging/aur/*/PKGBUILD
+            packaging/aur/*/.SRCINFO
+
+  flatpak:
+    # Маніфест Flathub з джерелом — цим комітом (а не тегом), офлайн-збірка, flatpak-builder-lint.
+    # Бандл .flatpak — лише в artifacts; на Flathub збирає їхня інфраструктура.
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: cargo-sources.json і маніфест з локальним джерелом
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          export PATH="$HOME/.local/bin:$PATH"
+          tools/flatpak-cargo-sources.sh
+          python3 -I tools/flatpak-local-manifest.py packaging/flatpak/app.borys.slicenv.yml \
+            packaging/flatpak/app.borys.slicenv.ci.yml "$GITHUB_WORKSPACE"
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          manifest-path: packaging/flatpak/app.borys.slicenv.ci.yml
+          bundle: Slicenv-x86_64.flatpak
+          cache-key: flatpak-builder-${{ github.sha }}
+          upload-artifact: true
+      - name: flatpak-builder-lint
+        run: |
+          flatpak-builder-lint manifest packaging/flatpak/app.borys.slicenv.yml || true
+          flatpak-builder-lint repo repo

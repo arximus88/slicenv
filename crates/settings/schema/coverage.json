@@ -1,0 +1,133 @@
+{
+  "presets": {
+    "Bambu Lab A1 0.4 nozzle": {
+      "total": 102,
+      "covered": 102,
+      "percent": 100.0,
+      "missing": [],
+      "metadata": [
+        "type",
+        "name",
+        "from",
+        "instantiation",
+        "printer_settings_id",
+        "setting_id"
+      ],
+      "raw_total": 108,
+      "roundtrips": 108,
+      "primary_covered": 99,
+      "compatibility_keys": [
+        "extruder_height_gap",
+        "extruder_clearance_radius",
+        "nozzle_type"
+      ]
+    },
+    "0.20mm Standard @BBL A1": {
+      "total": 188,
+      "covered": 188,
+      "percent": 100.0,
+      "missing": [],
+      "metadata": [
+        "type",
+        "name",
+        "from",
+        "instantiation",
+        "compatible_printers_condition",
+        "print_settings_id",
+        "compatible_printers",
+        "setting_id",
+        "description"
+      ],
+      "raw_total": 197,
+      "roundtrips": 197,
+      "primary_covered": 182,
+      "compatibility_keys": [
+        "adaptive_layer_height",
+        "layer_time_smoothing",
+        "layer_time_smoothing_threshold",
+        "only_one_wall_top",
+        "reduce_infill_retraction",
+        "wall_infill_order"
+      ]
+    },
+    "0.08mm Extra Fine @BBL A1": {
+      "total": 188,
+      "covered": 188,
+      "percent": 100.0,
+      "missing": [],
+      "metadata": [
+        "type",
+        "name",
+        "from",
+        "instantiation",
+        "compatible_printers_condition",
+        "print_settings_id",
+        "compatible_printers",
+        "setting_id",
+        "description"
+      ],
+      "raw_total": 197,
+      "roundtrips": 197,
+      "primary_covered": 182,
+      "compatibility_keys": [
+        "adaptive_layer_height",
+        "layer_time_smoothing",
+        "layer_time_smoothing_threshold",
+        "only_one_wall_top",
+        "reduce_infill_retraction",
+        "wall_infill_order"
+      ]
+    },
+    "Bambu PLA Basic @BBL A1": {
+      "total": 127,
+      "covered": 127,
+      "percent": 100.0,
+      "missing": [],
+      "metadata": [
+        "type",
+        "name",
+        "from",
+        "instantiation",
+        "filament_settings_id",
+        "compatible_printers",
+        "filament_id",
+        "setting_id"
+      ],
+      "raw_total": 135,
+      "roundtrips": 135,
+      "primary_covered": 125,
+      "compatibility_keys": [
+        "filament_long_retractions_when_ec",
+        "filament_retraction_distances_when_ec"
+      ]
+    },
+    "Bambu PETG Translucent @BBL A1": {
+      "total": 127,
+      "covered": 127,
+      "percent": 100.0,
+      "missing": [],
+      "metadata": [
+        "type",
+        "name",
+        "from",
+        "instantiation",
+        "filament_settings_id",
+        "compatible_printers",
+        "description",
+        "filament_id",
+        "setting_id"
+      ],
+      "raw_total": 136,
+      "roundtrips": 136,
+      "primary_covered": 125,
+      "compatibility_keys": [
+        "filament_long_retractions_when_ec",
+        "filament_retraction_distances_when_ec"
+      ]
+    }
+  },
+  "missing_layout_keys": [
+    "max_volumetric_extrusion_rate_slope_negative",
+    "max_volumetric_extrusion_rate_slope_positive"
+  ]
+}

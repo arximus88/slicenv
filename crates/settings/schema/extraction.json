@@ -1,0 +1,89 @@
+{
+  "compatibility_sha256": "0dad5300f3bfbc8b0ea3e59e870f48a8389e26e3e2ddb7d3c680e864a74e3df5",
+  "source": "bambu",
+  "source_commit": "79df7ae309be398ed30c9f397c13c9911c2edc57",
+  "sources": {
+    "src/libslic3r/PrintConfig.cpp": "428d3fd53d459239892e84e60cb75bd337f0d26fa9f79fdb128d92cb622dbbff",
+    "src/libslic3r/PrintConfig.hpp": "545e8c3d35d56f2eccaab635c53a865f5889bff7bd9f4ad688a3a24fe3cefc4f",
+    "src/libslic3r/Config.hpp": "6bdef8ab541fa48b045fea81d5e7fa49a4fe44c351cc030a89a488230c21f9c7",
+    "src/libslic3r/Preset.cpp": "855c32a6a84c42755adec6f4366a8b7b85600ffc3b5b23bb63e1d134e3031c3e",
+    "src/slic3r/GUI/ConfigManipulation.cpp": "3d8f26fcb863a4c54cfd5bc587bf390d7b95c88fd7017b1c187c18b2329a57bd",
+    "bbl/i18n/uk/BambuStudio_uk.po": "8f52c69132c8cbfc75979cc2760632c2fcc8608b93e16f2ddf1fd89c9675cc73",
+    "src/slic3r/GUI/Tab.cpp": "4cd820b37543432646071cba8740d8fc2a9a12b03366c966aeed779e1e549256"
+  },
+  "option_count": 702,
+  "primary_option_count": 691,
+  "documentation_count": 166,
+  "compatibility_keys": [
+    "adaptive_layer_height",
+    "extruder_clearance_radius",
+    "extruder_height_gap",
+    "filament_long_retractions_when_ec",
+    "filament_retraction_distances_when_ec",
+    "layer_time_smoothing",
+    "layer_time_smoothing_threshold",
+    "nozzle_type",
+    "only_one_wall_top",
+    "reduce_infill_retraction",
+    "wall_infill_order"
+  ],
+  "layout_pages": {
+    "process": 5,
+    "filament": 6,
+    "machine": 5
+  },
+  "layout_option_count": 458,
+  "missing_layout_keys": [
+    "max_volumetric_extrusion_rate_slope_negative",
+    "max_volumetric_extrusion_rate_slope_positive"
+  ],
+  "unparsed": [],
+  "layout_unparsed": [],
+  "scope_counts": {
+    "object": 93,
+    "region": 120,
+    "global": 489
+  },
+  "translations": {
+    "label": {
+      "total": 562,
+      "translated": 343,
+      "percent": 61.03202846975089
+    },
+    "tooltip": {
+      "total": 514,
+      "translated": 309,
+      "percent": 60.11673151750973
+    },
+    "sidetext": {
+      "total": 302,
+      "translated": 298,
+      "percent": 98.67549668874172
+    },
+    "category": {
+      "total": 247,
+      "translated": 247,
+      "percent": 100.0
+    },
+    "enum_labels": {
+      "total": 289,
+      "translated": 195,
+      "percent": 67.47404844290658
+    },
+    "full_label": {
+      "total": 60,
+      "translated": 43,
+      "percent": 71.66666666666667
+    },
+    "page_titles": {
+      "total": 16,
+      "translated": 15,
+      "percent": 93.75
+    },
+    "group_titles": {
+      "total": 66,
+      "translated": 62,
+      "percent": 93.93939393939394
+    }
+  }
+}

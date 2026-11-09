@@ -1,0 +1,23 @@
+/target
+/dist
+/venv
+__pycache__/
+*.png
+# Ресурси застосунку вшиваються в бінарник
+!crates/app/assets/**/*.png
+!packaging/screenshots/*.png
+# Службові файли Orca CLI, що з'являються в теці запуску
+/[0-9][0-9][0-9][0-9][0-9].log
+/result.json
+# містить access code і серійник принтера
+connect.py
+# Локальні конфіги MCP-клієнтів (абсолютні шляхи цієї машини); як налаштувати — docs/MCP.md
+/.mcp.json
+/.codex/
+# Сирі дані порівняльного бенча (tools/bench/compare.py)
+/bench/compare-*.json
+# Машинно-специфічні інструкції агентів (не для публічного репозиторію)
+/CLAUDE.local.md
+/.claude/settings.local.json
+/packaging/flatpak/cargo-sources.json
+/packaging/flatpak/app.borys.slicenv.ci.yml

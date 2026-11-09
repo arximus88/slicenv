@@ -1,0 +1,7 @@
+# GitGuardian (ggshield / GitHub-інтеграція).
+# Синтетичні тестові ключі: ланцюжок «Test BBL CA» для tls::PrinterVerifier,
+# згенерований локально, ні до чого не дає доступу (див. crates/lan/tests/fixtures/README.md).
+version: 2
+secret:
+  ignored_paths:
+    - crates/lan/tests/fixtures/*.key.pem

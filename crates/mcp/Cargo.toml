@@ -1,0 +1,40 @@
+[package]
+name = "mcp"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+description = "MCP-сервер (stdio): AI-агенти керують проєктом і слайсером"
+
+[[bin]]
+name = "slicenv-mcp"
+path = "src/main.rs"
+
+[dependencies]
+paths.workspace = true
+anyhow.workspace = true
+glam.workspace = true
+libc.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+zip.workspace = true
+project.workspace = true
+slicer.workspace = true
+settings.workspace = true
+gcode.workspace = true
+cloud.workspace = true
+rmcp = { version = "3.8", features = ["server", "macros", "transport-async-rw", "transport-streamable-http-server"] }
+schemars = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-std", "fs", "net", "sync"] }
+
+axum = "0.8"
+tokio-util = "0.7"
+url = "2"
+getrandom = "0.3"
+
+[dev-dependencies]
+reqwest = { version = "0.12", features = ["json"] }
+
+# Іконка й VERSIONINFO для exe (build.rs); лише на Windows-хості.
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1.34"

@@ -1,0 +1,106 @@
+# Регресії коректності й швидкодії — автоматично (дорожня карта аудиту, крок 8).
+# Що й чому пропущено — docs/TESTING.md, розділ «CI».
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+  # Rust зафіксовано (dtolnay/rust-toolchain@1.97.1 нижче) — як локально: новий stable
+  # приносить нові лінти clippy (1.99: chunks_exact_to_as_chunks) і валив би CI без змін у
+  # коді. Оновлювати версію окремим комітом разом із виправленням нових лінтів.
+  # Наявні попередження clippy (37 місць, 13 лінтів на 2026-11-04) дозволені поіменно,
+  # усе інше — помилка: нові лінти не проходять. Прибрав лінт із коду — прибери й звідси.
+  CLIPPY_ALLOW: >-
+    -A clippy::collapsible_if
+    -A clippy::needless_pub_self
+    -A clippy::items_after_test_module
+    -A clippy::too_many_arguments
+    -A clippy::type_complexity
+    -A clippy::single_range_in_vec_init
+    -A clippy::field_reassign_with_default
+    -A clippy::if_same_then_else
+    -A clippy::needless_range_loop
+    -A clippy::unit_arg
+    -A clippy::bool_comparison
+    -A clippy::suspicious_assignment_formatting
+    -A clippy::wrong_self_convention
+
+jobs:
+  translations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ключі перекладу (en.json)
+        run: python3 -I crates/app/tools/check_translations.py
+
+  headless:
+    # Крейти без wgpu/GPUI: збираються й тестуються без системних GUI-бібліотек і GPU.
+    # Заразом стереже гігієну крейтів: якщо сюди просочиться wgpu чи gpui — крок упаде.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - name: OpenSSL (reqwest у dev-залежностях mcp), cmake (manifold у geometry)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libssl-dev cmake
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: headless
+      - name: Без GPU-залежностей
+        run: |
+          for crate in paths project settings slicer gcode geometry mcp cloud lan; do
+            if cargo tree -p "$crate" -e normal --prefix none | grep -Eq '^(wgpu|gpui-pre|gpui-component) '; then
+              echo "::error::$crate тягне wgpu/GPUI"; exit 1
+            fi
+          done
+      - name: Збірка й тести
+        run: >-
+          cargo test --locked
+          -p paths -p project -p settings -p slicer -p gcode -p geometry -p mcp -p cloud -p lan
+
+  workspace:
+    runs-on: ubuntu-latest
+    steps:
+      # target/ workspace з GPUI не влазить разом із кешем: збереження кешу падало з ENOSPC.
+      - name: Звільнити диск раннера
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: clippy, rustfmt
+      - name: Системні бібліотеки GPUI / wgpu / manifold
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config cmake clang libssl-dev libzstd-dev \
+            libfontconfig-dev libfreetype-dev \
+            libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev libx11-xcb-dev libxcb1-dev
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: workspace
+      # cargo fmt --check свідомо не запускається: дерево не відформатоване
+      # (170 фрагментів у 26 файлах на 2026-11-04). Масове форматування — окремим комітом,
+      # тоді додати тут `cargo fmt --all --check`.
+      - name: Clippy (нові лінти заборонені)
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings $CLIPPY_ALLOW
+      - name: Тести workspace
+        # Без GPU-адаптера GPU-тести друкують SKIP і проходять (viewer::test_renderer);
+        # на раннері з GPU задайте SLICENV_REQUIRE_GPU=1, щоб пропуск став провалом.
+        run: cargo test --locked --workspace
+      - name: Бюджети продуктивності (інваріанти)
+        # Числа baseline записані на машині розробника; тут валять лише машинонезалежні
+        # інваріанти (кеш рамок при перенесенні, O(1) translate). GPU — лише за наявності.
+        run: cargo run --locked --release -p perf -- --invariants-only

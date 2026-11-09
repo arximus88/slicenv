@@ -1,0 +1,33 @@
+{
+    "##": "ШАБЛОН scoop-маніфесту. НЕ ПУБЛІКУЄТЬСЯ: покласти у власний bucket після релізу (packaging/README.md). Підставити @VERSION@ і @SHA256@ (dist/*-windows.zip.sha256).",
+    "version": "@VERSION@",
+    "description": "Слайсер для 3D-принтерів Bambu Lab на Rust/GPUI (рушії Bambu Studio та OrcaSlicer).",
+    "homepage": "https://github.com/arximus88/slicenv",
+    "license": "AGPL-3.0-or-later",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/arximus88/slicenv/releases/download/v@VERSION@/slicenv-@VERSION@-x86_64-windows.zip",
+            "hash": "@SHA256@",
+            "extract_dir": "slicenv-@VERSION@-x86_64-windows"
+        }
+    },
+    "bin": [
+        "slicenv.exe",
+        "slicenv-mcp.exe"
+    ],
+    "shortcuts": [
+        [
+            "slicenv.exe",
+            "Slicenv"
+        ]
+    ],
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/arximus88/slicenv/releases/download/v$version/slicenv-$version-x86_64-windows.zip",
+                "extract_dir": "slicenv-$version-x86_64-windows"
+            }
+        }
+    }
+}

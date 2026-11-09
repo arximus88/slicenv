@@ -1,0 +1,1149 @@
+{
+  "roundtrips": [
+    {
+      "file": "Untitled.3mf",
+      "structure": {
+        "objects": 1,
+        "volumes": 1,
+        "instances": 1,
+        "plates": 1,
+        "off_plate": 0,
+        "triangles": 1431825,
+        "structure": "match"
+      },
+      "archive_contents_identical": true
+    },
+    {
+      "file": "mini-pc-trigkey+g4+pc+case.3mf",
+      "structure": {
+        "objects": 8,
+        "volumes": 8,
+        "instances": 8,
+        "plates": 2,
+        "off_plate": 0,
+        "triangles": 155442,
+        "structure": "match"
+      },
+      "archive_contents_identical": true
+    },
+    {
+      "file": "Zen-Assembly.3mf",
+      "structure": {
+        "objects": 17,
+        "volumes": 19,
+        "instances": 17,
+        "plates": 4,
+        "off_plate": 15,
+        "triangles": 24280,
+        "structure": "match"
+      },
+      "archive_contents_identical": true
+    },
+    {
+      "file": "All+Shelves.3mf",
+      "structure": {
+        "objects": 16,
+        "volumes": 16,
+        "instances": 16,
+        "plates": 6,
+        "off_plate": 0,
+        "triangles": 19416,
+        "structure": "match"
+      },
+      "archive_contents_identical": true
+    },
+    {
+      "file": "laptop+stand.3mf",
+      "structure": {
+        "objects": 8,
+        "volumes": 8,
+        "instances": 8,
+        "plates": 5,
+        "off_plate": 0,
+        "triangles": 79456,
+        "structure": "match"
+      },
+      "archive_contents_identical": true
+    },
+    {
+      "file": "klipsa_v2a.3mf",
+      "structure": {
+        "objects": 4,
+        "volumes": 4,
+        "instances": 4,
+        "plates": 2,
+        "off_plate": 0,
+        "triangles": 3648,
+        "structure": "match"
+      },
+      "archive_contents_identical": true
+    },
+    {
+      "file": "ariesbox-case.3mf",
+      "structure": {
+        "objects": 5,
+        "volumes": 5,
+        "instances": 5,
+        "plates": 1,
+        "off_plate": 0,
+        "triangles": 4768,
+        "structure": "match"
+      },
+      "archive_contents_identical": true
+    },
+    {
+      "file": "grosh-102.3mf",
+      "structure": {
+        "objects": 1,
+        "volumes": 1,
+        "instances": 1,
+        "plates": 1,
+        "off_plate": 0,
+        "triangles": 208,
+        "structure": "match"
+      },
+      "archive_contents_identical": true
+    },
+    {
+      "file": "TypeC4PinHolder_v3.3mf",
+      "structure": {
+        "objects": 1,
+        "volumes": 1,
+        "instances": 1,
+        "plates": 1,
+        "off_plate": 0,
+        "triangles": 168,
+        "structure": "match"
+      },
+      "archive_contents_identical": true
+    },
+    {
+      "file": "pin+stand.3mf",
+      "structure": {
+        "objects": 1,
+        "volumes": 1,
+        "instances": 1,
+        "plates": 1,
+        "off_plate": 0,
+        "triangles": 600,
+        "structure": "match"
+      },
+      "archive_contents_identical": true
+    },
+    {
+      "file": "UnderDeskDrawer.3mf",
+      "structure": {
+        "objects": 3,
+        "volumes": 3,
+        "instances": 3,
+        "plates": 2,
+        "off_plate": 0,
+        "triangles": 17554,
+        "structure": "match"
+      },
+      "archive_contents_identical": true
+    },
+    {
+      "file": "120mm+Fan+Mesh+Bambu+Slicer+v4.3mf",
+      "structure": {
+        "objects": 2,
+        "volumes": 2,
+        "instances": 2,
+        "plates": 1,
+        "off_plate": 0,
+        "triangles": 2060,
+        "structure": "match"
+      },
+      "archive_contents_identical": true
+    }
+  ],
+  "slices": [
+    {
+      "file": "TypeC4PinHolder_v3.3mf",
+      "plate": 1,
+      "variant": "original",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 496.2294921875,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 1.4613834619522095
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/TypeC4PinHolder_v3/plate-1/original/cli.log"
+    },
+    {
+      "file": "TypeC4PinHolder_v3.3mf",
+      "plate": 1,
+      "variant": "saved",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 496.2294921875,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 1.4613834619522095
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/TypeC4PinHolder_v3/plate-1/saved/cli.log"
+    },
+    {
+      "file": "pin+stand.3mf",
+      "plate": 1,
+      "variant": "original",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 378.4531555175781,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 1.4634603261947632
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/pin+stand/plate-1/original/cli.log"
+    },
+    {
+      "file": "pin+stand.3mf",
+      "plate": 1,
+      "variant": "saved",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 378.4531555175781,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 1.4634603261947632
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/pin+stand/plate-1/saved/cli.log"
+    },
+    {
+      "file": "120mm+Fan+Mesh+Bambu+Slicer+v4.3mf",
+      "plate": 1,
+      "variant": "original",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 1027.6090087890625,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 5.8297014236450195
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/120mm+Fan+Mesh+Bambu+Slicer+v4/plate-1/original/cli.log"
+    },
+    {
+      "file": "120mm+Fan+Mesh+Bambu+Slicer+v4.3mf",
+      "plate": 1,
+      "variant": "saved",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 1027.8692626953125,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 5.829703330993652
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/120mm+Fan+Mesh+Bambu+Slicer+v4/plate-1/saved/cli.log"
+    },
+    {
+      "file": "grosh-102.3mf",
+      "plate": 1,
+      "variant": "original",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 1749.082275390625,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 18.047992706298828
+        }
+      ],
+      "errors": [
+        "ZFiller: both point in subject : 1, 2, 1, 0 ",
+        "ZFiller: both point in subject : 1, 2, 1, 0 "
+      ],
+      "log": "/tmp/project-w4-ayialh68/slices/grosh-102/plate-1/original/cli.log"
+    },
+    {
+      "file": "grosh-102.3mf",
+      "plate": 1,
+      "variant": "saved",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 1749.29931640625,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 18.047992706298828
+        }
+      ],
+      "errors": [
+        "ZFiller: both point in subject : 1, 2, 1, 0 ",
+        "ZFiller: both point in subject : 1, 2, 1, 0 ",
+        "ZFiller: encounter idx from clip: 26",
+        "ZFiller: encounter idx from clip: 20",
+        "ZFiller: encounter idx from clip: 16",
+        "ZFiller: encounter idx from clip: 10"
+      ],
+      "log": "/tmp/project-w4-ayialh68/slices/grosh-102/plate-1/saved/cli.log"
+    },
+    {
+      "file": "ariesbox-case.3mf",
+      "plate": 1,
+      "variant": "original",
+      "exit": 206,
+      "return_code": -50,
+      "error_string": "One of the plate is empty or has no object fully inside it. Please check that the 3mf contains no empty plate in Bambu Studio before uploading.",
+      "seconds": null,
+      "grams": [],
+      "errors": [
+        "plate 1: Nothing to be sliced, Either the print is empty or no object is fully inside the print volume before apply."
+      ],
+      "log": "/tmp/project-w4-ayialh68/slices/ariesbox-case/plate-1/original/cli.log"
+    },
+    {
+      "file": "ariesbox-case.3mf",
+      "plate": 1,
+      "variant": "saved",
+      "exit": 206,
+      "return_code": -50,
+      "error_string": "One of the plate is empty or has no object fully inside it. Please check that the 3mf contains no empty plate in Bambu Studio before uploading.",
+      "seconds": null,
+      "grams": [],
+      "errors": [
+        "plate 1: Nothing to be sliced, Either the print is empty or no object is fully inside the print volume before apply."
+      ],
+      "log": "/tmp/project-w4-ayialh68/slices/ariesbox-case/plate-1/saved/cli.log"
+    },
+    {
+      "file": "klipsa_v2a.3mf",
+      "plate": 1,
+      "variant": "original",
+      "exit": 238,
+      "return_code": -18,
+      "error_string": "Invalid parameter value(s) included in the 3mf file.",
+      "seconds": null,
+      "grams": [],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/klipsa_v2a/plate-1/original/cli.log"
+    },
+    {
+      "file": "klipsa_v2a.3mf",
+      "plate": 1,
+      "variant": "saved",
+      "exit": 238,
+      "return_code": -18,
+      "error_string": "Invalid parameter value(s) included in the 3mf file.",
+      "seconds": null,
+      "grams": [],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/klipsa_v2a/plate-1/saved/cli.log"
+    },
+    {
+      "file": "klipsa_v2a.3mf",
+      "plate": 2,
+      "variant": "original",
+      "exit": 238,
+      "return_code": -18,
+      "error_string": "Invalid parameter value(s) included in the 3mf file.",
+      "seconds": null,
+      "grams": [],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/klipsa_v2a/plate-2/original/cli.log"
+    },
+    {
+      "file": "klipsa_v2a.3mf",
+      "plate": 2,
+      "variant": "saved",
+      "exit": 238,
+      "return_code": -18,
+      "error_string": "Invalid parameter value(s) included in the 3mf file.",
+      "seconds": null,
+      "grams": [],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/klipsa_v2a/plate-2/saved/cli.log"
+    },
+    {
+      "file": "laptop+stand.3mf",
+      "plate": 1,
+      "variant": "original",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 24552.83203125,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 259.046875
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/laptop+stand/plate-1/original/cli.log"
+    },
+    {
+      "file": "laptop+stand.3mf",
+      "plate": 1,
+      "variant": "saved",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 24559.671875,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 259.048583984375
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/laptop+stand/plate-1/saved/cli.log"
+    },
+    {
+      "file": "laptop+stand.3mf",
+      "plate": 2,
+      "variant": "original",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 6986.359375,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 67.9455795288086
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/laptop+stand/plate-2/original/cli.log"
+    },
+    {
+      "file": "laptop+stand.3mf",
+      "plate": 2,
+      "variant": "saved",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 6982.7978515625,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 67.94607543945312
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/laptop+stand/plate-2/saved/cli.log"
+    },
+    {
+      "file": "All+Shelves.3mf",
+      "plate": 1,
+      "variant": "original",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 14746.3798828125,
+      "grams": [
+        {
+          "id": 2,
+          "total_used_g": 163.6223907470703
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/All+Shelves/plate-1/original/cli.log"
+    },
+    {
+      "file": "All+Shelves.3mf",
+      "plate": 1,
+      "variant": "saved",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 14819.1083984375,
+      "grams": [
+        {
+          "id": 2,
+          "total_used_g": 163.62240600585938
+        }
+      ],
+      "errors": [
+        "ZFiller: encounter idx from clip: 152",
+        "ZFiller: encounter idx from clip: 80",
+        "ZFiller: encounter idx from clip: 152",
+        "ZFiller: encounter idx from clip: 80",
+        "ZFiller: encounter idx from clip: 149",
+        "ZFiller: encounter idx from clip: 77",
+        "ZFiller: encounter idx from clip: 149",
+        "ZFiller: encounter idx from clip: 77",
+        "ZFiller: encounter idx from clip: 152",
+        "ZFiller: encounter idx from clip: 74"
+      ],
+      "log": "/tmp/project-w4-ayialh68/slices/All+Shelves/plate-1/saved/cli.log"
+    },
+    {
+      "file": "All+Shelves.3mf",
+      "plate": 2,
+      "variant": "original",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 10069.783203125,
+      "grams": [
+        {
+          "id": 2,
+          "total_used_g": 104.22388458251953
+        }
+      ],
+      "errors": [
+        "ZFiller: encounter idx from clip: 152",
+        "ZFiller: encounter idx from clip: 74",
+        "ZFiller: encounter idx from clip: 152",
+        "ZFiller: encounter idx from clip: 74"
+      ],
+      "log": "/tmp/project-w4-ayialh68/slices/All+Shelves/plate-2/original/cli.log"
+    },
+    {
+      "file": "All+Shelves.3mf",
+      "plate": 2,
+      "variant": "saved",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 10042.578125,
+      "grams": [
+        {
+          "id": 2,
+          "total_used_g": 104.22407531738281
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/All+Shelves/plate-2/saved/cli.log"
+    },
+    {
+      "file": "Zen-Assembly.3mf",
+      "plate": 1,
+      "variant": "original",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 8336.3203125,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 65.87745666503906
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/Zen-Assembly/plate-1/original/cli.log"
+    },
+    {
+      "file": "Zen-Assembly.3mf",
+      "plate": 1,
+      "variant": "saved",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 8335.994140625,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 65.87759399414062
+        }
+      ],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/Zen-Assembly/plate-1/saved/cli.log"
+    },
+    {
+      "file": "Zen-Assembly.3mf",
+      "plate": 2,
+      "variant": "original",
+      "exit": 250,
+      "return_code": -6,
+      "error_string": "The input model file to the slicer can not be parsed.",
+      "seconds": null,
+      "grams": [],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/Zen-Assembly/plate-2/original/cli.log"
+    },
+    {
+      "file": "Zen-Assembly.3mf",
+      "plate": 2,
+      "variant": "saved",
+      "exit": 250,
+      "return_code": -6,
+      "error_string": "The input model file to the slicer can not be parsed.",
+      "seconds": null,
+      "grams": [],
+      "errors": [],
+      "log": "/tmp/project-w4-ayialh68/slices/Zen-Assembly/plate-2/saved/cli.log"
+    },
+    {
+      "file": "mini-pc-trigkey+g4+pc+case.3mf",
+      "plate": 1,
+      "variant": "original",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 13808.0537109375,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 98.60393524169922
+        }
+      ],
+      "errors": [
+        "ZFiller: both point in clip : 68, 69, 70, 69 ",
+        "ZFiller: both point in clip : 68, 69, 70, 69 ",
+        "ZFiller: both point in clip : 68, 69, 70, 69 ",
+        "ZFiller: both point in clip : 68, 69, 70, 69 ",
+        "ZFiller: both point in clip : 69, 70, 71, 70 ",
+        "ZFiller: both point in clip : 69, 70, 71, 70 ",
+        "ZFiller: both point in clip : 69, 70, 71, 70 ",
+        "ZFiller: both point in clip : 69, 70, 71, 70 ",
+        "ZFiller: both point in clip : 68, 69, 70, 69 ",
+        "ZFiller: both point in clip : 68, 69, 70, 69 "
+      ],
+      "log": "/tmp/project-w4-ayialh68/slices/mini-pc-trigkey+g4+pc+case/plate-1/original/cli.log"
+    },
+    {
+      "file": "mini-pc-trigkey+g4+pc+case.3mf",
+      "plate": 1,
+      "variant": "saved",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 13811.169921875,
+      "grams": [
+        {
+          "id": 1,
+          "total_used_g": 98.60446166992188
+        }
+      ],
+      "errors": [
+        "ZFiller: both point in clip : 68, 69, 70, 69 ",
+        "ZFiller: both point in clip : 68, 69, 70, 69 ",
+        "ZFiller: both point in clip : 68, 69, 70, 69 ",
+        "ZFiller: both point in clip : 68, 69, 70, 69 ",
+        "ZFiller: both point in clip : 69, 70, 71, 70 ",
+        "ZFiller: both point in clip : 69, 70, 71, 70 ",
+        "ZFiller: both point in clip : 69, 70, 71, 70 ",
+        "ZFiller: both point in clip : 69, 70, 71, 70 ",
+        "ZFiller: both point in clip : 68, 69, 70, 69 ",
+        "ZFiller: both point in clip : 68, 69, 70, 69 "
+      ],
+      "log": "/tmp/project-w4-ayialh68/slices/mini-pc-trigkey+g4+pc+case/plate-1/saved/cli.log"
+    },
+    {
+      "file": "mini-pc-trigkey+g4+pc+case.3mf",
+      "plate": 2,
+      "variant": "original",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 4322.9609375,
+      "grams": [
+        {
+          "id": 2,
+          "total_used_g": 39.82377243041992
+        }
+      ],
+      "errors": [
+        "ZFiller: both point in clip : 110, 111, 112, 111 ",
+        "ZFiller: both point in clip : 110, 111, 112, 111 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 84, 85, 86, 85 ",
+        "ZFiller: both point in clip : 84, 85, 86, 85 ",
+        "ZFiller: both point in clip : 83, 84, 85, 84 ",
+        "ZFiller: both point in clip : 83, 84, 85, 84 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 100, 101, 102, 101 ",
+        "ZFiller: both point in clip : 100, 101, 102, 101 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 "
+      ],
+      "log": "/tmp/project-w4-ayialh68/slices/mini-pc-trigkey+g4+pc+case/plate-2/original/cli.log"
+    },
+    {
+      "file": "mini-pc-trigkey+g4+pc+case.3mf",
+      "plate": 2,
+      "variant": "saved",
+      "exit": 0,
+      "return_code": 0,
+      "error_string": "Success.",
+      "seconds": 4318.220703125,
+      "grams": [
+        {
+          "id": 2,
+          "total_used_g": 39.822330474853516
+        }
+      ],
+      "errors": [
+        "ZFiller: both point in clip : 110, 111, 112, 111 ",
+        "ZFiller: both point in clip : 110, 111, 112, 111 ",
+        "ZFiller: both point in clip : 100, 101, 102, 101 ",
+        "ZFiller: both point in clip : 100, 101, 102, 101 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 101, 102, 103, 102 ",
+        "ZFiller: both point in clip : 101, 102, 103, 102 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 83, 84, 85, 84 ",
+        "ZFiller: both point in clip : 83, 84, 85, 84 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 ",
+        "ZFiller: both point in clip : 73, 74, 75, 74 "
+      ],
+      "log": "/tmp/project-w4-ayialh68/slices/mini-pc-trigkey+g4+pc+case/plate-2/saved/cli.log"
+    }
+  ],
+  "rewrites": [
+    {
+      "file": "TypeC4PinHolder_v3.3mf",
+      "exit": 0,
+      "output": "{\"objects\":1,\"volumes\":1,\"instances\":1,\"plates\":1,\"off_plate\":0,\"triangles\":168,\"structure\":\"match\"}\n"
+    },
+    {
+      "file": "pin+stand.3mf",
+      "exit": 0,
+      "output": "{\"objects\":1,\"volumes\":1,\"instances\":1,\"plates\":1,\"off_plate\":0,\"triangles\":600,\"structure\":\"match\"}\n"
+    },
+    {
+      "file": "120mm+Fan+Mesh+Bambu+Slicer+v4.3mf",
+      "exit": 0,
+      "output": "{\"objects\":2,\"volumes\":2,\"instances\":2,\"plates\":1,\"off_plate\":0,\"triangles\":2060,\"structure\":\"match\"}\n"
+    },
+    {
+      "file": "laptop+stand.3mf",
+      "exit": 0,
+      "output": "{\"objects\":8,\"volumes\":8,\"instances\":8,\"plates\":5,\"off_plate\":0,\"triangles\":79456,\"structure\":\"match\"}\n"
+    },
+    {
+      "file": "Zen-Assembly.3mf",
+      "exit": 0,
+      "output": "{\"objects\":17,\"volumes\":19,\"instances\":17,\"plates\":4,\"off_plate\":15,\"triangles\":24280,\"structure\":\"match\"}\n"
+    }
+  ],
+  "rewrite_slices": [
+    {
+      "file": "TypeC4PinHolder_v3.3mf",
+      "plate": 1,
+      "exit": 0,
+      "error_string": "Success.",
+      "seconds": 496.2294921875,
+      "grams": [
+        {
+          "filament_id": "GFG02",
+          "id": 1,
+          "main_used_g": 1.4613834619522095,
+          "total_used_g": 1.4613834619522095
+        }
+      ],
+      "errors": [],
+      "objects": [
+        {
+          "bbox": {
+            "depth": 11.0,
+            "height": 15.716455459594727,
+            "width": 23.39999771118164,
+            "x": 116.30000305175781,
+            "y": 122.5,
+            "z": 2.0263701827616387e-10
+          },
+          "id": 5,
+          "name": "TypeC4PinHolder_v3.stl",
+          "triangle_count": 168
+        }
+      ]
+    },
+    {
+      "file": "pin+stand.3mf",
+      "plate": 1,
+      "exit": 0,
+      "error_string": "Success.",
+      "seconds": 378.4531555175781,
+      "grams": [
+        {
+          "filament_id": "GFA00",
+          "id": 1,
+          "main_used_g": 1.4634603261947632,
+          "total_used_g": 1.4634603261947632
+        }
+      ],
+      "errors": [],
+      "objects": [
+        {
+          "bbox": {
+            "depth": 22.570362091064453,
+            "height": 19.917741775512695,
+            "width": 15.000020980834961,
+            "x": 122.35717010498047,
+            "y": 72.57534790039062,
+            "z": -5.82234525680542
+          },
+          "id": 5,
+          "name": "Body1",
+          "triangle_count": 600
+        }
+      ]
+    },
+    {
+      "file": "120mm+Fan+Mesh+Bambu+Slicer+v4.3mf",
+      "plate": 1,
+      "exit": 0,
+      "error_string": "Success.",
+      "seconds": 1027.512939453125,
+      "grams": [
+        {
+          "filament_id": "GFL99",
+          "id": 1,
+          "main_used_g": 5.829694747924805,
+          "total_used_g": 5.829694747924805
+        }
+      ],
+      "errors": [],
+      "objects": [
+        {
+          "bbox": {
+            "depth": 119.0,
+            "height": 2.0,
+            "width": 119.0,
+            "x": 68.5,
+            "y": 68.5,
+            "z": -1.3322676295501878e-14
+          },
+          "id": 5,
+          "name": "Body1",
+          "triangle_count": 1904
+        },
+        {
+          "bbox": {
+            "depth": 111.30000305175781,
+            "height": 0.3999999761581421,
+            "width": 111.30000305175781,
+            "x": 72.3499984741211,
+            "y": 72.3499984741211,
+            "z": -7.908337873452354e-11
+          },
+          "id": 9,
+          "name": "Body2",
+          "triangle_count": 156
+        }
+      ]
+    },
+    {
+      "file": "laptop+stand.3mf",
+      "plate": 1,
+      "exit": 0,
+      "error_string": "Success.",
+      "seconds": 24558.61328125,
+      "grams": [
+        {
+          "filament_id": "GFA00",
+          "id": 1,
+          "main_used_g": 259.0476379394531,
+          "total_used_g": 259.0476379394531
+        }
+      ],
+      "errors": [],
+      "objects": [
+        {
+          "bbox": {
+            "depth": 155.0,
+            "height": 80.0,
+            "width": 110.0,
+            "x": 73.0,
+            "y": 50.5,
+            "z": -6.394884621840902e-14
+          },
+          "id": 5,
+          "name": "nosa\u010d za laptop.stl",
+          "triangle_count": 13154
+        }
+      ]
+    },
+    {
+      "file": "laptop+stand.3mf",
+      "plate": 2,
+      "exit": 0,
+      "error_string": "Success.",
+      "seconds": 6989.8603515625,
+      "grams": [
+        {
+          "filament_id": "GFA00",
+          "id": 1,
+          "main_used_g": 67.94593048095703,
+          "total_used_g": 67.94593048095703
+        }
+      ],
+      "errors": [],
+      "objects": [
+        {
+          "bbox": {
+            "depth": 70.0,
+            "height": 70.0,
+            "width": 80.82902526855469,
+            "x": 394.7854919433594,
+            "y": 93.0,
+            "z": -7.105427357601002e-15
+          },
+          "id": 21,
+          "name": "Postolje za laptop \u0161araf.stl",
+          "triangle_count": 12972
+        }
+      ]
+    },
+    {
+      "file": "Zen-Assembly.3mf",
+      "plate": 1,
+      "exit": 0,
+      "error_string": "Success.",
+      "seconds": 8334.2998046875,
+      "grams": [
+        {
+          "filament_id": "GFL99",
+          "id": 1,
+          "main_used_g": 65.87759399414062,
+          "total_used_g": 65.87759399414062
+        }
+      ],
+      "errors": [],
+      "objects": [
+        {
+          "bbox": {
+            "depth": 144.1179962158203,
+            "height": 80.0,
+            "width": 59.25345993041992,
+            "x": 123.09955596923828,
+            "y": 56.061058044433594,
+            "z": -9.47244558346938e-08
+          },
+          "id": 69,
+          "name": "Assembly",
+          "triangle_count": 3288
+        }
+      ]
+    },
+    {
+      "file": "edited-TypeC4PinHolder_v3.3mf",
+      "plate": 1,
+      "exit": 0,
+      "error_string": "Success.",
+      "seconds": 496.2294921875,
+      "grams": [
+        {
+          "filament_id": "GFG02",
+          "id": 1,
+          "main_used_g": 1.4613834619522095,
+          "total_used_g": 1.4613834619522095
+        }
+      ],
+      "errors": [],
+      "objects": [
+        {
+          "bbox": {
+            "depth": 11.0,
+            "height": 15.716455459594727,
+            "width": 325.1797180175781,
+            "x": 116.30000305175781,
+            "y": 122.5,
+            "z": 1.0131850913808194e-10
+          },
+          "id": 5,
+          "name": "Edited object",
+          "triangle_count": 168
+        }
+      ]
+    },
+    {
+      "file": "edited-TypeC4PinHolder_v3.3mf",
+      "plate": 2,
+      "exit": 0,
+      "error_string": "Success.",
+      "seconds": 78.05166625976562,
+      "grams": [
+        {
+          "filament_id": "GFG02",
+          "id": 1,
+          "main_used_g": 0.46465417742729187,
+          "total_used_g": 0.46465417742729187
+        }
+      ],
+      "errors": [
+        "error_code 65542, description: OSMesa: Library not found",
+        "Failed to create GLFW window"
+      ],
+      "objects": [
+        {
+          "bbox": {
+            "depth": 11.0,
+            "height": 15.716455459594727,
+            "width": 325.1797180175781,
+            "x": 116.30000305175781,
+            "y": 122.5,
+            "z": 1.0131850913808194e-10
+          },
+          "id": 5,
+          "name": "Edited object",
+          "triangle_count": 168
+        }
+      ]
+    }
+  ],
+  "repeat_original": [
+    {
+      "file": "laptop+stand.3mf",
+      "plate": 2,
+      "seconds": 6978.63525390625,
+      "grams": 67.94599914550781
+    },
+    {
+      "file": "laptop+stand.3mf",
+      "plate": 2,
+      "seconds": 6988.125,
+      "grams": 67.94589233398438
+    }
+  ]
+}

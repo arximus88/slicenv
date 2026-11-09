@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream: опис застосунку для GNOME Software, KDE Discover, Flathub.
+     Як перевіряти — packaging/README.md; скриншоти — packaging/screenshots/ за тегом релізу. -->
+<component type="desktop-application">
+  <id>app.borys.slicenv</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+
+  <name>Slicenv</name>
+  <summary>Prepare, slice and preview 3D prints</summary>
+  <summary xml:lang="uk">Підготовка, нарізка й перегляд 3D-друку</summary>
+
+  <developer id="app.borys">
+    <name>Borys Kharchenko</name>
+    <name xml:lang="uk">Борис Харченко</name>
+  </developer>
+
+  <description>
+    <p>
+      Slicenv is a fast native front-end for 3D printing. You arrange models on build plates,
+      slice them with OrcaSlicer or Bambu Studio and inspect the resulting G-code layer by
+      layer. The slicing itself is done by the command-line engine of one of these
+      programs: use one that is already installed, or let Slicenv download an official
+      build for you.
+    </p>
+    <p xml:lang="uk">
+      Slicenv — швидкий нативний застосунок для 3D-друку. У ньому розставляють моделі на
+      пластинах, нарізають їх рушієм OrcaSlicer або Bambu Studio й переглядають G-code шар за
+      шаром. Нарізає сам рушій однієї з цих програм: уже встановлений або офіційна збірка,
+      яку Slicenv завантажить сам.
+    </p>
+    <ul>
+      <li>Plates, objects, parts, modifiers and negative volumes; move, rotate, scale, cut, auto-orient and arrange</li>
+      <li xml:lang="uk">Пластини, об’єкти, частини, модифікатори й негативні об’єми; переміщення, поворот, масштаб, переріз, автоорієнтація й розкладання</li>
+      <li>Built-in engine manager keeps several OrcaSlicer and Bambu Studio versions side by side</li>
+      <li xml:lang="uk">Вбудований менеджер рушіїв тримає поруч кілька версій OrcaSlicer і Bambu Studio</li>
+      <li>Printer, process and filament profiles from the engine, with an editor for your own presets</li>
+      <li xml:lang="uk">Профілі принтера, процесу й філаменту з рушія та редактор власних пресетів</li>
+      <li>G-code preview: layers, toolpaths, color schemes, print time and filament usage, and a realistic photo view of the printed part</li>
+      <li xml:lang="uk">Перегляд G-code: шари, траєкторії, схеми кольорів, час друку й витрата філаменту, а також реалістичне «фото» надрукованої деталі</li>
+      <li>Bambu Lab printers on the local network: status, camera and sending print jobs; printing over the internet through Bambu Connect</li>
+      <li xml:lang="uk">Принтери Bambu Lab у локальній мережі: статус, камера й надсилання друку; друк через інтернет — через Bambu Connect</li>
+      <li>Model library with thumbnails of STL, 3MF, OBJ and G-code files</li>
+      <li xml:lang="uk">Бібліотека моделей з мініатюрами файлів STL, 3MF, OBJ і G-code</li>
+      <li>MCP server that lets AI agents open, edit and slice projects</li>
+      <li xml:lang="uk">MCP-сервер, через який AI-агенти відкривають, змінюють і нарізають проєкти</li>
+    </ul>
+    <p>
+      Slicing needs an OrcaSlicer or Bambu Studio engine. If none is found, the first-run
+      wizard installs one from the official GitHub releases. Bambu Cloud shows printer status
+      and camera after you sign in, but cannot start prints: the Bambu Lab plugin accepts
+      cloud jobs only from software signed by Bambu Lab. Use the local network or Bambu
+      Connect to print. The Bambu Cloud plugin is proprietary and is downloaded only with
+      your consent.
+    </p>
+    <p xml:lang="uk">
+      Для нарізки потрібен рушій OrcaSlicer або Bambu Studio. Якщо його не знайдено, майстер
+      першого запуску встановить рушій з офіційних релізів на GitHub. Bambu Cloud після входу
+      показує статус принтера й камеру, але не запускає друк: плагін Bambu Lab приймає хмарні
+      завдання лише від програм, підписаних Bambu Lab. Друкуйте через локальну мережу або
+      Bambu Connect. Плагін Bambu Cloud закритий і завантажується лише за вашою згодою.
+    </p>
+    <p>
+      Slicenv is an independent project and is not affiliated with or endorsed by Bambu Lab
+      or the OrcaSlicer team. Product names are used only to identify compatible software.
+    </p>
+    <p xml:lang="uk">
+      Slicenv — незалежний проєкт, не пов’язаний з Bambu Lab чи командою OrcaSlicer і не
+      схвалений ними. Назви продуктів лише позначають сумісні програми.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">app.borys.slicenv.desktop</launchable>
+  <icon type="stock">app.borys.slicenv</icon>
+
+  <url type="homepage">https://github.com/arximus88/slicenv</url>
+  <url type="bugtracker">https://github.com/arximus88/slicenv/issues</url>
+  <url type="vcs-browser">https://github.com/arximus88/slicenv</url>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#a9c9ee</color>
+    <color type="primary" scheme_preference="dark">#1f3a5c</color>
+  </branding>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/01-home.png</image>
+      <caption>Home: model library with thumbnails and recent projects</caption>
+      <caption xml:lang="uk">Головна: бібліотека моделей з мініатюрами й недавні проєкти</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/02-prepare.png</image>
+      <caption>Prepare: objects on build plates with print settings</caption>
+      <caption xml:lang="uk">Підготовка: об’єкти на пластинах і налаштування друку</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/03-preview-layers.png</image>
+      <caption>Preview: sliced layers, toolpaths and print statistics</caption>
+      <caption xml:lang="uk">Перегляд: шари, траєкторії й статистика друку</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/04-preview-photo.png</image>
+      <caption>Photo view: the printed part rendered in the chosen filament</caption>
+      <caption xml:lang="uk">Фото: надрукована деталь у вибраному філаменті</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/05-profile-editor.png</image>
+      <caption>Profile editor for process, filament and printer presets</caption>
+      <caption xml:lang="uk">Редактор профілів процесу, філаменту й принтера</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/06-engines.png</image>
+      <caption>Slicing engine menu: installed OrcaSlicer and Bambu Studio versions</caption>
+      <caption xml:lang="uk">Меню рушія нарізки: встановлені версії OrcaSlicer і Bambu Studio</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/07-device.png</image>
+      <caption>Device: printer status, temperatures and AMS on the local network</caption>
+      <caption xml:lang="uk">Пристрій: статус принтера, температури й AMS у локальній мережі</caption>
+    </screenshot>
+  </screenshots>
+
+  <categories>
+    <category>Graphics</category>
+    <category>3DGraphics</category>
+    <category>Engineering</category>
+  </categories>
+  <keywords>
+    <keyword translate="no">slicer</keyword>
+    <keyword>3D printing</keyword>
+    <keyword translate="no">G-code</keyword>
+    <keyword translate="no">STL</keyword>
+    <keyword translate="no">3MF</keyword>
+    <keyword translate="no">Bambu Lab</keyword>
+    <keyword translate="no">OrcaSlicer</keyword>
+    <keyword translate="no">Bambu Studio</keyword>
+    <keyword xml:lang="uk">слайсер</keyword>
+    <keyword xml:lang="uk">3D-друк</keyword>
+  </keywords>
+
+  <provides>
+    <binary>slicenv</binary>
+    <binary>slicenv-mcp</binary>
+    <mediatype>model/stl</mediatype>
+    <mediatype>model/3mf</mediatype>
+  </provides>
+
+  <requires>
+    <display_length compare="ge">960</display_length>
+    <internet>first-run</internet>
+  </requires>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.1.0" date="2026-11-09" type="stable">
+      <url type="details">https://github.com/arximus88/slicenv/releases/tag/v0.1.0</url>
+      <description>
+        <p>First public release.</p>
+        <p xml:lang="uk">Перший публічний випуск.</p>
+      </description>
+    </release>
+  </releases>
+</component>

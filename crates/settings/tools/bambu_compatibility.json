@@ -1,0 +1,70 @@
+{
+  "adaptive_layer_height": {
+    "type": "bool",
+    "label": "Adaptive layer height",
+    "source_note": "PrintConfig.cpp: commented coBool definition and obsolete-key list; retained installed preset value."
+  },
+  "layer_time_smoothing": {
+    "type": "bool",
+    "label": "Layer time smoothing",
+    "source_note": "resources/profiles/BBL/process/fdm_process_common.json; absent from active PrintConfigDef."
+  },
+  "layer_time_smoothing_threshold": {
+    "type": "float",
+    "label": "Layer time smoothing threshold",
+    "sidetext": "s",
+    "source_note": "resources/profiles/BBL/process/fdm_process_common.json; GCode/Smoothing.hpp double threshold."
+  },
+  "only_one_wall_top": {
+    "type": "bool",
+    "label": "Only one wall on top surfaces",
+    "source_note": "PrintConfig.cpp obsolete-key list; installed preset boolean, superseded by top_one_wall_type."
+  },
+  "reduce_infill_retraction": {
+    "type": "bool",
+    "label": "Reduce infill retraction",
+    "source_note": "PrintConfig.cpp: legacy bool comment before reduce_infill_retraction_mode and obsolete-key list."
+  },
+  "wall_infill_order": {
+    "type": "enum",
+    "label": "Wall and infill order",
+    "enum_values": [
+      "inner wall/outer wall/infill",
+      "outer wall/inner wall/infill",
+      "infill/inner wall/outer wall",
+      "infill/outer wall/inner wall",
+      "inner-outer-inner wall/infill"
+    ],
+    "source_note": "PrintConfig.cpp handle_legacy and Config.cpp: migrates into wall_sequence + is_infill_first; preserved without migration."
+  },
+  "extruder_height_gap": {
+    "type": "float",
+    "label": "Extruder height gap",
+    "sidetext": "mm",
+    "source_note": "resources/profiles/BBL/machine/fdm_machine_common.json; installed preset scalar; no active definition."
+  },
+  "extruder_clearance_radius": {
+    "type": "float",
+    "label": "Extruder clearance radius",
+    "sidetext": "mm",
+    "source_note": "resources/profiles/BBL/machine/fdm_bbl_3dp_001_common.json and Print.cpp collision calculations; no active definition."
+  },
+  "nozzle_type": {
+    "type": "strings",
+    "label": "Nozzle type",
+    "source_note": "PrintConfig.cpp obsolete-key list; installed preset string vector."
+  },
+  "filament_long_retractions_when_ec": {
+    "type": "bools",
+    "label": "Long retraction when extruder changes",
+    "nullable": true,
+    "source_note": "resources/profiles/BBL/filament/fdm_filament_common.json; installed nullable bool vector, active equivalent long_retractions_when_ec."
+  },
+  "filament_retraction_distances_when_ec": {
+    "type": "floats",
+    "label": "Retraction distance when extruder changes",
+    "nullable": true,
+    "sidetext": "mm",
+    "source_note": "Installed A1 filament preset nullable float vector; active equivalent retraction_distances_when_ec in PrintConfig.cpp."
+  }
+}

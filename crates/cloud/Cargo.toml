@@ -1,0 +1,21 @@
+[package]
+name = "cloud"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+paths.workspace = true
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tempfile.workspace = true
+libc.workspace = true
+zip.workspace = true
+
+[build-dependencies]
+cc.workspace = true
+
+# Фейкові плагіни в tests/ збираються тим самим MSVC, що й шим (tests/native).
+[target.'cfg(windows)'.dev-dependencies]
+cc.workspace = true

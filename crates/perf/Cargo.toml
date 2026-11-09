@@ -1,0 +1,19 @@
+[package]
+name = "perf"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish = false
+
+# Бюджети продуктивності без вікна: `cargo run --release -p perf` (див. docs/TESTING.md).
+[[bin]]
+name = "perf"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+gcode.workspace = true
+glam.workspace = true
+project.workspace = true
+serde_json.workspace = true
+viewer.workspace = true

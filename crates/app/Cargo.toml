@@ -1,0 +1,54 @@
+[package]
+name = "app"
+default-run = "slicenv"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "slicenv"
+path = "src/main.rs"
+
+[dependencies]
+paths.workspace = true
+serde.workspace = true
+tempfile.workspace = true
+anyhow.workspace = true
+gpui.workspace = true
+gpui-component.workspace = true
+gpui-kit-assets.workspace = true
+gpui_platform.workspace = true
+image = { workspace = true, features = ["jpeg"] }
+viewer.workspace = true
+slicer.workspace = true
+serde_json.workspace = true
+settings.workspace = true
+gcode.workspace = true
+cloud.workspace = true
+lan.workspace = true
+project.workspace = true
+glam.workspace = true
+futures.workspace = true
+zip.workspace = true
+geometry = { path = "../geometry" }
+
+mcp = { path = "../mcp" }
+async-channel = "2"
+# Стеження за теками бібліотеки (уже в дереві залежностей через gpui).
+notify = "8.2"
+
+sha2 = "0.10"
+# Системний діалог відкриття з фільтром типів (у gpui PathPromptOptions фільтрів немає).
+# Windows — IFileOpenDialog, macOS — NSOpenPanel, Linux — xdg-desktop-portal через
+# libdbus (dlopen), без GTK і без другої копії ashpd.
+rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal", "wayland"] }
+sha1 = "0.10"
+
+# Портал оформлення (color-scheme, accent-color). ashpd уже тягне gpui-component з тими ж
+# фічами, тож це не додає нових крейтів.
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd = { version = "0.13", default-features = false, features = ["settings", "async-io"] }
+
+# Іконка й VERSIONINFO для exe (build.rs); лише на Windows-хості.
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1.34"

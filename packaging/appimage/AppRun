@@ -1,0 +1,19 @@
+#!/bin/sh
+# AppRun Slicenv. Зберігає початкове оточення в SLICENV_ORIG_* — paths::host::command
+# відновлює його для дочірніх процесів (рушії, python3, curl), щоб вони не бачили бандл.
+# Порожнє збережене значення означає «змінної не було».
+set -e
+HERE=$(dirname "$(readlink -f "$0")")
+for var in LD_LIBRARY_PATH LD_PRELOAD PATH XDG_DATA_DIRS PYTHONHOME PYTHONPATH \
+  GSETTINGS_SCHEMA_DIR GDK_PIXBUF_MODULE_FILE GIO_MODULE_DIR GTK_PATH QT_PLUGIN_PATH; do
+  eval "export SLICENV_ORIG_$var=\"\${$var-}\""
+done
+# Бібліотеки бандла знаходяться через RUNPATH ($ORIGIN/../lib), тож LD_LIBRARY_PATH не
+# чіпаємо: Vulkan-loader, Mesa й libwayland мають бути хостові.
+export PATH="$HERE/usr/bin:${PATH:-/usr/local/bin:/usr/bin:/bin}"
+export XDG_DATA_DIRS="$HERE/usr/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+case "${1-}" in
+  # `Slicenv.AppImage mcp [--allow-edit]` — MCP-сервер stdio з того самого образу.
+  mcp) shift; exec "$HERE/usr/bin/slicenv-mcp" "$@" ;;
+esac
+exec "$HERE/usr/bin/slicenv" "$@"

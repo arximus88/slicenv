@@ -1,0 +1,17 @@
+Package: slicenv
+Version: @VERSION@
+Architecture: @ARCH@
+Maintainer: Slicenv maintainers <packaging@example.invalid>
+Installed-Size: @SIZE@
+Depends: @DEPENDS@
+Recommends: squashfs-tools
+Section: graphics
+Priority: optional
+Description: 3D printing slicer front-end (OrcaSlicer / Bambu Studio engines)
+ Slicenv arranges and orients models on build plates, edits print, filament
+ and printer profiles and drives OrcaSlicer or Bambu Studio command-line
+ engines to produce G-code, with a fast GPU preview. Includes slicenv-mcp,
+ an MCP server for AI agents.
+ .
+ Slicing engines and the proprietary Bambu network plugin are not included;
+ they are downloaded on demand, the plugin only with the user's consent.

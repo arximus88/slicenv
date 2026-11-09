@@ -1,0 +1,192 @@
+# Пресети матеріалів режиму Preview «Фото» (docs/PHOTO-MODE.md).
+#
+# Вибір пресету для слота філаменту (`viewer::photo::MaterialTable::select`):
+#   1. перший пресет згори, чиє ключове слово (`keywords`) є словом назви профілю
+#      (`filament_settings_id`) або типу (`filament_type`): «Bambu PLA Silk+» → silk,
+#      «PETG Translucent» → translucent, тип «PA6-CF» → cf;
+#   2. інакше перший пресет, у чиєму `types` є тип філаменту (без урахування регістру;
+#      «PA6-CF» порівнюється і як «PA6-CF», і як «PA6»);
+#   3. інакше `default`.
+# Тож порядок важливий: спеціальні пресети (за ключовими словами) — вище за загальні.
+#
+# Слово збігається з ключовим, якщо дорівнює йому або (для ключових слів від 4 літер)
+# починається з нього: «sparkles» → sparkle, «metallic» → metal.
+#
+# Параметри — спрощений principled BSDF, усі 0…1, якщо не сказано інше:
+#   roughness            мікрошорсткість (0 — дзеркало)
+#   metallic             метал (колір відблиску = колір філаменту)
+#   specular             сила відблиску діелектрика (0.5 = F0 0.04, як у пластику)
+#   clearcoat            лаковий шар поверх (PETG, прозорі)
+#   clearcoat_roughness  шорсткість лаку
+#   sheen                м’який «оксамитовий» відблиск на краях (матові, TPU)
+#   anisotropy           анізотропний блиск уздовж валика (Silk)
+#   translucency         світло, що проходить крізь тонку стінку (обгортка дифузу,
+#                        підсвічування ззаду); справжня товщина — етап 2
+#   emission             власне світіння кольором філаменту (Glow)
+#   pattern              none | marble | sparkle | carbon | wood — процедурний шум у шейдері
+#   pattern_scale        масштаб візерунка (1 — типовий розмір)
+#   pattern_strength     сила візерунка
+#   pattern_color        другий колір візерунка, "#RRGGBB" (прожилки, блискітки);
+#                        не задано — похідний від кольору філаменту
+#   tint                 змішати колір філаменту з цим кольором ("#RRGGBB") …
+#   tint_amount          … у такій частці (дерево, Glow)
+
+default = "basic"
+
+[[preset]]
+id = "silk"
+label = "Шовк (Silk)"
+keywords = ["silk", "satin"]
+# Широкі смуги блиску поперек ліній (анізотропія), поверхня — майже суцільна.
+roughness = 0.22
+metallic = 0.35
+specular = 0.9
+clearcoat = 0.3
+clearcoat_roughness = 0.12
+anisotropy = 0.8
+
+[[preset]]
+id = "translucent"
+label = "Напівпрозорий"
+keywords = ["translucent", "transparent", "clear", "crystal"]
+roughness = 0.08
+specular = 0.6
+clearcoat = 0.8
+clearcoat_roughness = 0.04
+translucency = 0.75
+
+[[preset]]
+id = "marble"
+label = "Мармур (Marble)"
+keywords = ["marble", "stone", "granite"]
+# Густі дрібні круглі вкраплення й м’які прожилки (Bambu PLA Marble), матова поверхня.
+roughness = 0.72
+specular = 0.4
+pattern = "marble"
+pattern_scale = 1.0
+pattern_strength = 1.0
+pattern_color = "#2E2B29"
+
+[[preset]]
+id = "sparkle"
+label = "Блискітки (Sparkle, Galaxy)"
+keywords = ["sparkle", "galaxy", "glitter", "starlight"]
+roughness = 0.45
+specular = 0.55
+clearcoat = 0.2
+clearcoat_roughness = 0.2
+pattern = "sparkle"
+pattern_scale = 1.0
+pattern_strength = 1.0
+
+[[preset]]
+id = "glow"
+label = "Світлонакопичувальний (Glow)"
+keywords = ["glow", "luminous", "phosphorescent"]
+roughness = 0.5
+specular = 0.45
+translucency = 0.35
+emission = 0.12
+tint = "#F2F5E6"
+tint_amount = 0.35
+
+[[preset]]
+id = "wood"
+label = "Дерево (Wood)"
+keywords = ["wood", "bamboo", "cork"]
+roughness = 0.82
+specular = 0.3
+sheen = 0.15
+pattern = "wood"
+pattern_scale = 1.0
+pattern_strength = 0.35
+tint = "#8A6A48"
+tint_amount = 0.15
+
+[[preset]]
+id = "metal"
+label = "Металізований (Metal)"
+keywords = ["metal", "bronze", "copper", "steel", "iron", "aluminium", "aluminum"]
+roughness = 0.42
+metallic = 0.75
+specular = 0.7
+pattern = "sparkle"
+pattern_scale = 2.0
+pattern_strength = 0.35
+
+[[preset]]
+id = "cf"
+label = "Вуглеволокно (CF)"
+keywords = ["cf", "gf", "carbon", "fiber", "fibre"]
+# Дуже матовий, з дрібним темним зерном волокон; лінії шарів ледь видно.
+roughness = 0.9
+specular = 0.22
+sheen = 0.12
+pattern = "carbon"
+pattern_scale = 1.0
+pattern_strength = 0.7
+
+[[preset]]
+id = "matte"
+label = "Матовий (Matte)"
+keywords = ["matte", "matt", "velvet"]
+# Мінеральний наповнювач розсіює світло: дифузний, без відблиску. Френель той самий, що в
+# будь-якого пластику, тож відбите світло розмите на всі боки — легкий білуватий «наліт»,
+# колір виглядає світлішим і м’якшим, ніж у глянцевого.
+roughness = 0.97
+specular = 0.5
+sheen = 0.2
+
+[[preset]]
+id = "basic"
+label = "Базовий PLA"
+keywords = ["basic"]
+types = ["PLA", "PLA+", "PHA"]
+# Легкий глянець: розмитий відблиск софтбоксів на ребрах шарів.
+roughness = 0.3
+specular = 0.5
+clearcoat = 0.15
+clearcoat_roughness = 0.2
+translucency = 0.08
+
+[[preset]]
+id = "petg"
+label = "PETG"
+keywords = ["petg", "pctg"]
+types = ["PETG", "PCTG", "PET"]
+# Глянець: чіткі відблиски на кожному ребрі шару.
+roughness = 0.1
+specular = 0.6
+clearcoat = 0.8
+clearcoat_roughness = 0.04
+translucency = 0.2
+
+[[preset]]
+id = "tpu"
+label = "TPU"
+keywords = ["tpu", "tpe", "flex"]
+types = ["TPU", "TPE", "TPU-AMS"]
+roughness = 0.58
+specular = 0.45
+sheen = 0.2
+translucency = 0.15
+
+[[preset]]
+id = "abs"
+label = "ABS / ASA"
+keywords = ["abs", "asa"]
+types = ["ABS", "ASA", "HIPS", "PC", "PC-ABS"]
+roughness = 0.46
+specular = 0.5
+clearcoat = 0.05
+clearcoat_roughness = 0.3
+
+[[preset]]
+id = "pa"
+label = "Нейлон (PA)"
+keywords = ["nylon"]
+types = ["PA", "PA6", "PA12", "PAHT", "PPA", "PPS"]
+roughness = 0.62
+specular = 0.4
+sheen = 0.15
+translucency = 0.1

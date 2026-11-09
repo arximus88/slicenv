@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Slicenv
+GenericName=3D Printing Slicer
+GenericName[uk]=Слайсер для 3D-друку
+Comment=Prepare, slice and preview 3D prints
+Comment[uk]=Підготовка, нарізка й перегляд 3D-друку
+Exec=@EXEC@ %f
+Icon=app.borys.slicenv
+Terminal=false
+Categories=Graphics;3DGraphics;Engineering;
+MimeType=model/stl;model/3mf;application/vnd.ms-3mfdocument;text/x.gcode;
+StartupWMClass=app.borys.slicenv
+StartupNotify=true

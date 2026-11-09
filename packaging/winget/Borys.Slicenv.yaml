@@ -1,0 +1,22 @@
+# ШАБЛОН winget-маніфесту (singleton 1.6). НЕ ПУБЛІКУЄТЬСЯ: подати в microsoft/winget-pkgs
+# вручну після першого підписаного релізу (packaging/README.md, «Windows: winget і scoop»).
+# Підставити @VERSION@ і @SHA256@ (з dist/*-setup.exe.sha256); URL — артефакт GitHub Release.
+# Перевірка локально на Windows: winget validate --manifest packaging\winget
+PackageIdentifier: Borys.Slicenv
+PackageVersion: "@VERSION@"
+PackageLocale: uk-UA
+Publisher: Borys Kharchenko
+PackageName: Slicenv
+License: AGPL-3.0-or-later
+LicenseUrl: https://github.com/arximus88/slicenv/blob/main/LICENSE
+PackageUrl: https://github.com/arximus88/slicenv
+ShortDescription: Слайсер для 3D-принтерів Bambu Lab на Rust/GPUI (рушії Bambu Studio та OrcaSlicer).
+Tags: [3d-printing, slicer, bambu-lab, gcode]
+Installers:
+  - Architecture: x64
+    InstallerType: inno
+    Scope: user
+    InstallerUrl: https://github.com/arximus88/slicenv/releases/download/v@VERSION@/slicenv-@VERSION@-x86_64-windows-setup.exe
+    InstallerSha256: "@SHA256@"
+ManifestType: singleton
+ManifestVersion: 1.6.0

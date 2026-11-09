@@ -1,0 +1,17 @@
+[package]
+name = "project"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+earcutr = "=0.5.0"
+glam.workspace = true
+quick-xml.workspace = true
+serde_json.workspace = true
+stl_io.workspace = true
+zip.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

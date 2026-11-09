@@ -1,0 +1,59 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+# `cargo run` / `cargo build` без -p — сам застосунок; тести всього: `cargo test --workspace`.
+default-members = ["crates/app"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "AGPL-3.0-or-later"
+
+[workspace.dependencies]
+paths = { path = "crates/paths" }
+anyhow = "1"
+bytemuck = { version = "1", features = ["derive"] }
+glam = "0.30"
+# Віджети (Select, Input, Tabs, Dialog, TitleBar…) під ту саму gpui-pre 0.3.10.
+gpui-component = "=0.8.1"
+gpui-kit-assets = "=0.8.1"
+# gpui-pre — знімок Zed GPUI з wgpu-рендерером на Linux; wgpu тримаємо тієї ж версії,
+# щоб не тягнути дві копії.
+gpui = { package = "gpui-pre", version = "=0.3.10" }
+# Без wayland/x11 GPUI мовчки стартує headless: процес живий, вікна немає.
+# font-kit — лише для macOS: без нього gpui_macos не рендерить текст ("compiled without the
+# `font-kit` feature, so no text will be rendered"). На Linux/Windows фіча нічого не вмикає.
+gpui_platform = { package = "gpui-pre-platform", version = "=0.3.10", features = ["wayland", "x11", "font-kit"] }
+image = { version = "0.25", default-features = false }
+pollster = "0.4"
+quick-xml = "0.42"
+serde_json = { version = "1", features = ["preserve_order"] }
+stl_io = "0.8"
+wgpu = "30.0.1"
+zip = { version = "9", default-features = false, features = ["deflate"] }
+viewer = { path = "crates/viewer" }
+slicer = { path = "crates/slicer" }
+settings = { path = "crates/settings" }
+gcode = { path = "crates/gcode" }
+cloud = { path = "crates/cloud" }
+lan = { path = "crates/lan" }
+project = { path = "crates/project" }
+serde = { version = "1", features = ["derive"] }
+cc = "1"
+tempfile = "3"
+libc = "0.2"
+futures = "0.3"
+
+[profile.dev.package."*"]
+opt-level = 2
+
+# Парсинг 3MF на сотні мегабайт XML у debug без оптимізацій іде хвилинами.
+[profile.dev.package.viewer]
+opt-level = 2
+
+# Швидкий парсинг G-code у debug профілі.
+[profile.dev.package.gcode]
+opt-level = 2
+
+[profile.dev.package.project]
+opt-level = 2

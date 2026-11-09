@@ -1,0 +1,79 @@
+{
+  "compatibility_sha256": null,
+  "source": "orca",
+  "source_commit": "d28c71c485cf51949c5ed4f6ee59998b7f17566c",
+  "sources": {
+    "src/libslic3r/PrintConfig.cpp": "c79704365cbcd17cf42720ee1763e6e223d140a558f7a8466687b2f74bd2e664",
+    "src/libslic3r/PrintConfig.hpp": "6ca0e041044b6eaeee8d76b480dfdcbcf2fa2de5248297a6b068b1c9d21ce836",
+    "src/libslic3r/PrintConfigConstants.hpp": "eaeb335f616e52049a9ce52697fb4aaebefa2129ced4718dfc4c9170d9a550ce",
+    "src/libslic3r/Config.hpp": "d329ba2352afc7ae0fd413112fa8371018053ef8df5624100d32f3c5d829c692",
+    "src/libslic3r/MaterialType.cpp": "35caa5914852565075b5522598c7dba976fe540c7953760ff70f6ab7278e9991",
+    "src/libslic3r/PublishSettings.cpp": "5b8a3f4254c6682fe2680110b5c4554a9a1c721d6e9ce2d92dceaee378917d55",
+    "src/libslic3r/Preset.cpp": "b04f8a897bf542f463a23b6b82fc57bbd0e0de800673beaef7ad9a62f6f44a2a",
+    "src/slic3r/GUI/ConfigManipulation.cpp": "75df46874de1ca8df3a788b3508a286d9fc14ffd8d79c787f1c7d2f9f159a25e",
+    "src/slic3r/GUI/Tab.cpp": "85e33140b36254833f47c3e53dcc8adfcff49a519f2686abc5ce6182061a8c48"
+  },
+  "option_count": 881,
+  "primary_option_count": 881,
+  "documentation_count": 604,
+  "compatibility_keys": [],
+  "layout_pages": {
+    "process": 6,
+    "filament": 7,
+    "machine": 6
+  },
+  "layout_option_count": 650,
+  "missing_layout_keys": [
+    "extruders_count",
+    "imex_pre_slice_warnings"
+  ],
+  "unparsed": [],
+  "layout_unparsed": [],
+  "scope_counts": {
+    "object": 132,
+    "region": 175,
+    "global": 574
+  },
+  "translations": {
+    "label": {
+      "total": 742,
+      "translated": 0,
+      "percent": 0.0
+    },
+    "tooltip": {
+      "total": 729,
+      "translated": 0,
+      "percent": 0.0
+    },
+    "enum_labels": {
+      "total": 373,
+      "translated": 0,
+      "percent": 0.0
+    },
+    "sidetext": {
+      "total": 379,
+      "translated": 0,
+      "percent": 0.0
+    },
+    "category": {
+      "total": 359,
+      "translated": 0,
+      "percent": 0.0
+    },
+    "full_label": {
+      "total": 60,
+      "translated": 0,
+      "percent": 0.0
+    },
+    "page_titles": {
+      "total": 19,
+      "translated": 0,
+      "percent": 0.0
+    },
+    "group_titles": {
+      "total": 106,
+      "translated": 0,
+      "percent": 0.0
+    }
+  }
+}

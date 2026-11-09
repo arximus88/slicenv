@@ -1,0 +1,14 @@
+[package]
+name = "slicer"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+
+[dependencies]
+paths.workspace = true
+anyhow.workspace = true
+serde_json.workspace = true
+zip.workspace = true
+tempfile.workspace = true
+quick-xml.workspace = true
+md-5 = "0.10"

@@ -1,0 +1,151 @@
+# macOS і Windows: збірка, тести headless-крейтів і НЕПІДПИСАНІ артефакти. Лише вручну
+# (workflow_dispatch). НІЧОГО НЕ ПУБЛІКУЄ — ні GitHub Release, ні winget/scoop, ні нотаризації;
+# тільки actions/upload-artifact. Підпис і публікація — packaging/README.md.
+# Що перевірено локально, а що лише тут — docs/PORTING.md.
+name: Пакети macOS і Windows
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: package-cross-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+  # Headless-крейти (без GPU), як у ci.yml → job headless.
+  TEST_CRATES: -p paths -p project -p settings -p slicer -p gcode -p geometry -p mcp -p cloud -p lan
+
+jobs:
+  macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15        # Apple Silicon (образ macos-14 GitHub уже не видає)
+            target: aarch64-apple-darwin
+          # Останній x86_64-образ GitHub: macos-13 знято з підтримки (грудень 2025).
+          - runner: macos-15-intel
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      # 1.99.1, не 1.97.1 як у ci.yml: gpui-pre-macos 0.3.10 викликає Option::map_or_default,
+      # нестабільний у 1.97 (перевірено cargo +1.97.1 check --target aarch64-apple-darwin).
+      - uses: dtolnay/rust-toolchain@1.99.1
+        with:
+          targets: ${{ matrix.target }}
+      - name: Інструменти (cmake для manifold, librsvg для іконки)
+        run: |
+          command -v cmake || brew install cmake
+          brew install librsvg
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos-${{ matrix.target }}
+      - name: cargo build --release
+        run: cargo build --locked --release --target ${{ matrix.target }} -p app -p mcp
+      - name: Smoke --version (тимчасовий HOME, GUI не відкривається)
+        run: |
+          # rustup/cargo шукають toolchain через HOME — фіксуємо їх до підміни.
+          export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}" CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+          export HOME=$(mktemp -d)
+          target/${{ matrix.target }}/release/slicenv --version
+          target/${{ matrix.target }}/release/slicenv-mcp --version
+      - name: Slicenv.app → zip, dmg
+        env:
+          SLICENV_SKIP_BUILD: 1
+          SLICENV_TARGET: ${{ matrix.target }}
+        run: tools/package-macos.sh
+      - name: Перевірка бандла
+        run: |
+          set -x
+          plutil -p dist/macos/Slicenv.app/Contents/Info.plist
+          file dist/macos/Slicenv.app/Contents/MacOS/*
+          ls -la dist/macos/Slicenv.app/Contents/Resources
+          HOME=$(mktemp -d) dist/macos/Slicenv.app/Contents/MacOS/slicenv --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slicenv-macos-${{ matrix.target }}
+          if-no-files-found: error
+          path: |
+            dist/*.zip
+            dist/*.dmg
+            dist/*.sha256
+      # Після upload: артефакт з’являється, навіть якщо тест на новій ОС впаде.
+      - name: Тести headless-крейтів (тимчасовий HOME)
+        # --lib --bins --tests: приклади cloud — Linux-only (libc::dup2, плагін).
+        run: |
+          # rustup/cargo шукають toolchain через HOME — фіксуємо їх до підміни.
+          export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}" CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
+          export HOME=$(mktemp -d)
+          cargo test --locked --no-fail-fast --target ${{ matrix.target }} --lib --bins --tests $TEST_CRATES
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.99.1
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows
+      - name: cargo build --release
+        run: cargo build --locked --release -p app -p mcp
+      - name: Smoke --version (тимчасові APPDATA/LOCALAPPDATA)
+        run: |
+          # rustup/cargo шукають toolchain через профіль — фіксуємо їх до підміни.
+          if (-not $env:RUSTUP_HOME) { $env:RUSTUP_HOME = Join-Path $env:USERPROFILE '.rustup' }
+          if (-not $env:CARGO_HOME) { $env:CARGO_HOME = Join-Path $env:USERPROFILE '.cargo' }
+          $crates = $env:TEST_CRATES.Split(' ')
+          # Збірка — зі справжнім профілем: cmake/MSVC (manifold) не конфігурується
+          # з підміненими USERPROFILE/LOCALAPPDATA. Підміна — лише на запуск тестів.
+          cargo test --locked --lib --bins --tests --no-run $crates
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $t = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'home-smoke')
+          $env:USERPROFILE = $t; $env:APPDATA = "$t\Roaming"; $env:LOCALAPPDATA = "$t\Local"
+          # Релізний slicenv.exe — підсистема windows: вивід видно лише через перенаправлення.
+          $v = & target\release\slicenv.exe --version | Out-String
+          if (-not ($v -match 'slicenv')) { throw "slicenv --version: '$v'" }
+          Write-Host $v
+          target\release\slicenv-mcp.exe --version
+      - name: Портативний zip і Inno Setup
+        env:
+          SLICENV_SKIP_BUILD: 1
+        run: ./tools/package-windows.ps1
+      - name: Вміст zip
+        run: |
+          Get-ChildItem dist
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          Get-ChildItem dist\*.zip | ForEach-Object {
+            [IO.Compression.ZipFile]::OpenRead($_.FullName).Entries | Select-Object FullName, Length
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: slicenv-windows-x86_64
+          if-no-files-found: error
+          path: |
+            dist/*.zip
+            dist/*-setup.exe
+            dist/*.sha256
+      - name: Тести headless-крейтів (тимчасові каталоги профілю)
+        run: |
+          # rustup/cargo шукають toolchain через профіль — фіксуємо їх до підміни.
+          if (-not $env:RUSTUP_HOME) { $env:RUSTUP_HOME = Join-Path $env:USERPROFILE '.rustup' }
+          if (-not $env:CARGO_HOME) { $env:CARGO_HOME = Join-Path $env:USERPROFILE '.cargo' }
+          $crates = $env:TEST_CRATES.Split(' ')
+          # Збірка — зі справжнім профілем: cmake/MSVC (manifold) не конфігурується
+          # з підміненими USERPROFILE/LOCALAPPDATA. Підміна — лише на запуск тестів.
+          cargo test --locked --lib --bins --tests --no-run $crates
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $t = New-Item -ItemType Directory -Path (Join-Path $env:RUNNER_TEMP 'home-test')
+          $env:USERPROFILE = $t; $env:HOME = $t
+          $env:APPDATA = "$t\Roaming"; $env:LOCALAPPDATA = "$t\Local"
+          New-Item -ItemType Directory -Force "$t\Roaming", "$t\Local" | Out-Null
+          cargo test --locked --no-fail-fast --lib --bins --tests $crates

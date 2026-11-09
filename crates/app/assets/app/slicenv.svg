@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34404f"/>
+      <stop offset="1" stop-color="#1c222b"/>
+    </linearGradient>
+    <linearGradient id="bead" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffb07a"/>
+      <stop offset="0.35" stop-color="#ff7d38"/>
+      <stop offset="1" stop-color="#c24d17"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#9aa6b5"/>
+      <stop offset="0.5" stop-color="#e9eef4"/>
+      <stop offset="1" stop-color="#8793a3"/>
+    </linearGradient>
+  </defs>
+  <!-- Плитка -->
+  <rect x="16" y="16" width="224" height="224" rx="52" fill="url(#bg)"/>
+  <rect x="16.5" y="16.5" width="223" height="223" rx="51.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+  <!-- Стіл -->
+  <rect x="44" y="196" width="168" height="8" rx="4" fill="#4a90d9" fill-opacity="0.85"/>
+  <!-- Шари друку: силует моделі, знизу вгору -->
+  <g fill="url(#bead)">
+    <rect x="58"  y="172" width="140" height="20" rx="10"/>
+    <rect x="50"  y="148" width="156" height="20" rx="10"/>
+    <rect x="56"  y="124" width="144" height="20" rx="10"/>
+    <rect x="70"  y="100" width="116" height="20" rx="10"/>
+  </g>
+  <!-- Верхній шар — друкується: половина готова, решта — контур -->
+  <path d="M136 77 H154 a9 9 0 0 1 0 18 H136" fill="none" stroke="#ff7d38" stroke-opacity="0.5" stroke-width="2" stroke-dasharray="4 4"/>
+  <rect x="92" y="76" width="48" height="20" rx="10" fill="url(#bead)"/>
+  <!-- Шов -->
+  <circle cx="64" cy="158" r="4" fill="#ffffff" fill-opacity="0.9"/>
+  <!-- Сопло над краєм шару -->
+  <path d="M120 32 h32 v14 l-9 16 h-14 l-9 -16 z" fill="url(#metal)"/>
+  <rect x="131" y="62" width="10" height="8" rx="2" fill="#c9d2dc"/>
+</svg>

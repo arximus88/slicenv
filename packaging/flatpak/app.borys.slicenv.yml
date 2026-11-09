@@ -1,0 +1,162 @@
+# Flatpak-маніфест Slicenv для Flathub: збірка з джерел без мережі.
+#
+# Перед збіркою — крейти для офлайн-збірки (не в git, генерується з Cargo.lock):
+#   tools/flatpak-cargo-sources.sh        → packaging/flatpak/cargo-sources.json
+# Локальна збірка з робочого дерева замість git-тегу: tools/package.sh flatpak.
+# Обґрунтування дозволів, рушії в пісочниці й обмеження — packaging/README.md, «Flatpak».
+id: app.borys.slicenv
+# GNOME, а не freedesktop: рушії (OrcaSlicer, Bambu Studio), які менеджер рушіїв
+# завантажує й розпаковує, слінковані з GTK 3 і WebKitGTK 4.1 (libwebkit2gtk-4.1) —
+# у freedesktop-рантаймі WebKitGTK немає. Сам Slicenv від GNOME не залежить.
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: slicenv
+finish-args:
+  # Вікно: GPUI малює через Vulkan (wgpu) у Wayland, X11 — запасний варіант.
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --device=dri
+  # Мережа: завантаження рушіїв і профілів з GitHub, принтери Bambu Lab у LAN (MQTT 8883,
+  # FTPS 990, камера 6000, SSDP-виявлення — принтер шле на UDP 2021), Bambu Cloud.
+  - --share=network
+  # Бібліотека моделей на головній сторінці сканує теки зі збереженими моделями; окремі
+  # файли відкриваються через портал вибору файлів (тоді ці теки не потрібні).
+  - --filesystem=xdg-documents
+  - --filesystem=xdg-download
+  # Лише читання: користувацькі пресети й вхід у Bambu Cloud зі встановлених на хості
+  # Bambu Studio / OrcaSlicer (paths::vendor_config_home). Нічого туди не пишемо.
+  - --filesystem=xdg-config/BambuStudio:ro
+  - --filesystem=xdg-config/OrcaSlicer:ro
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/man
+  - '*.a'
+  - '*.la'
+modules:
+  # unsquashfs: менеджер рушіїв розпаковує AppImage рушіїв, не запускаючи їх (у пісочниці
+  # немає FUSE). Без нього — запасний шлях `<AppImage> --appimage-extract`.
+  - name: squashfs-tools
+    no-autogen: true
+    subdir: squashfs-tools
+    make-args:
+      - XZ_SUPPORT=1
+      - ZSTD_SUPPORT=1
+      - LZO_SUPPORT=0
+      - LZ4_SUPPORT=0
+    make-install-args:
+      - INSTALL_PREFIX=/app
+      - INSTALL_MANPAGES_DIR=/app/share/man/man1
+    cleanup:
+      - /bin/mksquashfs
+      - /bin/sqfstar
+      - /bin/sqfscat
+    sources:
+      - type: git
+        url: https://github.com/plougher/squashfs-tools.git
+        tag: 4.7.5
+        commit: 708c59ae80853b0845017c33b42e56061cc546cd
+
+  # libavcodec.so.61 / libavformat.so.61 / libavutil.so.59 / libswscale.so.8 (FFmpeg 7):
+  # їх вимагають (DT_NEEDED) Bambu Studio 2.x і OrcaSlicer 2.5, а GNOME 51 має FFmpeg 8.
+  # Нарізці кодеки не потрібні — збираємо лише бібліотеки без жодного кодека. Лежать у
+  # /app/lib (є в ld.so.cache пісочниці), тож рушій знаходить їх без LD_LIBRARY_PATH; інші
+  # sonames, ніж FFmpeg 8 рантайму, тож нічого не підміняють.
+  - name: ffmpeg7-libs
+    config-opts:
+      - --disable-everything
+      - --disable-programs
+      - --disable-doc
+      - --disable-static
+      - --enable-shared
+      - --disable-avdevice
+      - --disable-avfilter
+      - --disable-postproc
+      - --disable-network
+      - --disable-autodetect
+      - --enable-swscale
+      - --enable-swresample
+    cleanup:
+      - /share/ffmpeg
+    sources:
+      - type: archive
+        url: https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz
+        sha256: 089bc60fb59d6aecc5d994ff530fd0dcb3ee39aa55867849a2bbc4e555f9c304
+        x-checker-data:
+          type: anitya
+          project-id: 5405
+          versions: {<: '8.0'}
+          url-template: https://ffmpeg.org/releases/ffmpeg-$version.tar.xz
+
+  # Clipper2 + manifold для manifold-csg-sys: у пісочниці Flathub немає мережі, тож
+  # build.rs не може клонувати їх сам. Статичні бібліотеки → MANIFOLD_CSG_LIB_DIR.
+  # Версія manifold — та, що зашита в manifold-csg-sys (MANIFOLD_VERSION у build.rs).
+  - name: clipper2
+    buildsystem: cmake-ninja
+    subdir: CPP
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DCLIPPER2_TESTS=OFF
+      - -DCLIPPER2_EXAMPLES=OFF
+      - -DCLIPPER2_UTILS=OFF
+      - -DCLIPPER2_USINGZ=OFF
+    sources:
+      - type: git
+        url: https://github.com/AngusJohnson/Clipper2.git
+        tag: Clipper2_1.5.4
+        commit: ef88ee97c0e759792e43a2b2d8072def6c9244e8
+  - name: manifold
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+      - -DBUILD_SHARED_LIBS=OFF
+      - -DMANIFOLD_TEST=OFF
+      - -DMANIFOLD_PYBIND=OFF
+      - -DMANIFOLD_JSBIND=OFF
+      - -DMANIFOLD_CBIND=ON
+      - -DMANIFOLD_CROSS_SECTION=ON
+      - -DMANIFOLD_PAR=OFF
+      - -DMANIFOLD_DOWNLOADS=OFF
+      - -DMANIFOLD_USE_BUILTIN_CLIPPER2=OFF
+    sources:
+      - type: git
+        url: https://github.com/elalish/manifold.git
+        tag: v3.5.3
+        commit: 0edd9d54876f3135e431575214dd6d8a72866fee
+
+  - name: slicenv
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /run/build/slicenv/cargo
+        CARGO_NET_OFFLINE: 'true'
+        MANIFOLD_CSG_LIB_DIR: /app/lib
+        MANIFOLD_CSG_LIB_KIND: static
+    build-commands:
+      - cargo --offline build --release --locked -p app -p mcp
+      - install -Dm755 -t /app/bin target/release/slicenv target/release/slicenv-mcp
+      - sed 's|@EXEC@|slicenv|' crates/app/assets/app/app.borys.slicenv.desktop > app.borys.slicenv.desktop
+      - desktop-file-install --dir=/app/share/applications app.borys.slicenv.desktop
+      - install -Dm644 crates/app/assets/app/app.borys.slicenv.metainfo.xml /app/share/metainfo/app.borys.slicenv.metainfo.xml
+      - install -Dm644 crates/app/assets/app/slicenv.svg /app/share/icons/hicolor/scalable/apps/app.borys.slicenv.svg
+      - for s in 64 128 256 512; do install -d /app/share/icons/hicolor/${s}x${s}/apps;
+        rsvg-convert -w $s -h $s crates/app/assets/app/slicenv.svg -o /app/share/icons/hicolor/${s}x${s}/apps/app.borys.slicenv.png;
+        done
+      - install -Dm644 -t /app/share/licenses/app.borys.slicenv LICENSE THIRD-PARTY-NOTICES.md
+        packaging/THIRD-PARTY-RUST-CRATES.md
+    sources:
+      # Для Flathub: тег релізу і його коміт (`git rev-parse v0.1.0^{commit}`).
+      - type: git
+        url: https://github.com/arximus88/slicenv.git
+        tag: v0.1.0
+        commit: COMMIT_OF_v0.1.0
+      - cargo-sources.json

@@ -1,0 +1,2793 @@
+{
+  "process": [
+    {
+      "title": "Quality",
+      "icon": "empty",
+      "groups": [
+        {
+          "title": "Layer height",
+          "icon": "param_layer_height",
+          "lines": [
+            {
+              "options": [
+                "layer_height"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_print_height"
+              ]
+            },
+            {
+              "options": [
+                "enable_mixed_color_sublayer"
+              ]
+            }
+          ],
+          "title_uk": "Висота шару"
+        },
+        {
+          "title": "Line width",
+          "icon": "param_line_width",
+          "lines": [
+            {
+              "options": [
+                "line_width"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_line_width"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_infill_line_width"
+              ]
+            },
+            {
+              "options": [
+                "outer_wall_line_width"
+              ]
+            },
+            {
+              "options": [
+                "inner_wall_line_width"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_line_width"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_line_width"
+              ]
+            },
+            {
+              "options": [
+                "internal_solid_infill_line_width"
+              ]
+            },
+            {
+              "options": [
+                "support_line_width"
+              ]
+            }
+          ],
+          "title_uk": "Ширина лінії"
+        },
+        {
+          "title": "Seam",
+          "icon": "param_seam",
+          "lines": [
+            {
+              "options": [
+                "seam_position"
+              ]
+            },
+            {
+              "options": [
+                "seam_placement_away_from_overhangs"
+              ]
+            },
+            {
+              "options": [
+                "seam_gap"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_conditional"
+              ]
+            },
+            {
+              "options": [
+                "scarf_angle_threshold"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_entire_loop"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_steps"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_inner_walls"
+              ]
+            },
+            {
+              "options": [
+                "override_filament_scarf_seam_setting"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_type"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_start_height"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_gap"
+              ]
+            },
+            {
+              "options": [
+                "seam_slope_min_length"
+              ]
+            },
+            {
+              "options": [
+                "wipe_speed"
+              ]
+            },
+            {
+              "options": [
+                "role_base_wipe_speed"
+              ]
+            }
+          ],
+          "title_uk": "Шов"
+        },
+        {
+          "title": "Precision",
+          "icon": "param_precision",
+          "lines": [
+            {
+              "options": [
+                "slice_closing_radius"
+              ]
+            },
+            {
+              "options": [
+                "resolution"
+              ]
+            },
+            {
+              "options": [
+                "enable_arc_fitting"
+              ]
+            },
+            {
+              "options": [
+                "xy_hole_compensation"
+              ]
+            },
+            {
+              "options": [
+                "xy_contour_compensation"
+              ]
+            },
+            {
+              "options": [
+                "enable_circle_compensation"
+              ]
+            },
+            {
+              "options": [
+                "circle_compensation_manual_offset"
+              ]
+            },
+            {
+              "options": [
+                "elefant_foot_compensation"
+              ]
+            },
+            {
+              "options": [
+                "precise_outer_wall"
+              ]
+            },
+            {
+              "options": [
+                "precise_z_height"
+              ]
+            }
+          ],
+          "title_uk": "Точність"
+        },
+        {
+          "title": "Ironing",
+          "icon": "param_ironing",
+          "lines": [
+            {
+              "options": [
+                "ironing_type"
+              ]
+            },
+            {
+              "options": [
+                "ironing_pattern"
+              ]
+            },
+            {
+              "options": [
+                "ironing_speed"
+              ]
+            },
+            {
+              "options": [
+                "ironing_flow"
+              ]
+            },
+            {
+              "options": [
+                "ironing_spacing"
+              ]
+            },
+            {
+              "options": [
+                "ironing_inset"
+              ]
+            },
+            {
+              "options": [
+                "ironing_direction"
+              ]
+            }
+          ],
+          "title_uk": "Розгладжування"
+        },
+        {
+          "title": "Wall generator",
+          "icon": "param_wall",
+          "lines": [
+            {
+              "options": [
+                "wall_generator"
+              ]
+            },
+            {
+              "options": [
+                "wall_transition_angle"
+              ]
+            },
+            {
+              "options": [
+                "wall_transition_filter_deviation"
+              ]
+            },
+            {
+              "options": [
+                "wall_transition_length"
+              ]
+            },
+            {
+              "options": [
+                "wall_distribution_count"
+              ]
+            },
+            {
+              "options": [
+                "min_bead_width"
+              ]
+            },
+            {
+              "options": [
+                "min_feature_size"
+              ]
+            }
+          ],
+          "title_uk": "Генератор стінок"
+        },
+        {
+          "title": "Advanced",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "wall_sequence"
+              ]
+            },
+            {
+              "options": [
+                "is_infill_first"
+              ]
+            },
+            {
+              "options": [
+                "bridge_flow"
+              ]
+            },
+            {
+              "options": [
+                "thick_bridges"
+              ]
+            },
+            {
+              "options": [
+                "counterbore_hole_bridging"
+              ]
+            },
+            {
+              "options": [
+                "print_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "top_solid_infill_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "top_one_wall_type"
+              ]
+            },
+            {
+              "options": [
+                "top_area_threshold"
+              ]
+            },
+            {
+              "options": [
+                "only_one_wall_first_layer"
+              ]
+            },
+            {
+              "options": [
+                "detect_overhang_wall"
+              ]
+            },
+            {
+              "options": [
+                "smooth_speed_discontinuity_area"
+              ]
+            },
+            {
+              "options": [
+                "smooth_coefficient"
+              ]
+            },
+            {
+              "options": [
+                "reduce_crossing_wall"
+              ]
+            },
+            {
+              "options": [
+                "max_travel_detour_distance"
+              ]
+            },
+            {
+              "options": [
+                "avoid_crossing_wall_includes_support"
+              ]
+            },
+            {
+              "options": [
+                "z_direction_outwall_speed_continuous"
+              ]
+            }
+          ],
+          "title_uk": "Додатково"
+        }
+      ],
+      "title_uk": "Якість"
+    },
+    {
+      "title": "Strength",
+      "icon": "empty",
+      "groups": [
+        {
+          "title": "Walls",
+          "icon": "param_wall",
+          "lines": [
+            {
+              "options": [
+                "wall_loops"
+              ]
+            },
+            {
+              "options": [
+                "alternate_extra_wall"
+              ]
+            },
+            {
+              "options": [
+                "embedding_wall_into_infill"
+              ]
+            },
+            {
+              "options": [
+                "detect_thin_wall"
+              ]
+            }
+          ],
+          "title_uk": "Стінки"
+        },
+        {
+          "title": "Top/bottom shells",
+          "icon": "param_shell",
+          "lines": [
+            {
+              "options": [
+                "interface_shells"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_pattern"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_density"
+              ]
+            },
+            {
+              "options": [
+                "top_shell_layers"
+              ]
+            },
+            {
+              "options": [
+                "top_shell_thickness"
+              ]
+            },
+            {
+              "options": [
+                "top_color_penetration_layers"
+              ]
+            },
+            {
+              "options": [
+                "bottom_surface_pattern"
+              ]
+            },
+            {
+              "options": [
+                "bottom_surface_density"
+              ]
+            },
+            {
+              "options": [
+                "bottom_shell_layers"
+              ]
+            },
+            {
+              "options": [
+                "bottom_shell_thickness"
+              ]
+            },
+            {
+              "options": [
+                "bottom_color_penetration_layers"
+              ]
+            },
+            {
+              "options": [
+                "infill_instead_top_bottom_surfaces"
+              ]
+            },
+            {
+              "options": [
+                "internal_solid_infill_pattern"
+              ]
+            }
+          ],
+          "title_uk": "Верхні/нижні оболонки"
+        },
+        {
+          "title": "Sparse infill",
+          "icon": "param_infill",
+          "lines": [
+            {
+              "options": [
+                "sparse_infill_density"
+              ]
+            },
+            {
+              "options": [
+                "fill_multiline"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_pattern"
+              ]
+            },
+            {
+              "options": [
+                "conformal_infill"
+              ]
+            },
+            {
+              "options": [
+                "conformal_stagger"
+              ]
+            },
+            {
+              "options": [
+                "conformal_link_keep_layers"
+              ]
+            },
+            {
+              "options": [
+                "conformal_link_flip_layers"
+              ]
+            },
+            {
+              "options": [
+                "conformal_pole"
+              ]
+            },
+            {
+              "options": [
+                "conformal_ray_count"
+              ]
+            },
+            {
+              "options": [
+                "conformal_hub_radius"
+              ]
+            },
+            {
+              "options": [
+                "locked_skin_infill_pattern"
+              ]
+            },
+            {
+              "options": [
+                "skin_infill_density"
+              ]
+            },
+            {
+              "options": [
+                "locked_skeleton_infill_pattern"
+              ]
+            },
+            {
+              "options": [
+                "skeleton_infill_density"
+              ]
+            },
+            {
+              "options": [
+                "infill_lock_depth"
+              ]
+            },
+            {
+              "options": [
+                "skin_infill_depth"
+              ]
+            },
+            {
+              "options": [
+                "skin_infill_line_width"
+              ]
+            },
+            {
+              "options": [
+                "skeleton_infill_line_width"
+              ]
+            },
+            {
+              "options": [
+                "symmetric_infill_y_axis"
+              ]
+            },
+            {
+              "options": [
+                "infill_shift_step"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_lattice_angle_1"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_lattice_angle_2"
+              ]
+            },
+            {
+              "options": [
+                "infill_rotate_step"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_anchor"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_anchor_max"
+              ]
+            },
+            {
+              "options": [
+                "filter_out_gap_fill"
+              ]
+            }
+          ],
+          "title_uk": "Розріджене заповнення"
+        },
+        {
+          "title": "Advanced",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "infill_wall_overlap"
+              ]
+            },
+            {
+              "options": [
+                "monotonic_travel_into_wall"
+              ]
+            },
+            {
+              "options": [
+                "infill_direction"
+              ]
+            },
+            {
+              "options": [
+                "bridge_angle"
+              ]
+            },
+            {
+              "options": [
+                "minimum_sparse_infill_area"
+              ]
+            },
+            {
+              "options": [
+                "infill_combination"
+              ]
+            },
+            {
+              "options": [
+                "detect_narrow_internal_solid_infill"
+              ]
+            },
+            {
+              "options": [
+                "sub_top_surface_pattern"
+              ]
+            },
+            {
+              "options": [
+                "ensure_vertical_shell_thickness"
+              ]
+            },
+            {
+              "options": [
+                "detect_floating_vertical_shell"
+              ]
+            }
+          ],
+          "title_uk": "Додатково"
+        }
+      ],
+      "title_uk": "Міцність"
+    },
+    {
+      "title": "Speed",
+      "icon": "empty",
+      "groups": [
+        {
+          "title": "Initial layer speed",
+          "icon": "param_speed_first",
+          "lines": [
+            {
+              "options": [
+                "initial_layer_speed"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_infill_speed"
+              ]
+            }
+          ],
+          "title_uk": "Швидкість першого шару"
+        },
+        {
+          "title": "Other layers speed",
+          "icon": "param_speed",
+          "lines": [
+            {
+              "options": [
+                "outer_wall_speed"
+              ]
+            },
+            {
+              "options": [
+                "inner_wall_speed"
+              ]
+            },
+            {
+              "options": [
+                "small_perimeter_speed"
+              ]
+            },
+            {
+              "options": [
+                "small_perimeter_threshold"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_speed"
+              ]
+            },
+            {
+              "options": [
+                "internal_solid_infill_speed"
+              ]
+            },
+            {
+              "options": [
+                "vertical_shell_speed"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_speed"
+              ]
+            },
+            {
+              "options": [
+                "enable_overhang_speed"
+              ]
+            },
+            {
+              "options": [
+                "overhang_1_4_speed",
+                "overhang_2_4_speed",
+                "overhang_3_4_speed",
+                "overhang_4_4_speed",
+                "overhang_totally_speed"
+              ]
+            },
+            {
+              "options": [
+                "enable_height_slowdown"
+              ]
+            },
+            {
+              "options": [
+                "slowdown_start_height"
+              ]
+            },
+            {
+              "options": [
+                "slowdown_start_speed"
+              ]
+            },
+            {
+              "options": [
+                "slowdown_start_acc"
+              ]
+            },
+            {
+              "options": [
+                "slowdown_end_height"
+              ]
+            },
+            {
+              "options": [
+                "slowdown_end_speed"
+              ]
+            },
+            {
+              "options": [
+                "slowdown_end_acc"
+              ]
+            },
+            {
+              "options": [
+                "bridge_speed"
+              ]
+            },
+            {
+              "options": [
+                "gap_infill_speed"
+              ]
+            },
+            {
+              "options": [
+                "support_speed"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_speed"
+              ]
+            }
+          ],
+          "title_uk": "Швидкість інших шарів"
+        },
+        {
+          "title": "Travel speed",
+          "icon": "param_travel_speed",
+          "lines": [
+            {
+              "options": [
+                "travel_speed"
+              ]
+            }
+          ],
+          "title_uk": "Швидкість переміщення"
+        },
+        {
+          "title": "Acceleration",
+          "icon": "param_acceleration",
+          "lines": [
+            {
+              "options": [
+                "default_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "travel_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "travel_short_distance_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_travel_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "outer_wall_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "inner_wall_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_acceleration"
+              ]
+            },
+            {
+              "options": [
+                "accel_to_decel_enable"
+              ]
+            },
+            {
+              "options": [
+                "accel_to_decel_factor"
+              ]
+            }
+          ],
+          "title_uk": "Прискорення"
+        },
+        {
+          "title": "Jerk(XY)",
+          "icon": "param_acceleration",
+          "lines": [
+            {
+              "options": [
+                "default_jerk"
+              ]
+            },
+            {
+              "options": [
+                "outer_wall_jerk"
+              ]
+            },
+            {
+              "options": [
+                "inner_wall_jerk"
+              ]
+            },
+            {
+              "options": [
+                "infill_jerk"
+              ]
+            },
+            {
+              "options": [
+                "top_surface_jerk"
+              ]
+            },
+            {
+              "options": [
+                "initial_layer_jerk"
+              ]
+            },
+            {
+              "options": [
+                "travel_jerk"
+              ]
+            },
+            {
+              "options": [
+                "max_volumetric_extrusion_rate_slope_positive"
+              ]
+            },
+            {
+              "options": [
+                "max_volumetric_extrusion_rate_slope_negative"
+              ]
+            }
+          ],
+          "title_uk": "Ривок (XY)"
+        }
+      ],
+      "title_uk": "Швидкість"
+    },
+    {
+      "title": "Support",
+      "icon": "support",
+      "groups": [
+        {
+          "title": "Support",
+          "icon": "param_support",
+          "lines": [
+            {
+              "options": [
+                "enable_support"
+              ]
+            },
+            {
+              "options": [
+                "support_type"
+              ]
+            },
+            {
+              "options": [
+                "support_style"
+              ]
+            },
+            {
+              "options": [
+                "support_threshold_angle"
+              ]
+            },
+            {
+              "options": [
+                "support_on_build_plate_only"
+              ]
+            },
+            {
+              "options": [
+                "support_critical_regions_only"
+              ]
+            },
+            {
+              "options": [
+                "support_remove_small_overhang"
+              ]
+            }
+          ],
+          "title_uk": "Підтримки"
+        },
+        {
+          "title": "Raft",
+          "icon": "param_raft",
+          "lines": [
+            {
+              "options": [
+                "raft_layers"
+              ]
+            },
+            {
+              "options": [
+                "raft_contact_distance"
+              ]
+            }
+          ],
+          "title_uk": "Підкладка"
+        },
+        {
+          "title": "Support filament",
+          "icon": "param_support_filament",
+          "lines": [
+            {
+              "options": [
+                "support_filament"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_filament"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_not_for_body"
+              ]
+            }
+          ],
+          "title_uk": "Філамент підтримки"
+        },
+        {
+          "title": "Support ironing",
+          "icon": "param_ironing",
+          "lines": [
+            {
+              "options": [
+                "enable_support_ironing"
+              ]
+            },
+            {
+              "options": [
+                "support_ironing_pattern"
+              ]
+            },
+            {
+              "options": [
+                "support_ironing_speed"
+              ]
+            },
+            {
+              "options": [
+                "support_ironing_flow"
+              ]
+            },
+            {
+              "options": [
+                "support_ironing_spacing"
+              ]
+            },
+            {
+              "options": [
+                "support_ironing_inset"
+              ]
+            },
+            {
+              "options": [
+                "support_ironing_direction"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Advanced",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "raft_first_layer_density"
+              ]
+            },
+            {
+              "options": [
+                "raft_first_layer_expansion"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_wall_count"
+              ]
+            },
+            {
+              "options": [
+                "support_top_z_distance"
+              ]
+            },
+            {
+              "options": [
+                "support_bottom_z_distance"
+              ]
+            },
+            {
+              "options": [
+                "support_base_pattern"
+              ]
+            },
+            {
+              "options": [
+                "support_base_pattern_spacing"
+              ]
+            },
+            {
+              "options": [
+                "support_angle"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_top_layers"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_bottom_layers"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_pattern"
+              ]
+            },
+            {
+              "options": [
+                "support_interface_spacing"
+              ]
+            },
+            {
+              "options": [
+                "support_bottom_interface_spacing"
+              ]
+            },
+            {
+              "options": [
+                "support_expansion"
+              ]
+            },
+            {
+              "options": [
+                "support_object_xy_distance"
+              ]
+            },
+            {
+              "options": [
+                "top_z_overrides_xy_distance"
+              ]
+            },
+            {
+              "options": [
+                "support_object_first_layer_gap"
+              ]
+            },
+            {
+              "options": [
+                "bridge_no_support"
+              ]
+            },
+            {
+              "options": [
+                "max_bridge_length"
+              ]
+            },
+            {
+              "options": [
+                "independent_support_layer_height"
+              ]
+            }
+          ],
+          "title_uk": "Додатково"
+        },
+        {
+          "title": "Tree Support",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "tree_support_branch_distance"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_branch_diameter"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_branch_angle"
+              ]
+            },
+            {
+              "options": [
+                "tree_support_branch_diameter_angle"
+              ]
+            }
+          ],
+          "title_uk": "Деревоподібна підтримка"
+        }
+      ],
+      "title_uk": "Підтримки"
+    },
+    {
+      "title": "Others",
+      "icon": "advanced",
+      "groups": [
+        {
+          "title": "Bed adhension",
+          "icon": "param_adhension",
+          "lines": [
+            {
+              "options": [
+                "skirt_loops"
+              ]
+            },
+            {
+              "options": [
+                "skirt_height"
+              ]
+            },
+            {
+              "options": [
+                "skirt_distance"
+              ]
+            },
+            {
+              "options": [
+                "brim_type"
+              ]
+            },
+            {
+              "options": [
+                "brim_width"
+              ]
+            },
+            {
+              "options": [
+                "brim_object_gap"
+              ]
+            }
+          ],
+          "title_uk": "Прилягання до столу"
+        },
+        {
+          "title": "Prime tower",
+          "icon": "param_tower",
+          "lines": [
+            {
+              "options": [
+                "enable_prime_tower"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_skip_points"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_enable_framework"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_width"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_max_speed"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_brim_width"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_infill_gap"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_rib_wall"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_extra_rib_length"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_rib_width"
+              ]
+            },
+            {
+              "options": [
+                "prime_tower_fillet_wall"
+              ]
+            },
+            {
+              "options": [
+                "enable_tower_interface_features"
+              ]
+            },
+            {
+              "options": [
+                "wipe_tower_no_sparse_layers"
+              ]
+            }
+          ],
+          "title_uk": "Підставка для очищення форсунки"
+        },
+        {
+          "title": "Flush options",
+          "icon": "param_flush",
+          "lines": [
+            {
+              "options": [
+                "flush_into_infill"
+              ]
+            },
+            {
+              "options": [
+                "flush_into_objects"
+              ]
+            },
+            {
+              "options": [
+                "flush_into_support"
+              ]
+            }
+          ],
+          "title_uk": "Варіанти скидання"
+        },
+        {
+          "title": "Special mode",
+          "icon": "param_special",
+          "lines": [
+            {
+              "options": [
+                "slicing_mode"
+              ]
+            },
+            {
+              "options": [
+                "print_sequence"
+              ]
+            },
+            {
+              "options": [
+                "spiral_mode"
+              ]
+            },
+            {
+              "options": [
+                "spiral_mode_smooth"
+              ]
+            },
+            {
+              "options": [
+                "spiral_mode_max_xy_smoothing"
+              ]
+            },
+            {
+              "options": [
+                "timelapse_type"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_mode"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_noise_type"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_point_distance"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_thickness"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_scale"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_octaves"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_persistence"
+              ]
+            },
+            {
+              "options": [
+                "fuzzy_skin_first_layer"
+              ]
+            }
+          ],
+          "title_uk": "Спеціальний режим"
+        },
+        {
+          "title": "Advanced",
+          "icon": "advanced",
+          "lines": [
+            {
+              "options": [
+                "enable_wrapping_detection"
+              ]
+            },
+            {
+              "options": [
+                "enable_order_independent_overlap_carving"
+              ]
+            },
+            {
+              "options": [
+                "interlocking_beam"
+              ]
+            },
+            {
+              "options": [
+                "mmu_segmented_region_interlocking_depth"
+              ]
+            },
+            {
+              "options": [
+                "interlocking_beam_width"
+              ]
+            },
+            {
+              "options": [
+                "interlocking_orientation"
+              ]
+            },
+            {
+              "options": [
+                "interlocking_beam_layer_count"
+              ]
+            },
+            {
+              "options": [
+                "interlocking_depth"
+              ]
+            },
+            {
+              "options": [
+                "interlocking_boundary_avoidance"
+              ]
+            },
+            {
+              "options": [
+                "sparse_infill_filament"
+              ]
+            },
+            {
+              "options": [
+                "solid_infill_filament"
+              ]
+            },
+            {
+              "options": [
+                "wall_filament"
+              ]
+            }
+          ],
+          "title_uk": "Додатково"
+        },
+        {
+          "title": "G-code output",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "reduce_infill_retraction_mode"
+              ]
+            },
+            {
+              "options": [
+                "gcode_add_line_number"
+              ]
+            },
+            {
+              "options": [
+                "exclude_object"
+              ]
+            },
+            {
+              "options": [
+                "filename_format"
+              ]
+            }
+          ],
+          "title_uk": "Вихідний G-code"
+        },
+        {
+          "title": "Post-processing scripts",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "post_process"
+              ]
+            }
+          ],
+          "title_uk": "Сценарії постобробки"
+        },
+        {
+          "title": "Notes",
+          "icon": "note",
+          "lines": [
+            {
+              "options": [
+                "process_notes"
+              ]
+            }
+          ],
+          "title_uk": "Примітки"
+        }
+      ],
+      "title_uk": "Інші"
+    }
+  ],
+  "filament": [
+    {
+      "title": "Filament",
+      "icon": "spool",
+      "groups": [
+        {
+          "title": "Basic information",
+          "icon": "param_information",
+          "lines": [
+            {
+              "options": [
+                "filament_type"
+              ]
+            },
+            {
+              "options": [
+                "filament_vendor"
+              ]
+            },
+            {
+              "options": [
+                "filament_soluble"
+              ]
+            },
+            {
+              "options": [
+                "filament_is_support"
+              ]
+            },
+            {
+              "options": [
+                "impact_strength_z"
+              ]
+            },
+            {
+              "options": [
+                "required_nozzle_HRC"
+              ]
+            },
+            {
+              "options": [
+                "default_filament_colour"
+              ]
+            },
+            {
+              "options": [
+                "filament_diameter"
+              ]
+            },
+            {
+              "options": [
+                "filament_adhesiveness_category"
+              ]
+            },
+            {
+              "options": [
+                "filament_metal_stickiness"
+              ]
+            },
+            {
+              "options": [
+                "filament_flow_ratio"
+              ]
+            },
+            {
+              "options": [
+                "enable_pressure_advance"
+              ]
+            },
+            {
+              "options": [
+                "pressure_advance"
+              ]
+            },
+            {
+              "options": [
+                "filament_density"
+              ]
+            },
+            {
+              "options": [
+                "filament_shrink"
+              ]
+            },
+            {
+              "options": [
+                "filament_velocity_adaptation_factor"
+              ]
+            },
+            {
+              "options": [
+                "filament_cost"
+              ]
+            },
+            {
+              "options": [
+                "temperature_vitrification"
+              ]
+            },
+            {
+              "options": [
+                "filament_printable"
+              ]
+            },
+            {
+              "options": [
+                "filament_cooling_before_tower"
+              ]
+            },
+            {
+              "options": [
+                "filament_tower_interface_pre_extrusion_dist"
+              ]
+            },
+            {
+              "options": [
+                "filament_tower_interface_pre_extrusion_length"
+              ]
+            },
+            {
+              "options": [
+                "filament_tower_ironing_area"
+              ]
+            },
+            {
+              "options": [
+                "filament_tower_interface_purge_volume"
+              ]
+            },
+            {
+              "options": [
+                "filament_tower_interface_print_temp"
+              ]
+            },
+            {
+              "options": [
+                "filament_prime_volume",
+                "filament_prime_volume_nc"
+              ]
+            },
+            {
+              "options": [
+                "filament_change_length",
+                "filament_change_length_nc"
+              ]
+            },
+            {
+              "options": [
+                "filament_ramming_travel_time",
+                "filament_ramming_travel_time_nc"
+              ]
+            },
+            {
+              "options": [
+                "filament_pre_cooling_temperature",
+                "filament_pre_cooling_temperature_nc"
+              ]
+            },
+            {
+              "options": [
+                "nozzle_temperature_range_low",
+                "nozzle_temperature_range_high"
+              ]
+            }
+          ],
+          "title_uk": "Базова інформація"
+        },
+        {
+          "title": "Print temperature",
+          "icon": "param_temperature",
+          "lines": [
+            {
+              "options": [
+                "chamber_temperatures"
+              ]
+            },
+            {
+              "options": [
+                "supertack_plate_temp_initial_layer",
+                "supertack_plate_temp"
+              ]
+            },
+            {
+              "options": [
+                "cool_plate_temp_initial_layer",
+                "cool_plate_temp"
+              ]
+            },
+            {
+              "options": [
+                "eng_plate_temp_initial_layer",
+                "eng_plate_temp"
+              ]
+            },
+            {
+              "options": [
+                "hot_plate_temp_initial_layer",
+                "hot_plate_temp"
+              ]
+            },
+            {
+              "options": [
+                "textured_plate_temp_initial_layer",
+                "textured_plate_temp"
+              ]
+            },
+            {
+              "options": [
+                "nozzle_temperature_initial_layer",
+                "nozzle_temperature"
+              ]
+            }
+          ],
+          "title_uk": "Температура друку"
+        },
+        {
+          "title": "Volumetric speed limitation",
+          "icon": "param_volumetric_speed",
+          "lines": [
+            {
+              "options": [
+                "filament_adaptive_volumetric_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_max_volumetric_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_ramming_volumetric_speed",
+                "filament_ramming_volumetric_speed_nc"
+              ]
+            }
+          ],
+          "title_uk": "Об'ємне обмеження швидкості"
+        },
+        {
+          "title": "Filament scarf seam settings",
+          "icon": "param_volumetric_speed",
+          "lines": [
+            {
+              "options": [
+                "filament_scarf_seam_type"
+              ]
+            },
+            {
+              "options": [
+                "filament_scarf_height"
+              ]
+            },
+            {
+              "options": [
+                "filament_scarf_gap"
+              ]
+            },
+            {
+              "options": [
+                "filament_scarf_length"
+              ]
+            }
+          ],
+          "title_uk": "Налаштування шва шарфа для філамента"
+        }
+      ],
+      "title_uk": "Філамент"
+    },
+    {
+      "title": "Cooling",
+      "icon": "empty",
+      "groups": [
+        {
+          "title": "Part cooling fan",
+          "icon": "param_cooling_fan",
+          "lines": [
+            {
+              "options": [
+                "close_fan_the_first_x_layers",
+                "first_x_layer_part_fan_speed"
+              ]
+            },
+            {
+              "options": [
+                "full_fan_speed_layer"
+              ]
+            },
+            {
+              "options": [
+                "fan_min_speed",
+                "fan_cooling_layer_time"
+              ]
+            },
+            {
+              "options": [
+                "fan_max_speed",
+                "slow_down_layer_time"
+              ]
+            },
+            {
+              "options": [
+                "reduce_fan_stop_start_freq"
+              ]
+            },
+            {
+              "options": [
+                "slow_down_for_layer_cooling"
+              ]
+            },
+            {
+              "options": [
+                "no_slow_down_for_cooling_on_outwalls"
+              ]
+            },
+            {
+              "options": [
+                "cooling_slowdown_logic"
+              ]
+            },
+            {
+              "options": [
+                "cooling_perimeter_transition_distance"
+              ]
+            },
+            {
+              "options": [
+                "slow_down_min_speed"
+              ]
+            },
+            {
+              "options": [
+                "enable_overhang_bridge_fan"
+              ]
+            },
+            {
+              "options": [
+                "overhang_fan_threshold"
+              ]
+            },
+            {
+              "options": [
+                "overhang_threshold_participating_cooling"
+              ]
+            },
+            {
+              "options": [
+                "overhang_fan_speed"
+              ]
+            },
+            {
+              "options": [
+                "pre_start_fan_time"
+              ]
+            },
+            {
+              "options": [
+                "ironing_fan_speed"
+              ]
+            }
+          ],
+          "title_uk": "Вентилятор охолодження деталей"
+        },
+        {
+          "title": "Auxiliary part cooling fan",
+          "icon": "param_cooling_fan",
+          "lines": [
+            {
+              "options": [
+                "close_additional_fan_first_x_layers",
+                "first_x_layer_fan_speed"
+              ]
+            },
+            {
+              "options": [
+                "additional_fan_full_speed_layer",
+                "additional_cooling_fan_speed"
+              ]
+            }
+          ],
+          "title_uk": "Додатковий вентилятор охолодження деталі"
+        },
+        {
+          "title": "Exhaust fan",
+          "icon": "param_cooling_fan",
+          "lines": [
+            {
+              "options": [
+                "activate_air_filtration"
+              ]
+            },
+            {
+              "options": [
+                "during_print_exhaust_fan_speed"
+              ]
+            },
+            {
+              "options": [
+                "complete_print_exhaust_fan_speed"
+              ]
+            }
+          ],
+          "title_uk": "Витяжний вентилятор"
+        }
+      ],
+      "title_uk": "Охолодження"
+    },
+    {
+      "title": "Setting Overrides",
+      "icon": "empty",
+      "groups": [
+        {
+          "title": "Retraction",
+          "icon": "param_retraction",
+          "lines": [
+            {
+              "options": [
+                "filament_retraction_length"
+              ]
+            },
+            {
+              "options": [
+                "filament_z_hop"
+              ]
+            },
+            {
+              "options": [
+                "filament_z_hop_types"
+              ]
+            },
+            {
+              "options": [
+                "filament_retraction_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_deretraction_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_retract_length_nc"
+              ]
+            },
+            {
+              "options": [
+                "filament_retract_restart_extra"
+              ]
+            },
+            {
+              "options": [
+                "filament_retraction_minimum_travel"
+              ]
+            },
+            {
+              "options": [
+                "filament_retract_when_changing_layer"
+              ]
+            },
+            {
+              "options": [
+                "filament_wipe"
+              ]
+            },
+            {
+              "options": [
+                "filament_wipe_distance"
+              ]
+            },
+            {
+              "options": [
+                "filament_retract_before_wipe"
+              ]
+            },
+            {
+              "options": [
+                "filament_long_retractions_when_cut"
+              ]
+            },
+            {
+              "options": [
+                "filament_retraction_distances_when_cut"
+              ]
+            }
+          ],
+          "title_uk": "Втягування"
+        },
+        {
+          "title": "Speed",
+          "icon": "param_speed",
+          "lines": [
+            {
+              "options": [
+                "override_process_overhang_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_enable_overhang_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_overhang_1_4_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_overhang_2_4_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_overhang_3_4_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_overhang_4_4_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_overhang_totally_speed"
+              ]
+            },
+            {
+              "options": [
+                "filament_bridge_speed"
+              ]
+            }
+          ],
+          "title_uk": "Швидкість"
+        }
+      ],
+      "title_uk": "Налаштування перевизначень"
+    },
+    {
+      "title": "Advanced",
+      "icon": "advanced",
+      "groups": [
+        {
+          "title": "Filament start G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "filament_start_gcode"
+              ]
+            }
+          ],
+          "title_uk": "G-код початку Філаменту"
+        },
+        {
+          "title": "Filament end G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "filament_end_gcode"
+              ]
+            }
+          ],
+          "title_uk": "G-код кінця Філаменту"
+        }
+      ],
+      "title_uk": "Додатково"
+    },
+    {
+      "title": "Notes",
+      "icon": "note",
+      "groups": [
+        {
+          "title": "Notes",
+          "icon": "note",
+          "lines": [
+            {
+              "options": [
+                "filament_notes"
+              ]
+            }
+          ],
+          "title_uk": "Примітки"
+        }
+      ],
+      "title_uk": "Примітки"
+    },
+    {
+      "title": "Multi Filament",
+      "icon": "advanced",
+      "groups": [
+        {
+          "title": "Multi Filament",
+          "icon": "",
+          "lines": [
+            {
+              "options": [
+                "filament_flush_temp"
+              ]
+            },
+            {
+              "options": [
+                "filament_flush_temp_fast"
+              ]
+            },
+            {
+              "options": [
+                "filament_flush_volumetric_speed"
+              ]
+            },
+            {
+              "options": [
+                "long_retractions_when_ec"
+              ]
+            },
+            {
+              "options": [
+                "retraction_distances_when_ec"
+              ]
+            }
+          ],
+          "title_uk": ""
+        }
+      ],
+      "title_uk": ""
+    }
+  ],
+  "machine": [
+    {
+      "title": "Basic information",
+      "icon": "printer",
+      "groups": [
+        {
+          "title": "Printable space",
+          "icon": "",
+          "lines": [
+            {
+              "options": [
+                "printable_area"
+              ]
+            },
+            {
+              "options": [
+                "bed_exclude_area"
+              ]
+            },
+            {
+              "options": [
+                "printable_height"
+              ]
+            },
+            {
+              "options": [
+                "best_object_pos"
+              ]
+            }
+          ],
+          "title_uk": "Місце для друку"
+        },
+        {
+          "title": "Advanced",
+          "icon": "param_advanced",
+          "lines": [
+            {
+              "options": [
+                "printer_structure"
+              ]
+            },
+            {
+              "options": [
+                "gcode_flavor"
+              ]
+            },
+            {
+              "options": [
+                "thumbnail_size"
+              ]
+            },
+            {
+              "options": [
+                "scan_first_layer"
+              ]
+            },
+            {
+              "options": [
+                "print_in_clockwise"
+              ]
+            },
+            {
+              "options": [
+                "use_relative_e_distances"
+              ]
+            },
+            {
+              "options": [
+                "use_firmware_retraction"
+              ]
+            },
+            {
+              "options": [
+                "bed_temperature_formula"
+              ]
+            },
+            {
+              "options": [
+                "machine_load_filament_time"
+              ]
+            },
+            {
+              "options": [
+                "machine_unload_filament_time"
+              ]
+            },
+            {
+              "options": [
+                "machine_switch_extruder_time"
+              ]
+            },
+            {
+              "options": [
+                "machine_hotend_change_time"
+              ]
+            }
+          ],
+          "title_uk": "Додатково"
+        },
+        {
+          "title": "AMS filament load/unload time",
+          "icon": "",
+          "lines": [],
+          "title_uk": ""
+        },
+        {
+          "title": "Extruder Clearance",
+          "icon": "",
+          "lines": [
+            {
+              "options": [
+                "extruder_clearance_max_radius"
+              ]
+            },
+            {
+              "options": [
+                "extruder_clearance_dist_to_rod"
+              ]
+            },
+            {
+              "options": [
+                "extruder_clearance_height_to_rod"
+              ]
+            },
+            {
+              "options": [
+                "extruder_clearance_height_to_lid"
+              ]
+            }
+          ],
+          "title_uk": "Очищення екструдера"
+        },
+        {
+          "title": "Accessory",
+          "icon": "",
+          "lines": [
+            {
+              "options": [
+                "auxiliary_fan"
+              ]
+            },
+            {
+              "options": [
+                "fan_direction"
+              ]
+            },
+            {
+              "options": [
+                "support_chamber_temp_control"
+              ]
+            },
+            {
+              "options": [
+                "support_air_filtration"
+              ]
+            },
+            {
+              "options": [
+                "cooling_filter_enabled"
+              ]
+            }
+          ],
+          "title_uk": "Аксесуари"
+        }
+      ],
+      "title_uk": "Базова інформація"
+    },
+    {
+      "title": "Machine gcode",
+      "icon": "cog",
+      "groups": [
+        {
+          "title": "Machine start G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "machine_start_gcode"
+              ]
+            }
+          ],
+          "title_uk": "Початковий G-код машини"
+        },
+        {
+          "title": "Machine end G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "machine_end_gcode"
+              ]
+            }
+          ],
+          "title_uk": "Заключний G-код машини"
+        },
+        {
+          "title": "Printing by object G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "printing_by_object_gcode"
+              ]
+            }
+          ],
+          "title_uk": "Друк за об’єктом за допомогою G-коду"
+        },
+        {
+          "title": "Layer change G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "layer_change_gcode"
+              ]
+            }
+          ],
+          "title_uk": "G-код зміни шару"
+        },
+        {
+          "title": "Time lapse G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "time_lapse_gcode"
+              ]
+            }
+          ],
+          "title_uk": "G-код для часової зйомки"
+        },
+        {
+          "title": "Clumping Detection G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "wrapping_detection_gcode"
+              ]
+            }
+          ],
+          "title_uk": ""
+        },
+        {
+          "title": "Change filament G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "change_filament_gcode"
+              ]
+            }
+          ],
+          "title_uk": "G-code Зміни філаменту"
+        },
+        {
+          "title": "Pause G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "machine_pause_gcode"
+              ]
+            }
+          ],
+          "title_uk": "G-code Паузи"
+        },
+        {
+          "title": "Template Custom G-code",
+          "icon": "param_gcode",
+          "lines": [
+            {
+              "options": [
+                "template_custom_gcode"
+              ]
+            }
+          ],
+          "title_uk": "Користувацький G-код шаблону"
+        }
+      ],
+      "title_uk": "Машинний G-код"
+    },
+    {
+      "title": "Motion ability",
+      "icon": "cog",
+      "groups": [
+        {
+          "title": "",
+          "icon": "",
+          "lines": [],
+          "title_uk": ""
+        },
+        {
+          "title": "Speed limitation",
+          "icon": "param_speed",
+          "lines": [
+            {
+              "options": [
+                "machine_max_speed_x"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_speed_y"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_speed_z"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_speed_e"
+              ]
+            }
+          ],
+          "title_uk": "Обмеження швидкості"
+        },
+        {
+          "title": "Acceleration limitation",
+          "icon": "param_acceleration",
+          "lines": [
+            {
+              "options": [
+                "machine_max_acceleration_x"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_acceleration_y"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_acceleration_z"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_acceleration_e"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_acceleration_extruding"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_acceleration_retracting"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_acceleration_travel"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_force_Y"
+              ]
+            },
+            {
+              "options": [
+                "machine_bed_mass_Y"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_printed_mass"
+              ]
+            }
+          ],
+          "title_uk": "Обмеження прискорення"
+        },
+        {
+          "title": "Jerk limitation",
+          "icon": "",
+          "lines": [
+            {
+              "options": [
+                "machine_max_jerk_x"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_jerk_y"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_jerk_z"
+              ]
+            },
+            {
+              "options": [
+                "machine_max_jerk_e"
+              ]
+            }
+          ],
+          "title_uk": "Обмеження ривка"
+        }
+      ],
+      "title_uk": "Рухова здатність"
+    },
+    {
+      "title": "Extruder",
+      "icon": "empty",
+      "groups": [
+        {
+          "title": "Basic information",
+          "icon": "param_type",
+          "lines": [
+            {
+              "options": [
+                "extruder_type"
+              ]
+            },
+            {
+              "options": [
+                "nozzle_diameter"
+              ]
+            },
+            {
+              "options": [
+                "nozzle_volume"
+              ]
+            },
+            {
+              "options": [
+                "extruder_printable_height"
+              ]
+            },
+            {
+              "options": [
+                "extruder_printable_area"
+              ]
+            }
+          ],
+          "title_uk": "Базова інформація"
+        },
+        {
+          "title": "Layer height limits",
+          "icon": "param_layer_height",
+          "lines": [
+            {
+              "options": [
+                "min_layer_height"
+              ]
+            },
+            {
+              "options": [
+                "max_layer_height"
+              ]
+            }
+          ],
+          "title_uk": "Обмеження висоти шару"
+        },
+        {
+          "title": "Position",
+          "icon": "param_retraction",
+          "lines": [
+            {
+              "options": [
+                "extruder_offset"
+              ]
+            }
+          ],
+          "title_uk": "Позиція"
+        },
+        {
+          "title": "Retraction",
+          "icon": "param_retraction",
+          "lines": [
+            {
+              "options": [
+                "retraction_length"
+              ]
+            },
+            {
+              "options": [
+                "z_hop"
+              ]
+            },
+            {
+              "options": [
+                "retract_lift_above"
+              ]
+            },
+            {
+              "options": [
+                "retract_lift_below"
+              ]
+            },
+            {
+              "options": [
+                "z_hop_types"
+              ]
+            },
+            {
+              "options": [
+                "retraction_speed"
+              ]
+            },
+            {
+              "options": [
+                "deretraction_speed"
+              ]
+            },
+            {
+              "options": [
+                "retract_restart_extra"
+              ]
+            },
+            {
+              "options": [
+                "retraction_minimum_travel"
+              ]
+            },
+            {
+              "options": [
+                "retract_when_changing_layer"
+              ]
+            },
+            {
+              "options": [
+                "wipe"
+              ]
+            },
+            {
+              "options": [
+                "wipe_distance"
+              ]
+            },
+            {
+              "options": [
+                "retract_before_wipe"
+              ]
+            }
+          ],
+          "title_uk": "Втягування"
+        },
+        {
+          "title": "Retraction when switching material",
+          "icon": "param_retraction",
+          "lines": [
+            {
+              "options": [
+                "retract_length_toolchange"
+              ]
+            },
+            {
+              "options": [
+                "retract_restart_extra_toolchange"
+              ]
+            },
+            {
+              "options": [
+                "long_retractions_when_cut"
+              ]
+            },
+            {
+              "options": [
+                "retraction_distances_when_cut"
+              ]
+            }
+          ],
+          "title_uk": "Втягування під час перемикання матеріалу"
+        }
+      ],
+      "title_uk": "Екструдер"
+    },
+    {
+      "title": "Notes",
+      "icon": "note",
+      "groups": [
+        {
+          "title": "Notes",
+          "icon": "note",
+          "lines": [
+            {
+              "options": [
+                "printer_notes"
+              ]
+            }
+          ],
+          "title_uk": "Примітки"
+        }
+      ],
+      "title_uk": "Примітки"
+    }
+  ]
+}

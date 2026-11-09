@@ -1,0 +1,179 @@
+{
+  "_about": "Бюджети продуктивності (docs/TESTING.md). headless — cargo run --release -p perf; gui — tools/bench/gui-bench.sh. Числа записані на Ryzen 7 7840HS / Radeon 780M (RADV), CachyOS, 2026-11-04; на іншій машині перезапиши --update-baseline; метрики Preview (build, кадри орбіти, Preview load) — 2026-11-08 після пакування траєкторії.",
+  "tolerance": 2.0,
+  "floor_ms": 0.05,
+  "headless": {
+    "viewer::local_mesh 1M": {
+      "median_ms": 14.9151,
+      "p95_ms": 16.6669,
+      "samples": 7
+    },
+    "viewer::plates_of 1M": {
+      "median_ms": 0.0,
+      "p95_ms": 0.0001,
+      "samples": 200
+    },
+    "bounds_cache::refresh cold 1M": {
+      "median_ms": 3.2466,
+      "p95_ms": 3.2771,
+      "samples": 15
+    },
+    "bounds_cache::refresh after translate 1M": {
+      "median_ms": 0.0002,
+      "p95_ms": 0.0002,
+      "samples": 200
+    },
+    "Project::translate 1M": {
+      "median_ms": 0.0,
+      "p95_ms": 0.0,
+      "samples": 1000
+    },
+    "Project::plate_bounds 1M (hit-test)": {
+      "median_ms": 0.7685,
+      "p95_ms": 0.7897,
+      "samples": 30
+    },
+    "edit + undo snapshot (checkpoint+translate+record) 1M": {
+      "median_ms": 0.5565,
+      "p95_ms": 0.6118,
+      "samples": 50
+    },
+    "History::undo 1M": {
+      "median_ms": 0.0,
+      "p95_ms": 0.0033,
+      "samples": 40
+    },
+    "Renderer::set_volume_mesh upload 1M": {
+      "median_ms": 28.9993,
+      "p95_ms": 32.2236,
+      "samples": 5
+    },
+    "GPU frame 1M: encode+submit (CPU)": {
+      "median_ms": 0.0752,
+      "p95_ms": 0.0995,
+      "samples": 60
+    },
+    "GPU frame 1M: encode+submit+readback": {
+      "median_ms": 2.1523,
+      "p95_ms": 2.3258,
+      "samples": 60
+    },
+    "drag frame 1M: set_scene_items(1)+frame": {
+      "median_ms": 2.1342,
+      "p95_ms": 2.2306,
+      "samples": 60
+    },
+    "Renderer::set_scene_items(1000) CPU": {
+      "median_ms": 0.0082,
+      "p95_ms": 0.0113,
+      "samples": 200
+    },
+    "Renderer::set_scene_items(1) CPU": {
+      "median_ms": 0.0006,
+      "p95_ms": 0.0007,
+      "samples": 500
+    },
+    "Preview toolpath build (CPU+upload)": {
+      "median_ms": 36.0888,
+      "p95_ms": 37.4847,
+      "samples": 3
+    },
+    "Preview orbit frame: encode+submit+readback": {
+      "median_ms": 3.4366,
+      "p95_ms": 3.689,
+      "samples": 30,
+      "budget_ms": 16.7
+    },
+    "Preview orbit frame, no LOD: encode+submit+readback": {
+      "median_ms": 4.0593,
+      "p95_ms": 4.4534,
+      "samples": 30
+    },
+    "Preview orbit frame after 25 ms idle": {
+      "median_ms": 5.1111,
+      "p95_ms": 5.6954,
+      "samples": 30,
+      "budget_ms": 16.7
+    },
+    "gcode::parse 800k": {
+      "median_ms": 89.6098,
+      "p95_ms": 94.0264,
+      "samples": 9,
+      "max_ms": 125.0
+    },
+    "gcode::parse reference": {
+      "median_ms": 156.827,
+      "p95_ms": 157.9873,
+      "samples": 9,
+      "max_ms": 160.0
+    },
+    "Preview close-up frame from above": {
+      "median_ms": 6.9195,
+      "p95_ms": 11.496,
+      "samples": 20,
+      "budget_ms": 16.7
+    },
+    "Preview load: gcode::parse_file": {
+      "median_ms": 92.1672,
+      "p95_ms": 92.546,
+      "samples": 5
+    },
+    "Preview load: parse_file+build+report": {
+      "median_ms": 132.5061,
+      "p95_ms": 133.5759,
+      "samples": 5
+    }
+  },
+  "gui": {
+    "orbit": {
+      "viewport::frame": {
+        "avg_ms": 3.015,
+        "p95_ms": 4.098,
+        "budget_ms": 16.7
+      },
+      "Workspace::render": {
+        "avg_ms": 0.283,
+        "p95_ms": 0.327,
+        "budget_ms": 8.0
+      }
+    },
+    "drag": {
+      "viewport::frame": {
+        "avg_ms": 2.881,
+        "p95_ms": 3.891,
+        "budget_ms": 16.7
+      },
+      "Workspace::render": {
+        "avg_ms": 0.279,
+        "p95_ms": 0.367,
+        "budget_ms": 8.0
+      },
+      "live_drag_begin": {
+        "budget_ms": 1.0
+      },
+      "refresh_plate_mesh": {
+        "budget_ms": 2.0
+      },
+      "project_changed": {
+        "budget_ms": 2.0
+      }
+    },
+    "preview_orbit": {
+      "viewport::frame": {
+        "budget_ms": 16.7,
+        "avg_ms": 7.129,
+        "p95_ms": 12.919
+      },
+      "Workspace::render": {
+        "budget_ms": 8.0,
+        "avg_ms": 0.3179,
+        "p95_ms": 0.409
+      },
+      "viewer::gpu_frame": {
+        "budget_ms": 16.7,
+        "avg_ms": 7.0888,
+        "p95_ms": 9.255
+      }
+    }
+  }
+}
