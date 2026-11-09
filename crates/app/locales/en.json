@@ -1518,5 +1518,10 @@
   "Матовий (Matte)": "Matte",
   "Базовий PLA": "Basic PLA",
   "Нейлон (PA)": "Nylon (PA)",
-  "Тестовий A1 (фіктивний)": "Test A1 (demo)"
+  "Тестовий A1 (фіктивний)": "Test A1 (demo)",
+  "Новий проєкт": "New project",
+  "Зберегти проєкт…": "Save project…",
+  "Порожня пластина з поточними профілями (Ctrl+N)": "Empty plate with the current profiles (Ctrl+N)",
+  "Новий проєкт, ще не збережено — правий клік: зберегти чи закрити": "New project, not saved yet — right-click to save or close",
+  "ще не збережено": "not saved yet"
 }

@@ -511,6 +511,7 @@ impl Workspace {
                         this.project = Some(project);
                         this.path = Some(target.clone());
                         this.edited = false;
+                        this.untitled = false;
                         this.toast(
                             ToastKind::Success,
                             crate::tr_format!("Збережено {}", crate::shorten_home(&target)),

@@ -96,6 +96,7 @@ impl Workspace {
         self.renderer.set_highlight(None);
         self.model_name = "кубик 20 мм".into();
         self.path = None;
+        self.untitled = false;
         self.plates = vec![viewer::Plate {
             number: 1,
             name: None,
@@ -115,6 +116,34 @@ impl Workspace {
         cx.notify();
     }
 
+    /// «Новий проєкт» (Ctrl+N): порожня пластина з поточними принтером, процесом і
+    /// філаментом, вкладка «Без назви», сторінка «Підготовка». Файлу немає, доки його не
+    /// збережуть: `path` — лише запропоноване ім’я в теці бібліотеки для діалогу збереження.
+    pub fn new_project(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !crate::objects::confirm_discard(self, window, cx, |ws, window, cx| {
+            ws.new_project(window, cx)
+        }) {
+            return;
+        }
+        let mut project = project::Project::default();
+        let plates = project
+            .add_plate("")
+            .and_then(|_| crate::objects::plates_of(&project));
+        let plates = match plates {
+            Ok(plates) => plates,
+            Err(err) => {
+                self.toast(ToastKind::Error, format!("{err:#}"), cx);
+                return;
+            }
+        };
+        let name = crate::i18n::tr("Без назви");
+        let path = untitled_path(&self.library_dir, &name);
+        self.install_open_project(Some(project), plates, path, cx);
+        self.model_name = name.into();
+        self.untitled = true;
+        cx.notify();
+    }
+
     pub fn open_file_menu(&mut self, position: Point<Pixels>, path: PathBuf, cx: &mut Context<Self>) {
         self.file_menu = Some((position, path));
         cx.notify();
@@ -125,6 +154,19 @@ impl Workspace {
             cx.notify();
         }
     }
+}
+
+/// Вільне ім’я для безіменного проєкту: `Без назви.3mf`, `Без назви 2.3mf`… Файл не
+/// створюється; ім’я лише не повинно збігатися з наявним (інакше картка в бібліотеці
+/// виглядала б відкритою, а діалог збереження пропонував би перезапис).
+fn untitled_path(dir: &Path, name: &str) -> PathBuf {
+    (1..)
+        .map(|n| match n {
+            1 => dir.join(format!("{name}.3mf")),
+            n => dir.join(format!("{name} {n}.3mf")),
+        })
+        .find(|p| !p.exists())
+        .unwrap_or_else(|| dir.join(format!("{name}.3mf")))
 }
 
 /// `file://` URI з відсотковим кодуванням (пробіли, `+`, кирилиця).
@@ -210,6 +252,13 @@ pub fn render(ws: &Workspace, cx: &mut Context<Workspace>) -> Option<AnyElement>
         ui::ghost_button(id, Some(icon), label).w_full()
     };
     let (open, reveal_path, copy) = (path.clone(), path.clone(), path.clone());
+    // Меню вкладки відкритого проєкту (не картки бібліотеки): спершу збереження.
+    let current = ws.path.as_deref() == Some(path.as_path());
+    // Безіменного файлу на диску ще немає: відкривати, показувати й копіювати нічого.
+    let on_disk = !(current && ws.untitled);
+    let shortcut = |keys: &'static str| {
+        (div().flex_1(), div().text_xs().text_color(z.text_muted).child(keys))
+    };
     let menu = div()
         .id("file-menu")
         .occlude()
@@ -225,35 +274,54 @@ pub fn render(ws: &Workspace, cx: &mut Context<Workspace>) -> Option<AnyElement>
         .shadow_lg()
         .text_color(z.text)
         .on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_file_menu(cx)))
-        .child(item("file-menu-open", IconName::FolderOpen, "Відкрити").on_click(cx.listener(
-            move |this, _, window, cx| {
-                this.close_file_menu(cx);
-                this.open(open.clone(), window, cx);
-            },
-        )))
-        .child(
-            item("file-menu-reveal", IconName::Folder, "Відкрити розташування файлу").on_click(
-                cx.listener(move |this, _, _, cx| {
+        // «Зберегти проєкт» — та сама дія, що Ctrl+S і кнопка в заголовку (`prompt_save`):
+        // вона завжди питає шлях, тож окремий «Зберегти як…» був би її копією.
+        .when(current && ws.project.is_some(), |menu| {
+            let (gap, keys) = shortcut("Ctrl+S");
+            menu.child(
+                ui::ghost_button("file-menu-save", Some(IconName::Save), "Зберегти проєкт…")
+                    .w_full()
+                    .child(gap)
+                    .child(keys)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.close_file_menu(cx);
+                        this.prompt_save(window, cx);
+                    })),
+            )
+            .when(on_disk, |menu| menu.child(div().h(px(1.)).my(px(3.)).bg(z.border_variant)))
+        })
+        .when(on_disk, |menu| {
+            menu.child(item("file-menu-open", IconName::FolderOpen, "Відкрити").on_click(
+                cx.listener(move |this, _, window, cx| {
                     this.close_file_menu(cx);
-                    if let Err(err) = reveal(&reveal_path) {
-                        this.toast(ToastKind::Error, format!("{err:#}"), cx);
-                    }
+                    this.open(open.clone(), window, cx);
                 }),
-            ),
-        )
-        .child(item("file-menu-copy", IconName::Copy, "Копіювати шлях").on_click(cx.listener(
-            move |this, _, _, cx| {
-                this.close_file_menu(cx);
-                cx.write_to_clipboard(ClipboardItem::new_string(copy.display().to_string()));
-            },
-        )))
+            ))
+            .child(
+                item("file-menu-reveal", IconName::Folder, "Відкрити розташування файлу").on_click(
+                    cx.listener(move |this, _, _, cx| {
+                        this.close_file_menu(cx);
+                        if let Err(err) = reveal(&reveal_path) {
+                            this.toast(ToastKind::Error, format!("{err:#}"), cx);
+                        }
+                    }),
+                ),
+            )
+            .child(item("file-menu-copy", IconName::Copy, "Копіювати шлях").on_click(cx.listener(
+                move |this, _, _, cx| {
+                    this.close_file_menu(cx);
+                    cx.write_to_clipboard(ClipboardItem::new_string(copy.display().to_string()));
+                },
+            )))
+        })
         // Лише для відкритого файлу (меню назви проєкту), не для карток бібліотеки.
-        .when(ws.path.as_deref() == Some(path.as_path()), |menu| {
+        .when(current, |menu| {
+            let (gap, keys) = shortcut("Ctrl+W");
             menu.child(div().h(px(1.)).my(px(3.)).bg(z.border_variant)).child(
                 ui::ghost_button("file-menu-close", Some(IconName::X), "Закрити файл")
                     .w_full()
-                    .child(div().flex_1())
-                    .child(div().text_xs().text_color(z.text_muted).child("Ctrl+W"))
+                    .child(gap)
+                    .child(keys)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.close_file_menu(cx);
                         this.close_file(window, cx);
@@ -401,5 +469,34 @@ mod reveal_tests {
             super::select_arg(Path::new(r"\\?\UNC\nas\share\c.3mf")),
             r#"/select,"\\nas\share\c.3mf""#
         );
+    }
+}
+
+#[cfg(test)]
+mod untitled_tests {
+    #[test]
+    fn untitled_name_skips_existing_files() {
+        let dir = std::env::temp_dir().join(format!("slicenv-untitled-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(super::untitled_path(&dir, "Без назви"), dir.join("Без назви.3mf"));
+        std::fs::write(dir.join("Без назви.3mf"), b"").unwrap();
+        assert_eq!(super::untitled_path(&dir, "Без назви"), dir.join("Без назви 2.3mf"));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Порожній проєкт з «Нового проєкту» зберігається в 3MF і відкривається з тією самою пластиною.
+    #[test]
+    fn empty_project_round_trips_through_3mf() {
+        let dir = std::env::temp_dir().join(format!("slicenv-empty-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut project = project::Project::default();
+        project.add_plate("").unwrap();
+        assert_eq!(crate::objects::plates_of(&project).unwrap().len(), 1);
+        let path = dir.join("Без назви.3mf");
+        project.save_3mf(&path).unwrap();
+        let (loaded, plates) = crate::objects::load_project(&path).unwrap();
+        assert!(loaded.objects.is_empty());
+        assert_eq!(plates.len(), 1);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

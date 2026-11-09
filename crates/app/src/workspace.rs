@@ -188,6 +188,9 @@ pub struct Workspace {
     pub plate_press: Option<viewer::PlateButton>,
     /// Є незбережені зміни розміщення.
     pub edited: bool,
+    /// Новий проєкт «Без назви»: `path` — лише запропоноване ім’я в теці бібліотеки, файлу
+    /// ще немає. Перше збереження питає шлях.
+    pub untitled: bool,
     pub transform_inputs: Option<crate::objects::TransformInputs>,
     pub viewport_bounds: Option<gpui::Bounds<Pixels>>,
     /// Миша рушила після натискання — це обертання камери, а не клік-вибір.
@@ -401,6 +404,7 @@ impl Workspace {
             plate_hover: None,
             plate_press: None,
             edited: false,
+            untitled: false,
             transform_inputs: None,
             scrub: None,
             scrub_bindings: Default::default(),
@@ -685,6 +689,7 @@ impl Workspace {
         self.collapsed_objects.clear();
         self.cut_enabled = false;
         self.edited = false;
+        self.untitled = false;
         self.renderer.set_highlight(None);
         self.model_name = path
             .file_name()
@@ -1154,6 +1159,9 @@ impl Workspace {
                     .text_color(z.text_muted)
                     .tooltip({
                         let tip: SharedString = match &self.path {
+                            Some(_) if self.untitled => crate::i18n::tr(
+                                "Новий проєкт, ще не збережено — правий клік: зберегти чи закрити",
+                            ),
                             Some(path) => crate::tr_format!(
                                 "{} — клацни, щоб перейти до «Підготовки»; правий клік — дії з файлом",
                                 path.display()
@@ -1567,6 +1575,9 @@ impl Render for Workspace {
                 .on_action(cx.listener(|this, _: &crate::CloseFile, window, cx| {
                     this.close_file(window, cx)
                 }))
+                .on_action(cx.listener(|this, _: &crate::NewProject, window, cx| {
+                    this.new_project(window, cx)
+                }))
                 .on_action(
                     cx.listener(|this, _: &crate::OpenFile, window, cx| {
                         this.prompt_open(window, cx)
@@ -1684,9 +1695,11 @@ impl Workspace {
             ui::prop_row(
                 "Файл",
                 value(
-                    self.path
-                        .as_ref()
-                        .map_or_else(|| "—".into(), |p| crate::shorten_home(p)),
+                    match &self.path {
+                        Some(_) if self.untitled => crate::i18n::tr("ще не збережено").to_string(),
+                        Some(p) => crate::shorten_home(p),
+                        None => "—".into(),
+                    },
                 ),
             )
             .into_any_element(),
