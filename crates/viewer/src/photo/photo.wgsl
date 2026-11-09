@@ -31,22 +31,12 @@ struct Globals {
     params2: vec4<f32>,
     // rgb — колір столу (лінійний), w — шорсткість.
     bed_color: vec4<f32>,
+    // x — маска прозорих слотів (0 — прозорих немає: кадр точно як без них), yzw — запас.
+    clear: vec4<u32>,
+    // xy — 1 / розмір кадру в пікселях (UV карти товщини), zw — запас.
+    screen: vec4<f32>,
 }
 
-struct Material {
-    // rgb — колір (лінійний), a — напівпрозорість.
-    base: vec4<f32>,
-    // roughness, metallic, specular, clearcoat
-    p0: vec4<f32>,
-    // clearcoat roughness, sheen, anisotropy, emission
-    p1: vec4<f32>,
-    // pattern, scale, strength, —
-    p2: vec4<f32>,
-    // rgb — другий колір візерунка (лінійний)
-    p3: vec4<f32>,
-}
-
-const MAX_MATERIALS: u32 = 32u;
 const SPEC_MIPS: f32 = 5.0;
 
 const PATTERN_MARBLE: u32 = 1u;
@@ -62,6 +52,10 @@ const PATTERN_WOOD: u32 = 4u;
 @group(0) @binding(5) var shadow_map: texture_depth_2d;
 @group(0) @binding(6) var shadow_sampler: sampler_comparison;
 @group(0) @binding(7) var occupancy_map: texture_depth_2d;
+// Пропускання прозорих від ключового світла (shadow.wgsl, `fs_transmit`): rgb — оптична
+// густина, a — найдальша глибина; друга — найближча глибина.
+@group(0) @binding(8) var transmit_map: texture_2d<f32>;
+@group(0) @binding(9) var transmit_near: texture_2d<f32>;
 
 // ---- шум ----
 
@@ -224,6 +218,22 @@ fn shadow_at(world: vec3<f32>, n: vec3<f32>) -> f32 {
     return lit / 12.0;
 }
 
+// Кольорова тінь від прозорих: частка світла, що дійшла крізь пластик до точки `world`.
+// Частина оптичної густини, що лежить між світлом і точкою, оцінюється за положенням точки
+// між найближчою й найдальшою глибиною прозорого вздовж променя світла (пластик між ними
+// вважається рівномірним): освітлений бік деталі — майже без тіні, дальній і стіл — уся.
+fn transmit_at(world: vec3<f32>) -> vec3<f32> {
+    let p = globals.shadow * vec4<f32>(world, 1.0);
+    if any(p.xy < vec2<f32>(0.0)) || any(p.xy > vec2<f32>(1.0)) {
+        return vec3<f32>(1.0);
+    }
+    let density = textureSampleLevel(transmit_map, cube_sampler, p.xy, 0.0);
+    let near = textureSampleLevel(transmit_near, cube_sampler, p.xy, 0.0).r;
+    let bias = globals.params.y * 4.0;
+    let part = clamp((p.z - near - bias) / max(density.a - near, 1e-4), 0.0, 1.0);
+    return exp(-density.rgb * part);
+}
+
 // Контактна тінь: частка неба, яку закриває модель, з карти висот згори.
 fn contact_ao(world: vec3<f32>) -> f32 {
     let p = globals.occupancy * vec4<f32>(world, 1.0);
@@ -269,6 +279,8 @@ struct Surface {
     tangent: vec3<f32>,
     ao: f32,
     shadow: f32,
+    // Колір світла, що пройшло крізь прозорий пластик (кольорова тінь); 1 — без нього.
+    tint: vec3<f32>,
 }
 
 fn default_surface(base: vec3<f32>, roughness: f32) -> Surface {
@@ -286,6 +298,7 @@ fn default_surface(base: vec3<f32>, roughness: f32) -> Surface {
     s.tangent = vec3<f32>(1.0, 0.0, 0.0);
     s.ao = 1.0;
     s.shadow = 1.0;
+    s.tint = vec3<f32>(1.0);
     return s;
 }
 
@@ -339,7 +352,7 @@ fn shade(n_in: vec3<f32>, v: vec3<f32>, s: Surface) -> vec3<f32> {
     let fc = f_schlick1(0.04, vh) * s.clearcoat;
     let coat = d_ggx(nh, ca) * (0.25 / max(vh * vh, 1e-3)) * fc;
     direct = direct * (1.0 - fc) + vec3<f32>(coat * nl);
-    direct *= light * s.shadow;
+    direct *= light * s.shadow * s.tint;
 
     // --- оточення ---
     var bent = n;
@@ -360,7 +373,7 @@ fn shade(n_in: vec3<f32>, v: vec3<f32>, s: Surface) -> vec3<f32> {
     // Закривання відблиску (Lagarde): у западинах між шарами відблиск теж гасне.
     let spec_ao = clamp(pow(nv + s.ao, exp2(-16.0 * a - 1.0)) - 1.0 + s.ao, 0.0, 1.0);
     // Тінь ключового світла трохи гасить і оточення: софтбокс — частина того ж оточення.
-    let env_shadow = mix(0.55, 1.0, s.shadow);
+    let env_shadow = mix(0.55, 1.0, s.shadow * (s.tint.r + s.tint.g + s.tint.b) / 3.0);
     var ambient = diffuse_color * irr * s.ao + prefiltered * fr * spec_ao * env_shadow;
     ambient += sheen_color * irr * 0.25 * s.ao;
     let fc_env = f_schlick1(0.04, nv) * s.clearcoat;
@@ -374,7 +387,7 @@ fn shade(n_in: vec3<f32>, v: vec3<f32>, s: Surface) -> vec3<f32> {
 // ---- валики ----
 
 struct BeadOut {
-    @builtin(position) clip: vec4<f32>,
+    @builtin(position) @invariant clip: vec4<f32>,
     @location(0) world: vec3<f32>,
     @location(1) @interpolate(perspective, centroid) coord: vec3<f32>,
     @location(2) n_side: vec3<f32>,
@@ -383,11 +396,12 @@ struct BeadOut {
     @location(5) n_far: vec3<f32>,
     @location(6) @interpolate(flat) material: vec2<u32>,
     @location(7) @interpolate(flat) half: vec2<f32>,
+    // Шлях променя крізь цей валик, мм (clear.wgsl).
+    @location(8) chord: f32,
 }
 
-@vertex
-fn vs_bead(@builtin(vertex_index) vertex: u32) -> BeadOut {
-    let b = bead_vertex(vertex, globals.view_proj, vec4<f32>(globals.eye.xyz, 0.0), globals.view);
+fn bead_out(vertex: u32, pick: u32) -> BeadOut {
+    let b = bead_vertex(vertex, globals.view_proj, vec4<f32>(globals.eye.xyz, 0.0), globals.view, vec2<u32>(pick, globals.clear.x));
     var out: BeadOut;
     out.clip = b.clip;
     out.world = b.world;
@@ -398,7 +412,19 @@ fn vs_bead(@builtin(vertex_index) vertex: u32) -> BeadOut {
     out.n_far = b.n_far;
     out.material = b.material;
     out.half = b.half;
+    out.chord = b.chord;
     return out;
+}
+
+@vertex
+fn vs_bead(@builtin(vertex_index) vertex: u32) -> BeadOut {
+    return bead_out(vertex, BEADS_ALL);
+}
+
+// Непрозорі слоти, коли в кадрі є й прозорі (ті малює clear.wgsl).
+@vertex
+fn vs_bead_opaque(@builtin(vertex_index) vertex: u32) -> BeadOut {
+    return bead_out(vertex, BEADS_OPAQUE);
 }
 
 // ---- профіль валика ----
@@ -433,8 +459,17 @@ fn relief_lod(bead_px: f32) -> f32 {
     return smoothstep(1.6, 7.0, bead_px);
 }
 
-@fragment
-fn fs_bead(in: BeadOut) -> @location(0) vec4<f32> {
+// Поверхня валика в пікселі: нормаль, матеріал, візерунок, тінь. Спільне для непрозорого
+// (`fs_bead`) і прозорого (`fs_clear`) проходів.
+struct BeadShading {
+    n: vec3<f32>,
+    v: vec3<f32>,
+    s: Surface,
+    sparkle: vec3<f32>,
+    alpha: f32,
+}
+
+fn bead_shading(in: BeadOut) -> BeadShading {
     // Нормаль і похідні — до discard (похідні лише в рівномірному потоці керування).
     let footprint = fwidth(in.coord.x);
     let world_fw = length(fwidth(in.world));
@@ -577,8 +612,24 @@ fn fs_bead(in: BeadOut) -> @location(0) vec4<f32> {
         alpha = 0.35;
     }
 
-    let color = shade(n, v, s) + sparkle;
-    return vec4<f32>(tonemap(color), alpha);
+    var out: BeadShading;
+    out.n = n;
+    out.v = v;
+    out.s = s;
+    out.sparkle = sparkle;
+    out.alpha = alpha;
+    return out;
+}
+
+@fragment
+fn fs_bead(in: BeadOut) -> @location(0) vec4<f32> {
+    let b = bead_shading(in);
+    var s = b.s;
+    if globals.clear.x != 0u {
+        s.tint = transmit_at(in.world);
+    }
+    let color = shade(b.n, b.v, s) + b.sparkle;
+    return vec4<f32>(tonemap(color), b.alpha);
 }
 
 // ---- стіл і підлога ----
@@ -614,6 +665,9 @@ fn fs_bed(in: MeshOut, @builtin(front_facing) front: bool) -> @location(0) vec4<
     var s = default_surface(globals.bed_color.rgb * (0.9 + 0.2 * grain2), globals.bed_color.w + (grain - 0.5) * 0.1);
     s.specular = 0.45;
     s.shadow = shadow_at(in.world, n);
+    if globals.clear.x != 0u {
+        s.tint = transmit_at(in.world);
+    }
     s.ao = select(1.0, contact_ao(in.world), n.z > 0.5);
     return vec4<f32>(tonemap(shade(n, v, s)), 1.0);
 }
@@ -626,6 +680,9 @@ fn fs_floor(in: MeshOut) -> @location(0) vec4<f32> {
     var s = default_surface(vec3<f32>(0.42), 0.62);
     s.specular = 0.35;
     s.shadow = shadow_at(in.world, n);
+    if globals.clear.x != 0u {
+        s.tint = transmit_at(in.world);
+    }
     s.ao = contact_ao(in.world);
     let lit = shade(n, v, s);
     let dist = length(in.world.xy - globals.floor.xy);

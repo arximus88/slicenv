@@ -38,6 +38,14 @@ const SPEC_MIPS: u32 = 6;
 const IRR_SIZE: u32 = 32;
 const SHADOW_SIZE: u32 = 2048;
 const OCCUPANCY_SIZE: u32 = 512;
+/// Карта пропускання прозорих від ключового світла (кольорова тінь).
+const TRANSMIT_SIZE: u32 = 1024;
+const TRANSMIT_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+const TRANSMIT_NEAR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
+/// Товщина прозорого вздовж променя ока (мм), на півроздільності кадру.
+const THICKNESS_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R16Float;
+/// Розсіяння σs = `haze` · це / `absorption_distance` (1/мм).
+const HAZE_SCALE: f32 = 2.0;
 const HDR_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 const SHADOW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
@@ -111,19 +119,24 @@ struct GpuMaterial {
     p1: [f32; 4],
     p2: [f32; 4],
     p3: [f32; 4],
+    p4: [f32; 4],
 }
 
 impl From<&PhotoMaterial> for GpuMaterial {
     fn from(m: &PhotoMaterial) -> Self {
         let lin = |c: [f32; 3]| c.map(srgb_to_linear);
-        let [r, g, b] = lin(m.color);
+        // Для прозорих — пропускання шару `absorption_distance` (з компенсацією пастельних).
+        let [r, g, b] = lin(m.shading_color());
         let [pr, pg, pb] = lin(m.pattern_color);
+        let [ar, ag, ab] = m.absorption();
+        let scatter = if m.is_transparent() { m.haze * HAZE_SCALE / m.absorption_distance } else { 0.0 };
         Self {
             base: [r, g, b, m.translucency],
             p0: [m.roughness, m.metallic, m.specular, m.clearcoat],
             p1: [m.clearcoat_roughness, m.sheen, m.anisotropy, m.emission],
-            p2: [m.pattern.id() as f32, m.pattern_scale, m.pattern_strength, 0.0],
-            p3: [pr, pg, pb, 0.0],
+            p2: [m.pattern.id() as f32, m.pattern_scale, m.pattern_strength, m.transmission],
+            p3: [pr, pg, pb, scatter],
+            p4: [ar, ag, ab, m.absorption_distance],
         }
     }
 }
@@ -143,6 +156,8 @@ struct Globals {
     params: [f32; 4],
     params2: [f32; 4],
     bed_color: [f32; 4],
+    clear: [u32; 4],
+    screen: [f32; 4],
 }
 
 #[repr(C)]
@@ -151,6 +166,20 @@ struct ShadowPass {
     view_proj: [[f32; 4]; 4],
     dir: [f32; 4],
     view: [u32; 4],
+    /// Фільтр валиків (`BEADS_*` у bead.wgsl) і маска прозорих слотів.
+    pick: [u32; 4],
+}
+
+/// Фільтр валиків проходу (`BEADS_*` у bead.wgsl).
+const BEADS_ALL: u32 = 0;
+const BEADS_OPAQUE: u32 = 1;
+const BEADS_CLEAR: u32 = 2;
+
+/// Ціль товщини прозорого під поточний розмір кадру.
+struct Thickness {
+    size: (u32, u32),
+    view: wgpu::TextureView,
+    bind: wgpu::BindGroup,
 }
 
 #[repr(C)]
@@ -227,6 +256,8 @@ struct ShadowKey {
     visible: Range<u32>,
     supports: SupportView,
     bounds: [f32; 6],
+    /// Матеріали (від прозорості й кольору залежить кольорова тінь).
+    materials: Vec<[u32; 4]>,
 }
 
 /// Валики для одного проходу: прив’язка шматка й діапазон вершин у ньому.
@@ -264,6 +295,19 @@ pub(crate) struct Photo {
     background_pipeline: wgpu::RenderPipeline,
     line_pipeline: wgpu::RenderPipeline,
     shadow_pipeline: wgpu::RenderPipeline,
+    /// Непрозорі валики, коли є й прозорі.
+    bead_opaque_pipeline: wgpu::RenderPipeline,
+    /// Прозорі: глибина найближчих, потім колір зі змішуванням.
+    clear_depth_pipeline: wgpu::RenderPipeline,
+    clear_pipeline: wgpu::RenderPipeline,
+    thickness_pipeline: wgpu::RenderPipeline,
+    thickness_layout: wgpu::BindGroupLayout,
+    thickness: Option<Thickness>,
+    transmit_pipeline: wgpu::RenderPipeline,
+    transmit_pass: wgpu::Buffer,
+    transmit_bind: wgpu::BindGroup,
+    transmit_view: wgpu::TextureView,
+    transmit_near_view: wgpu::TextureView,
     decal_pipeline: wgpu::RenderPipeline,
     decal_globals: wgpu::Buffer,
     decal_bind: wgpu::BindGroup,
@@ -279,6 +323,38 @@ pub(crate) struct Photo {
     /// Байти текстур і буферів режиму (оцінка VRAM).
     bytes: u64,
     bake_time: Duration,
+}
+
+/// Вихід прозорого з dual-source blending: колір і множник того, що за деталлю, на канал.
+const CLEAR_DUAL_SOURCE: &str = "
+struct ClearOut {
+    @location(0) @blend_src(0) color: vec4<f32>,
+    @location(0) @blend_src(1) transmit: vec4<f32>,
+}
+
+@fragment
+fn fs_clear(in: BeadOut) -> ClearOut {
+    let c = clear_shade(in);
+    var out: ClearOut;
+    out.color = vec4<f32>(tonemap(c.color), 1.0);
+    out.transmit = vec4<f32>(c.transmit, 0.0);
+    return out;
+}
+";
+
+/// Біт на кожен прозорий слот; слоти без власного матеріалу беруть останній.
+fn transparent_mask(materials: &[PhotoMaterial]) -> u32 {
+    let last = materials.last().is_some_and(PhotoMaterial::is_transparent);
+    (0..MAX_MATERIALS).fold(0, |mask, i| {
+        let clear = materials.get(i).map_or(last, PhotoMaterial::is_transparent);
+        mask | (u32::from(clear) << i)
+    })
+}
+
+/// Ключ матеріалу для тіньових карт (бітово).
+fn gpu_key(m: &PhotoMaterial) -> [u32; 4] {
+    let g = GpuMaterial::from(m);
+    [g.p2[3], g.p4[0], g.p4[1], g.p4[2]].map(f32::to_bits)
 }
 
 /// Збирає шейдер із частин: спільний код спереду.
@@ -489,6 +565,22 @@ fn bake_ibl(device: &wgpu::Device, queue: &wgpu::Queue) -> (wgpu::Texture, wgpu:
     (spec, irr)
 }
 
+/// Колірна ціль, яку потім читає шейдер.
+fn color_texture(device: &wgpu::Device, label: &str, (width, height): (u32, u32), format: wgpu::TextureFormat) -> wgpu::TextureView {
+    device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        })
+        .create_view(&Default::default())
+}
+
 fn depth_texture(device: &wgpu::Device, label: &str, size: u32) -> wgpu::TextureView {
     device
         .create_texture(&wgpu::TextureDescriptor {
@@ -520,6 +612,10 @@ impl Photo {
         let (spec, irr) = bake_ibl(device, queue);
         let shadow_view = depth_texture(device, "photo_shadow", SHADOW_SIZE);
         let occupancy_view = depth_texture(device, "photo_occupancy", OCCUPANCY_SIZE);
+        let transmit_size = (TRANSMIT_SIZE, TRANSMIT_SIZE);
+        let transmit_view = color_texture(device, "photo_transmit", transmit_size, TRANSMIT_FORMAT);
+        let transmit_near_view = color_texture(device, "photo_transmit_near", transmit_size, TRANSMIT_NEAR_FORMAT);
+        let dual_source = device.features().contains(wgpu::Features::DUAL_SOURCE_BLENDING);
 
         let globals = uniform_buffer(device, "photo_globals", size_of::<Globals>());
         let materials = uniform_buffer(device, "photo_materials", size_of::<GpuMaterial>() * MAX_MATERIALS);
@@ -545,6 +641,8 @@ impl Photo {
                     count: None,
                 },
                 texture_entry(7, wgpu::TextureViewDimension::D2, wgpu::TextureSampleType::Depth),
+                texture_entry(8, wgpu::TextureViewDimension::D2, float),
+                texture_entry(9, wgpu::TextureViewDimension::D2, float),
             ],
         });
         let cube_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -574,6 +672,8 @@ impl Photo {
                 wgpu::BindGroupEntry { binding: 5, resource: wgpu::BindingResource::TextureView(&shadow_view) },
                 wgpu::BindGroupEntry { binding: 6, resource: wgpu::BindingResource::Sampler(&shadow_sampler) },
                 wgpu::BindGroupEntry { binding: 7, resource: wgpu::BindingResource::TextureView(&occupancy_view) },
+                wgpu::BindGroupEntry { binding: 8, resource: wgpu::BindingResource::TextureView(&transmit_view) },
+                wgpu::BindGroupEntry { binding: 9, resource: wgpu::BindingResource::TextureView(&transmit_near_view) },
             ],
         });
 
@@ -611,7 +711,7 @@ impl Photo {
         let pipeline = |s: Spec<'_>| {
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
                 label: Some(s.label),
-                layout: Some(if s.vs == "vs_bead" { &bead_layout } else { &scene_layout }),
+                layout: Some(if s.vs.starts_with("vs_bead") { &bead_layout } else { &scene_layout }),
                 vertex: wgpu::VertexState {
                     module: &shader,
                     entry_point: Some(s.vs),
@@ -659,6 +759,7 @@ impl Photo {
         };
         let tri = wgpu::PrimitiveTopology::TriangleList;
         let bead_pipeline = pipeline(Spec { label: "photo_bead", vs: "vs_bead", fs: "fs_bead", buffer: None, topology: tri, depth: true, coverage: true });
+        let bead_opaque_pipeline = pipeline(Spec { label: "photo_bead_opaque", vs: "vs_bead_opaque", fs: "fs_bead", buffer: None, topology: tri, depth: true, coverage: true });
         let bed_pipeline = pipeline(Spec { label: "photo_bed", vs: "vs_mesh", fs: "fs_bed", buffer: Some(mesh_layout()), topology: tri, depth: true, coverage: false });
         let floor_pipeline = pipeline(Spec { label: "photo_floor", vs: "vs_mesh", fs: "fs_floor", buffer: Some(mesh_layout()), topology: tri, depth: true, coverage: false });
         let background_pipeline = pipeline(Spec { label: "photo_background", vs: "vs_screen", fs: "fs_background", buffer: None, topology: tri, depth: false, coverage: false });
@@ -679,7 +780,7 @@ impl Photo {
         // Тіньові проходи: лише глибина, стандартна (не обернена), з нахиловим зсувом.
         let pass_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("photo_shadow_pass"),
-            entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX)],
+            entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX), uniform_entry(1, wgpu::ShaderStages::FRAGMENT)],
         });
         let shadow_shader = module(
             device,
@@ -727,12 +828,166 @@ impl Photo {
             let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 label: Some(label),
                 layout: &pass_layout,
-                entries: &[wgpu::BindGroupEntry { binding: 0, resource: buffer.as_entire_binding() }],
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: buffer.as_entire_binding() },
+                    wgpu::BindGroupEntry { binding: 1, resource: materials.as_entire_binding() },
+                ],
             });
             (buffer, bind)
         };
         let (shadow_pass, shadow_bind) = pass("photo_shadow_pass");
         let (occupancy_pass, occupancy_bind) = pass("photo_occupancy_pass");
+        let (transmit_pass, transmit_bind) = pass("photo_transmit_pass");
+        // Пропускання: оптична густина додається, найдальша (альфа) і найближча глибини —
+        // максимум і мінімум.
+        let add = wgpu::BlendComponent {
+            src_factor: wgpu::BlendFactor::One,
+            dst_factor: wgpu::BlendFactor::One,
+            operation: wgpu::BlendOperation::Add,
+        };
+        let extreme = |operation| wgpu::BlendComponent { operation, ..add };
+        let transmit_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("photo_transmit"),
+            layout: Some(&shadow_layout),
+            vertex: wgpu::VertexState {
+                module: &shadow_shader,
+                entry_point: Some("vs_transmit"),
+                compilation_options: Default::default(),
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shadow_shader,
+                entry_point: Some("fs_transmit"),
+                compilation_options: Default::default(),
+                targets: &[
+                    Some(wgpu::ColorTargetState {
+                        format: TRANSMIT_FORMAT,
+                        blend: Some(wgpu::BlendState { color: add, alpha: extreme(wgpu::BlendOperation::Max) }),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    }),
+                    Some(wgpu::ColorTargetState {
+                        format: TRANSMIT_NEAR_FORMAT,
+                        blend: Some(wgpu::BlendState {
+                            color: extreme(wgpu::BlendOperation::Min),
+                            alpha: extreme(wgpu::BlendOperation::Min),
+                        }),
+                        write_mask: wgpu::ColorWrites::RED,
+                    }),
+                ],
+            }),
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+
+        // Прозорі. Модуль із dual-source — лише коли пристрій його вміє (директива `enable`
+        // інакше не скомпілюється).
+        let clear_parts = [
+            include_str!("photo/env.wgsl"),
+            include_str!("photo/bead.wgsl"),
+            include_str!("photo/photo.wgsl"),
+            include_str!("photo/clear.wgsl"),
+        ];
+        let clear_shader = if dual_source {
+            let mut parts = vec!["enable dual_source_blending;\n"];
+            parts.extend(clear_parts);
+            parts.push(CLEAR_DUAL_SOURCE);
+            module(device, "photo_clear", &parts)
+        } else {
+            module(device, "photo_clear", &clear_parts)
+        };
+        let thickness_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("photo_thickness"),
+            entries: &[texture_entry(0, wgpu::TextureViewDimension::D2, float)],
+        });
+        let clear_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("photo_clear"),
+            bind_group_layouts: &[Some(&layout), Some(toolpath_layout), Some(&thickness_layout)],
+            ..Default::default()
+        });
+        struct Clear<'a> {
+            label: &'a str,
+            layout: &'a wgpu::PipelineLayout,
+            vs: &'a str,
+            fs: &'a str,
+            target: wgpu::ColorTargetState,
+            depth: Option<(bool, wgpu::CompareFunction)>,
+            samples: u32,
+        }
+        let clear_pipeline_of = |c: Clear<'_>| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(c.label),
+                layout: Some(c.layout),
+                vertex: wgpu::VertexState {
+                    module: &clear_shader,
+                    entry_point: Some(c.vs),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &clear_shader,
+                    entry_point: Some(c.fs),
+                    compilation_options: Default::default(),
+                    targets: &[Some(c.target)],
+                }),
+                primitive: Default::default(),
+                depth_stencil: c.depth.map(|(write, compare)| wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(write),
+                    depth_compare: Some(compare),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState { count: c.samples, ..Default::default() },
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let frame_target = |blend, write_mask| wgpu::ColorTargetState { format: COLOR_FORMAT, blend, write_mask };
+        let thickness_pipeline = clear_pipeline_of(Clear {
+            label: "photo_thickness",
+            layout: &bead_layout,
+            vs: "vs_thick",
+            fs: "fs_thick",
+            target: wgpu::ColorTargetState {
+                format: THICKNESS_FORMAT,
+                blend: Some(wgpu::BlendState { color: add, alpha: add }),
+                write_mask: wgpu::ColorWrites::RED,
+            },
+            depth: None,
+            samples: 1,
+        });
+        let clear_depth_pipeline = clear_pipeline_of(Clear {
+            label: "photo_clear_depth",
+            layout: &clear_layout,
+            vs: "vs_bead_clear",
+            fs: "fs_bead_depth",
+            target: frame_target(None, wgpu::ColorWrites::empty()),
+            depth: Some((true, wgpu::CompareFunction::GreaterEqual)),
+            samples: SAMPLES,
+        });
+        // Лише найближча прозора поверхня: глибина рівна записаній попереднім проходом.
+        let clear_blend = if dual_source {
+            let over = wgpu::BlendComponent {
+                src_factor: wgpu::BlendFactor::One,
+                dst_factor: wgpu::BlendFactor::Src1,
+                operation: wgpu::BlendOperation::Add,
+            };
+            wgpu::BlendState { color: over, alpha: over }
+        } else {
+            wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING
+        };
+        let clear_pipeline = clear_pipeline_of(Clear {
+            label: "photo_clear",
+            layout: &clear_layout,
+            vs: "vs_bead_clear",
+            fs: if dual_source { "fs_clear" } else { "fs_clear_alpha" },
+            target: frame_target(Some(clear_blend), wgpu::ColorWrites::ALL),
+            depth: Some((false, wgpu::CompareFunction::GreaterEqual)),
+            samples: SAMPLES,
+        });
 
         // Написи столу — тим самим шейдером, що в Preview, але у свою прив’язку globals
         // (матриця зсунута на активну пластину, яскравість приглушена).
@@ -752,6 +1007,7 @@ impl Photo {
             + cube_bytes(IRR_SIZE, 1)
             + u64::from(SHADOW_SIZE).pow(2) * 4
             + u64::from(OCCUPANCY_SIZE).pow(2) * 4
+            + u64::from(TRANSMIT_SIZE).pow(2) * (8 + 2)
             + (size_of::<Globals>() + size_of::<GpuMaterial>() * MAX_MATERIALS) as u64;
         // Чекаємо запікання: вхід у режим — одноразова пауза в кілька мс, а час потрібен для
         // звіту продуктивності.
@@ -767,6 +1023,17 @@ impl Photo {
             background_pipeline,
             line_pipeline,
             shadow_pipeline,
+            bead_opaque_pipeline,
+            clear_depth_pipeline,
+            clear_pipeline,
+            thickness_pipeline,
+            thickness_layout,
+            thickness: None,
+            transmit_pipeline,
+            transmit_pass,
+            transmit_bind,
+            transmit_view,
+            transmit_near_view,
             decal_pipeline,
             decal_globals,
             decal_bind,
@@ -793,6 +1060,7 @@ impl Photo {
     /// Оцінка VRAM ресурсів режиму, байти (без цілей кадру — вони спільні з Preview).
     pub(super) fn bytes(&self) -> u64 {
         self.bytes
+            + self.thickness.as_ref().map_or(0, |t| u64::from(t.size.0) * u64::from(t.size.1) * 2)
             + self.bed_mesh.as_ref().map_or(0, |m| m.0.size())
             + self.floor_mesh.as_ref().map_or(0, |m| m.0.size())
     }
@@ -807,6 +1075,36 @@ impl Photo {
         }
         self.settings = settings;
         self.write_materials(queue);
+    }
+
+    /// Біт на кожен прозорий слот (`Segment::tool`); слоти без власного матеріалу беруть
+    /// останній (як `write_materials`).
+    fn transparent_mask(&self) -> u32 {
+        transparent_mask(&self.settings.materials)
+    }
+
+    /// Чи є в кадрі прозорі (окремі проходи товщини й пропускання).
+    pub(super) fn has_transparent(&self) -> bool {
+        self.transparent_mask() != 0
+    }
+
+    /// Ціль товщини під розмір кадру (півроздільність); без прозорих — звільняється.
+    fn ensure_thickness(&mut self, device: &wgpu::Device, width: u32, height: u32) {
+        if !self.has_transparent() {
+            self.thickness = None;
+            return;
+        }
+        let size = (width.div_ceil(2).max(1), height.div_ceil(2).max(1));
+        if self.thickness.as_ref().is_some_and(|t| t.size == size) {
+            return;
+        }
+        let view = color_texture(device, "photo_thickness", size, THICKNESS_FORMAT);
+        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("photo_thickness"),
+            layout: &self.thickness_layout,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) }],
+        });
+        self.thickness = Some(Thickness { size, view, bind });
     }
 
     fn write_materials(&self, queue: &wgpu::Queue) {
@@ -879,6 +1177,8 @@ impl Photo {
     /// застаріли й їх треба перемалювати в цьому кадрі.
     pub(super) fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, frame: &PhotoView<'_>) -> bool {
         let floor = self.ensure_floor(device, frame.bounds);
+        self.ensure_thickness(device, frame.width, frame.height);
+        let mask = self.transparent_mask();
         let aspect = frame.width as f32 / frame.height.max(1) as f32;
         let view_proj = frame.camera.view_proj(aspect);
         let eye = frame.camera.eye();
@@ -907,6 +1207,8 @@ impl Photo {
             params: [self.settings.exposure, 1.0 / SHADOW_SIZE as f32, rig.texel_mm, rig.occupancy_top],
             params2: [rig.occupancy_depth, rig.occupancy_mm[0], rig.occupancy_mm[1], 0.0],
             bed_color: [0.05, 0.05, 0.056, 0.55],
+            clear: [mask, 0, 0, 0],
+            screen: [1.0 / frame.width.max(1) as f32, 1.0 / frame.height.max(1) as f32, 0.0, 0.0],
         };
         queue.write_buffer(&self.globals, 0, bytemuck::bytes_of(&globals));
         let decal = DecalGlobals {
@@ -921,19 +1223,24 @@ impl Photo {
             visible: frame.visible.clone(),
             supports: self.settings.supports,
             bounds: [lo.x, lo.y, lo.z, hi.x, hi.y, hi.z],
+            materials: self.settings.materials.iter().map(gpu_key).collect(),
         });
         let mut current = self.shadow_key.lock().unwrap_or_else(|e| e.into_inner());
         if *current == key && key.is_some() {
             return false;
         }
         *current = key;
-        let pass = |vp: Mat4, dir: Vec3| ShadowPass {
+        let pass = |vp: Mat4, dir: Vec3, beads: u32| ShadowPass {
             view_proj: vp.to_cols_array_2d(),
             dir: [dir.x, dir.y, dir.z, 1.0],
             view,
+            pick: [beads, mask, 0, 0],
         };
-        queue.write_buffer(&self.shadow_pass, 0, bytemuck::bytes_of(&pass(shadow_vp, KEY_LIGHT)));
-        queue.write_buffer(&self.occupancy_pass, 0, bytemuck::bytes_of(&pass(occupancy_vp, Vec3::Z)));
+        // З прозорими тіньова карта — лише від непрозорих; прозорі дають карту пропускання.
+        let shadow_beads = if mask == 0 { BEADS_ALL } else { BEADS_OPAQUE };
+        queue.write_buffer(&self.shadow_pass, 0, bytemuck::bytes_of(&pass(shadow_vp, KEY_LIGHT, shadow_beads)));
+        queue.write_buffer(&self.occupancy_pass, 0, bytemuck::bytes_of(&pass(occupancy_vp, Vec3::Z, BEADS_ALL)));
+        queue.write_buffer(&self.transmit_pass, 0, bytemuck::bytes_of(&pass(shadow_vp, KEY_LIGHT, BEADS_CLEAR)));
         true
     }
 
@@ -963,6 +1270,54 @@ impl Photo {
                 pass.draw(range.clone(), 0..1);
             }
         }
+        if !self.has_transparent() {
+            return;
+        }
+        let target = |view, clear| {
+            Some(wgpu::RenderPassColorAttachment {
+                view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(clear), store: wgpu::StoreOp::Store },
+            })
+        };
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("photo_transmit"),
+            color_attachments: &[
+                target(&self.transmit_view, wgpu::Color::TRANSPARENT),
+                target(&self.transmit_near_view, wgpu::Color::WHITE),
+            ],
+            ..Default::default()
+        });
+        pass.set_pipeline(&self.transmit_pipeline);
+        pass.set_bind_group(0, &self.transmit_bind, &[]);
+        for (chunk, range) in draws {
+            pass.set_bind_group(1, *chunk, &[]);
+            pass.draw(range.clone(), 0..1);
+        }
+    }
+
+    /// Товщина прозорого вздовж променів ока (перед основним проходом, щокадру).
+    pub(super) fn encode_thickness(&self, encoder: &mut wgpu::CommandEncoder, draws: &BeadDraws<'_>) {
+        let Some(thickness) = &self.thickness else {
+            return;
+        };
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("photo_thickness"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &thickness.view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
+            })],
+            ..Default::default()
+        });
+        pass.set_pipeline(&self.thickness_pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
+        for (chunk, range) in draws {
+            pass.set_bind_group(1, *chunk, &[]);
+            pass.draw(range.clone(), 0..1);
+        }
     }
 
     /// Основний прохід у вже відкритий render pass рендерера.
@@ -991,11 +1346,26 @@ impl Photo {
             }
         }
 
+        let clear = self.thickness.as_ref().filter(|_| self.has_transparent());
         if !frame.draws.is_empty() {
-            pass.set_pipeline(&self.bead_pipeline);
+            pass.set_pipeline(if clear.is_some() { &self.bead_opaque_pipeline } else { &self.bead_pipeline });
             for (chunk, range) in &frame.draws {
                 pass.set_bind_group(1, *chunk, &[]);
                 pass.draw(range.clone(), 0..1);
+            }
+        }
+        if let Some(thickness) = clear
+            && !frame.draws.is_empty()
+        {
+            // Спершу глибина найближчих прозорих валиків, потім колір лише для них: інакше
+            // дальній валик, намальований раніше за ближчий, змішався б двічі.
+            pass.set_bind_group(2, &thickness.bind, &[]);
+            for pipeline in [&self.clear_depth_pipeline, &self.clear_pipeline] {
+                pass.set_pipeline(pipeline);
+                for (chunk, range) in &frame.draws {
+                    pass.set_bind_group(1, *chunk, &[]);
+                    pass.draw(range.clone(), 0..1);
+                }
             }
         }
         if self.settings.travel
@@ -1047,9 +1417,9 @@ mod tests {
 
     #[test]
     fn gpu_material_is_linear_and_packed_for_wgsl() {
-        assert_eq!(size_of::<GpuMaterial>(), 80);
+        assert_eq!(size_of::<GpuMaterial>(), 96);
         assert_eq!(size_of::<Globals>() % 16, 0);
-        assert_eq!(size_of::<ShadowPass>(), 96);
+        assert_eq!(size_of::<ShadowPass>(), 112);
         let table = MaterialTable::builtin();
         let silk = table.resolve(table.index_of("silk").unwrap(), [1.0, 0.5, 0.0]);
         let gpu = GpuMaterial::from(&silk);
@@ -1058,6 +1428,22 @@ mod tests {
         assert_eq!(gpu.p1[2], silk.anisotropy);
         let marble = table.resolve(table.index_of("marble").unwrap(), [1.0; 3]);
         assert_eq!(GpuMaterial::from(&marble).p2[0], Pattern::Marble.id() as f32);
+    }
+
+    #[test]
+    fn transparent_mask_marks_clear_slots_and_inherits_last() {
+        let table = MaterialTable::builtin();
+        let basic = table.resolve(table.default, [0.5; 3]);
+        let clear = table.resolve(table.index_of("translucent").unwrap(), [0.4, 0.7, 1.0]);
+        assert_eq!(transparent_mask(&[basic]), 0);
+        assert_eq!(transparent_mask(&[]), 0);
+        assert_eq!(transparent_mask(&[basic, clear, basic]), 0b10);
+        // Слоти за межами списку беруть останній матеріал — тут прозорий.
+        assert_eq!(transparent_mask(&[basic, clear]), !1);
+        let gpu = GpuMaterial::from(&clear);
+        assert_eq!(gpu.p2[3], clear.transmission);
+        assert!(gpu.p4[0] > gpu.p4[1] && gpu.p4[2] == 0.0 && gpu.p3[3] > 0.0);
+        assert_eq!(GpuMaterial::from(&basic).p4, [0.0, 0.0, 0.0, basic.absorption_distance]);
     }
 
     /// Суцільний блок 10×10 мм із вкладених квадратів, `layers` шарів; `feature` — роль.
@@ -1114,10 +1500,47 @@ mod tests {
         let t = gcode::parse(&block_gcode(40, "Support")).unwrap();
         let built = t.build_photo(r.device());
         r.set_toolpath(&built.gpu);
-        r.set_photo(Some(PhotoSettings { supports: SupportView::Hidden, ..settings }));
+        r.set_photo(Some(PhotoSettings { supports: SupportView::Hidden, ..settings.clone() }));
         let px = r.render(w, h, &camera);
         let floor = pixel(&px, w / 2, h / 2);
         assert!(floor[0].abs_diff(floor[2]) < 16, "підтримка не схована: {floor:?}");
+
+        // Прозорий синій блок: колір синій, а тінь на підлозі кольорова (синя), а не сіра, і
+        // світліша за тінь непрозорого.
+        let t = gcode::parse(&block_gcode(40, "Outer wall")).unwrap();
+        let built = t.build_photo(r.device());
+        r.set_toolpath(&built.gpu);
+        let mut camera = camera.clone();
+        camera.distance *= 3.0;
+        let blue = [0.38, 0.69, 1.0];
+        r.set_photo(Some(PhotoSettings { materials: vec![table.resolve(table.default, blue)], ..settings.clone() }));
+        let opaque = r.render(w, h, &camera);
+        let clear = table.resolve(table.index_of("translucent").unwrap(), blue);
+        r.set_photo(Some(PhotoSettings { materials: vec![clear], ..settings.clone() }));
+        let px = r.render(w, h, &camera);
+        let c = pixel(&px, w / 2, h / 2);
+        assert!(c[2] > c[0] + 30 && c[2] > 60, "прозорий синій: {c:?}");
+        // Тінь — нейтральні (сірі) пікселі підлоги непрозорого кадру, темніші за її медіану.
+        let sum = |p: [u8; 3]| p.iter().map(|&c| u32::from(c)).sum::<u32>();
+        let floor: Vec<(u32, u32)> = (0..h)
+            .flat_map(|y| (0..w).map(move |x| (x, y)))
+            .filter(|&(x, y)| {
+                let p = pixel(&opaque, x, y);
+                p[0].abs_diff(p[2]) < 6
+            })
+            .collect();
+        let mut sums: Vec<u32> = floor.iter().map(|&(x, y)| sum(pixel(&opaque, x, y))).collect();
+        sums.sort_unstable();
+        let median = sums[sums.len() / 2];
+        let shade: Vec<_> = floor.into_iter().filter(|&(x, y)| sum(pixel(&opaque, x, y)) * 20 < median * 17).collect();
+        assert!(shade.len() > 50, "тінь блока не знайдена");
+        let mean = |img: &[u8], ch: usize| shade.iter().map(|&(x, y)| f64::from(pixel(img, x, y)[ch])).sum::<f64>() / shade.len() as f64;
+        let (clear_rb, opaque_rb) = (mean(&px, 2) - mean(&px, 0), mean(&opaque, 2) - mean(&opaque, 0));
+        assert!(clear_rb > opaque_rb + 3.0, "тінь прозорого кольорова: B−R {clear_rb:.1} vs {opaque_rb:.1}");
+        let light = |img: &[u8]| (0..3).map(|ch| mean(img, ch)).sum::<f64>();
+        assert!(light(&px) > light(&opaque), "тінь прозорого світліша");
+        assert!(r.photo_bytes().unwrap() > bytes, "ціль товщини врахована");
+        r.set_photo(Some(settings.clone()));
 
         // PNG у довільному розмірі; вихід із режиму звільняє ресурси, звичайний кадр працює.
         let png = r.render_photo_png(320, 200, &camera).unwrap();

@@ -227,6 +227,9 @@ impl Renderer {
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("viewer"),
+                // «Фото»: кольорове пропускання прозорих (множник на канал). Без нього —
+                // сірий множник (photo/clear.wgsl, `fs_clear_alpha`).
+                required_features: adapter.features() & wgpu::Features::DUAL_SOURCE_BLENDING,
                 // Великі траєкторії: буфер і прив’язки — скільки дає адаптер, а не 256/128 MiB.
                 required_limits: wgpu::Limits {
                     max_buffer_size: adapter.limits().max_buffer_size,
@@ -1838,6 +1841,7 @@ impl Renderer {
         if shadows {
             photo.encode_shadows(encoder, &shadow_draws);
         }
+        photo.encode_thickness(encoder, &draws);
         let frame = photo::PhotoFrame {
             draws,
             travel,
