@@ -4929,8 +4929,11 @@ dependencies = [
  "anyhow",
  "gcode",
  "glam",
+ "paths",
  "project",
  "serde_json",
+ "slicer",
+ "tempfile",
  "viewer",
 ]
 

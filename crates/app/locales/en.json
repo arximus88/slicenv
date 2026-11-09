@@ -1636,5 +1636,7 @@
   "знімок раз на секунду": "snapshot once a second",
   "Недопустима команда або значення поза межами": "Invalid command or value out of range",
   "Klipper відхилив команду": "Klipper rejected the command",
-  "Камера не віддає MJPEG-потік": "The camera does not provide an MJPEG stream"
+  "Камера не віддає MJPEG-потік": "The camera does not provide an MJPEG stream",
+  "Пакую .gcode.3mf": "Packing .gcode.3mf",
+  "[preview] ранній G-code: {err:#}": "[preview] early G-code: {err:#}"
 }

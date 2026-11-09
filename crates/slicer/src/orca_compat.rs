@@ -74,10 +74,12 @@ pub(crate) fn rewrite_project_config(
     dir: &Path,
     fix: impl FnOnce(&mut Map<String, Value>) -> bool,
 ) -> Result<Option<PathBuf>> {
-    let mut archive = zip::ZipArchive::new(fs::File::open(input)?)
+    // Буфер: `serde_json::from_reader` читає по байту, а нестиснутий запис (вхід рушія,
+    // `save_3mf_for_engine`) без нього — це по `read()` на кожен байт конфігу.
+    let mut archive = zip::ZipArchive::new(std::io::BufReader::new(fs::File::open(input)?))
         .with_context(|| format!("{} не є 3MF", input.display()))?;
     let mut config: Map<String, Value> = match archive.by_name(PROJECT_CONFIG) {
-        Ok(file) => match serde_json::from_reader(file) {
+        Ok(file) => match serde_json::from_reader(std::io::BufReader::new(file)) {
             Ok(config) => config,
             // Не JSON (старі 3MF): рушій розбере сам, ми не втручаємось.
             Err(_) => return Ok(None),

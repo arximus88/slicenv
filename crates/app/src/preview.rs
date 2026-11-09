@@ -134,10 +134,130 @@ fn srgb_hsla([r, g, b]: [f32; 3]) -> gpui::Hsla {
     gpui::rgb((c(r) << 16) | (c(g) << 8) | c(b)).into()
 }
 
+/// Номер пластини з імені `plate_N.gcode`.
+fn plate_of(gcode: &std::path::Path) -> Option<u32> {
+    gcode.file_stem().and_then(|s| s.to_str()?.strip_prefix("plate_")?.parse().ok())
+}
+
+/// G-code, з якого відкрито ранній Preview, і його розмір та час зміни на ту мить.
+///
+/// Належить пластині `plate`, вибраній у «Перегляді»; зміна пластини його прибирає.
+pub(crate) struct EarlyPreview {
+    plate: u32,
+    gcode: PathBuf,
+    stamp: Option<(u64, std::time::SystemTime)>,
+    /// Нарізку зупинено (`stop_slice`): спостерігач нарізки поверне попередній Preview.
+    pub(crate) stopped: bool,
+}
+
+impl EarlyPreview {
+    fn new(plate: u32, gcode: PathBuf) -> Self {
+        let stamp = Self::stamp(&gcode);
+        Self { plate, gcode, stamp, stopped: false }
+    }
+
+    fn stamp(gcode: &std::path::Path) -> Option<(u64, std::time::SystemTime)> {
+        let meta = std::fs::metadata(gcode).ok()?;
+        Some((meta.len(), meta.modified().ok()?))
+    }
+
+    /// Той самий файл: рушій не переписав G-code після показу (повтор з `--no-check`,
+    /// наступна стадія сумісного режиму).
+    fn unchanged(&self) -> bool {
+        self.stamp.is_some() && Self::stamp(&self.gcode) == self.stamp
+    }
+}
+
 impl Workspace {
     /// Розбирає G-code нарізаної пластини у фоні; `open` — потім відкрити «Перегляд»
     /// (інакше прев’ю лише готується, якщо ця сторінка не відкрита).
     pub fn load_preview(&mut self, gcode: PathBuf, open: bool, cx: &mut Context<Self>) {
+        self.load_preview_with(gcode, open, false, cx);
+    }
+
+    /// Preview з G-code, який рушій уже записав, поки сам ще пише `.gcode.3mf` (0,1–0,9 с):
+    /// шари видно раніше, а друк і збереження чекають на [`SliceState::Done`]. Лише для
+    /// пластини, вибраної в «Перегляді»: черга «Нарізати всі» вибір не перемикає. Помилку
+    /// розбору тут не показуємо — по завершенні нарізки [`Self::finish_early_preview`]
+    /// завантажить G-code звичайним шляхом.
+    ///
+    /// [`SliceState::Done`]: crate::workspace::SliceState::Done
+    pub(crate) fn load_early_preview(&mut self, plate: u32, gcode: PathBuf, cx: &mut Context<Self>) {
+        if self.plate_to_slice() != Some(plate) {
+            return;
+        }
+        // Як по завершенні: окрема нарізка відкриває «Перегляд», черга — лише якщо він відкритий.
+        let open = !self.slice_batch_running() || self.page == crate::workspace::Page::Preview;
+        self.early_preview = Some(EarlyPreview::new(plate, gcode.clone()));
+        self.load_preview_with(gcode, open, true, cx);
+    }
+
+    /// Нарізка показаної пластини `plate` завершилась. Якщо ранній Preview уже показано з того
+    /// самого G-code, лишаємо його й лише перераховуємо звіт: оцінки рушія (`result.json`)
+    /// з’являються в кінці. Інакше (раннього не було, ще розбирається, впав, G-code
+    /// переписано повтором) — звичайне завантаження.
+    pub(crate) fn finish_early_preview(&mut self, plate: u32, gcode: PathBuf, open: bool, cx: &mut Context<Self>) {
+        let early = self.early_preview.take();
+        let shown = self.preview.is_some() && !self.jobs.is_running(JobKind::GcodePreview);
+        if shown
+            && let Some(early) = early
+            && early.plate == plate
+            && early.gcode == gcode
+            && early.unchanged()
+            && let Some(preview) = &mut self.preview
+        {
+            let _s = paths::profile::Span::new("preview::report");
+            let engine = gcode::EngineReport::read(&gcode.with_file_name("result.json"), plate_of(&gcode));
+            preview.report = preview.toolpath.report(engine.as_ref());
+            if open && self.page != crate::workspace::Page::Preview {
+                self.enter_page(crate::workspace::Page::Preview, cx);
+            }
+            cx.notify();
+            return;
+        }
+        self.load_preview(gcode, open, cx);
+    }
+
+    /// Нарізка пластини `plate` не вдалась уже після раннього Preview: шари без готового
+    /// результату не лишаємо, а повертаємо попередню нарізку пластини, як було б без раннього
+    /// показу. Ранній Preview іншої пластини не чіпаємо. Викликати до `record_plate_slice`,
+    /// бо відмова затирає G-code попередньої нарізки в кеші.
+    pub(crate) fn drop_early_preview(&mut self, plate: u32, cx: &mut Context<Self>) {
+        if self.early_preview.as_ref().is_none_or(|e| e.plate != plate) {
+            return;
+        }
+        self.early_preview = None;
+        self.show_previous_slice(plate, cx);
+    }
+
+    /// Нарізку зупинено (`stop_slice`), а ранній Preview лишився. Якщо той, хто зупинив,
+    /// Preview не прибрав (зміна профілю, Esc) — показуємо попередню нарізку пластини, як без
+    /// раннього показу; прибрав (зміна геометрії) — так і лишаємо. `gcode` — що показав
+    /// спостерігач цієї нарізки: ранній Preview новішої нарізки не чіпаємо.
+    pub(crate) fn release_stopped_early_preview(&mut self, plate: u32, gcode: &std::path::Path, cx: &mut Context<Self>) {
+        let Some(early) = &self.early_preview else { return };
+        if !early.stopped || early.plate != plate || early.gcode != gcode {
+            return;
+        }
+        self.early_preview = None;
+        if self.preview.is_some() {
+            self.show_previous_slice(plate, cx);
+        }
+    }
+
+    /// Замість раннього Preview — остання вдала нарізка пластини (зокрема застаріла), якщо є.
+    fn show_previous_slice(&mut self, plate: u32, cx: &mut Context<Self>) {
+        self.jobs.cancel(JobKind::GcodePreview);
+        self.preview = None;
+        if self.plate_to_slice() == Some(plate)
+            && let Some(previous) = self.plate_gcode(plate)
+        {
+            self.load_preview(previous, false, cx);
+        }
+        cx.notify();
+    }
+
+    fn load_preview_with(&mut self, gcode: PathBuf, open: bool, early: bool, cx: &mut Context<Self>) {
         let device = self.renderer.device().clone();
         // Прев’ю належить цій нарізці: тій самій пластині й тому самому входу нарізки.
         self.spawn_job(
@@ -154,9 +274,7 @@ impl Workspace {
                     toolpath.build(&device, &ViewOptions::default())
                 };
                 // Оцінки рушія лежать поруч: `result.json` у теці нарізки.
-                let plate = gcode
-                    .file_stem()
-                    .and_then(|s| s.to_str()?.strip_prefix("plate_")?.parse().ok());
+                let plate = plate_of(&gcode);
                 let report = {
                     let _s = paths::profile::Span::new("preview::report");
                     let engine =
@@ -170,6 +288,7 @@ impl Workspace {
                     let _s = paths::profile::Span::new("preview::show");
                     this.show_preview(toolpath, built, report, open, window, cx)
                 }
+                Err(err) if early => eprintln!("[preview] ранній G-code: {err:#}"),
                 Err(err) => this.error = Some(format!("G-code: {err:#}").into()),
             },
             cx,
@@ -528,6 +647,10 @@ pub(crate) fn slice_stage_text(stage: &str, layer: Option<u32>, engine: Option<&
 /// Етап для [`crate::jobs::JobStatus`]: текст з етапом і шаром запущеної нарізки.
 pub(crate) fn slice_stage(token: slicer::SliceCancellation, engine: Option<String>) -> crate::jobs::Stage {
     std::sync::Arc::new(move || {
+        // G-code уже записано (шари в Preview), рушій ще пакує `.gcode.3mf`.
+        if token.gcode_ready().is_some() {
+            return Some(crate::i18n::tr("Пакую .gcode.3mf").to_string());
+        }
         token.stage().map(|s| slice_stage_text(&s, token.layer(), engine.as_deref()))
     })
 }
