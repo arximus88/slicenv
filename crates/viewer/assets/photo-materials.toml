@@ -68,13 +68,13 @@ absorption_distance = 1.5
 id = "marble"
 label = "Мармур (Marble)"
 keywords = ["marble", "stone", "granite"]
-# Густі дрібні круглі вкраплення й м’які прожилки (Bambu PLA Marble), матова поверхня.
+# Bambu PLA Marble: однотонний матовий пластик із дрібними круглими вкрапленнями 0.3–0.8 мм,
+# без прожилок. Колір вкраплень — від кольору філаменту (темні на світлих, світлі на темних).
 roughness = 0.72
 specular = 0.4
 pattern = "marble"
 pattern_scale = 1.0
 pattern_strength = 1.0
-pattern_color = "#2E2B29"
 
 [[preset]]
 id = "sparkle"

@@ -98,6 +98,19 @@ pub const ABSORPTION_DISTANCE: f32 = 1.5;
 /// (пастельний) колір підсилюється до неї, інакше «Translucent Blue» виглядає сіро-блакитним.
 pub const MIN_CHROMA_DENSITY: f32 = 1.2;
 
+/// Колір вкраплень мармуру (sRGB): на світлому філаменті — майже чорний з теплим відтінком,
+/// на темному — сірий. Межа — відносна яскравість ~0.3.
+pub fn marble_speck(color: [f32; 3]) -> [f32; 3] {
+    let luma = 0.2126 * srgb_to_linear(color[0])
+        + 0.7152 * srgb_to_linear(color[1])
+        + 0.0722 * srgb_to_linear(color[2]);
+    if luma > 0.06 {
+        [0x2e as f32 / 255.0, 0x2b as f32 / 255.0, 0x29 as f32 / 255.0]
+    } else {
+        [0xa8 as f32 / 255.0, 0xa4 as f32 / 255.0, 0x9c as f32 / 255.0]
+    }
+}
+
 fn srgb_to_linear(c: f32) -> f32 {
     if c <= 0.04045 {
         c / 12.92
@@ -338,8 +351,10 @@ impl MaterialTable {
             Some(t) => std::array::from_fn(|i| color[i] + (t[i] - color[i]) * p.tint_amount),
             None => color,
         };
-        // Без явного другого кольору: прожилки — темніший тон філаменту, блискітки — світліший.
+        // Без явного другого кольору: вкраплення мармуру — контрастні (темні на світлому,
+        // світлі на темному), блискітки — світліший тон, решта — темніший.
         let pattern_color = p.pattern_color.unwrap_or(match p.pattern {
+            Pattern::Marble => marble_speck(color),
             Pattern::Sparkle => color.map(|c| 0.55 + c * 0.45),
             _ => color.map(|c| c * 0.4),
         });
@@ -384,10 +399,7 @@ mod tests {
         }
         assert_eq!(t.presets[t.default].id, "basic");
         assert_eq!(t.presets[t.index_of("marble").unwrap()].pattern, Pattern::Marble);
-        assert_eq!(
-            t.presets[t.index_of("marble").unwrap()].pattern_color,
-            Some([0x2e as f32 / 255.0, 0x2b as f32 / 255.0, 0x29 as f32 / 255.0])
-        );
+        assert_eq!(t.presets[t.index_of("marble").unwrap()].pattern_color, None);
         // Розведені за референсами: PETG глянцевий, Basic — легкий глянець, CF і Matte
         // матові; Silk — анізотропний блиск.
         let p = |id: &str| &t.presets[t.index_of(id).unwrap()];
@@ -500,6 +512,15 @@ mod tests {
         assert!(wood.color[2] < 1.0 && wood.color[0] > wood.color[2]);
         let sparkle = t.resolve(t.index_of("sparkle").unwrap(), [0.0, 0.0, 0.2]);
         assert!(sparkle.pattern_color.iter().all(|&c| c >= 0.55));
+        // Мармур: вкраплення темні на білому й червоному, світлі на чорному й темно-синьому.
+        let marble = t.index_of("marble").unwrap();
+        let sum = |c: [f32; 3]| c.iter().sum::<f32>();
+        for light in [[1.0; 3], [0.86, 0.15, 0.15], [0.96, 0.85, 0.35]] {
+            assert!(sum(t.resolve(marble, light).pattern_color) < 0.6, "{light:?}");
+        }
+        for dark in [[0.05; 3], [0.05, 0.08, 0.3]] {
+            assert!(sum(t.resolve(marble, dark).pattern_color) > 1.8, "{dark:?}");
+        }
         let basic = t.resolve(t.default, [0.2, 0.4, 0.6]);
         assert_eq!(basic.color, [0.2, 0.4, 0.6]);
         assert_eq!(parse_hex("#00AE42"), Some([0.0, 174.0 / 255.0, 66.0 / 255.0]));

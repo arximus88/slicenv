@@ -96,8 +96,8 @@ fn fbm(p: vec3<f32>) -> f32 {
 
 // Вкраплення: у кожній комірці з імовірністю `density` — куля радіуса r_lo…r_hi (частки
 // комірки), зміщена так, щоб не виходити за комірку (сусідів перевіряти не треба). Край
-// розмитий; `fw` — розмір пікселя в комірках: дрібні плями плавно стають середнім покриттям
-// (частка площі зрізу кулі, ∫π(r²−z²)dz = 4πr³/3 на комірку).
+// чіткий (лише згладжування на піксель); `fw` — розмір пікселя в комірках: дрібні плями
+// плавно стають середнім покриттям (частка площі зрізу кулі, ∫π(r²−z²)dz = 4πr³/3 на комірку).
 fn speckle(q: vec3<f32>, density: f32, r_lo: f32, r_hi: f32, fw: f32) -> f32 {
     let cell = floor(q);
     let h = hash33(cell);
@@ -105,7 +105,7 @@ fn speckle(q: vec3<f32>, density: f32, r_lo: f32, r_hi: f32, fw: f32) -> f32 {
     let r = mix(r_lo, r_hi, hash31(cell + vec3<f32>(11.0, 3.0, 7.0)));
     let on = select(0.0, 1.0, hash31(cell + vec3<f32>(5.0, 19.0, 2.0)) < density);
     let d = length(fract(q) - center);
-    let edge = max(r * 0.6, fw);
+    let edge = max(r * 0.12, fw);
     let cover = on * (1.0 - smoothstep(r - edge * 0.5, r + edge * 0.5, d));
     let r_mid = 0.5 * (r_lo + r_hi);
     let mean = density * 4.18879 * r_mid * r_mid * r_mid;
@@ -555,17 +555,17 @@ fn bead_shading(in: BeadOut) -> BeadShading {
     let strength = m.p2.z;
     let p = in.world;
     if pattern == PATTERN_MARBLE {
-        // Bambu PLA Marble — густі дрібні темні вкраплення (0.1–0.6 мм), круглі й розмиті, і
-        // м’які прожилки. Вкраплення — кулі в комірках 3D-сітки: зріз площиною дає круглу
-        // пляму; дрібніші за кілька пікселів зливаються в середній тон (без мерехтіння).
-        let warp = fbm(p * 0.09 * scale) * 7.0;
-        let vein = 1.0 - abs(sin(p.x * 0.21 * scale + p.y * 0.13 * scale + p.z * 0.17 * scale + warp));
-        let veins = pow(vein, 6.0) * 0.35;
-        let fine = speckle(p * 3.2 * scale, 0.7, 0.14, 0.3, world_fw * 3.2 * scale);
-        let coarse = speckle(p * 1.1 * scale + 7.3, 0.12, 0.12, 0.24, world_fw * 1.1 * scale);
-        let w = clamp(veins + fine * 0.55 + coarse * 0.75, 0.0, 1.0) * strength;
+        // Bambu PLA Marble — однотонний матовий пластик із розкиданими рівномірно круглими
+        // вкрапленнями 0.3–0.8 мм різного розміру (темні на світлому, світлі на темному —
+        // `MaterialTable::resolve`). Прожилок і плям немає. Вкраплення — кулі в комірках
+        // 3D-сітки: зріз поверхнею дає круглу крапку не більшу за кулю, тож розміри
+        // природно різняться; дрібніші за кілька пікселів зливаються в середній тон.
+        // Два розміри: рідші більші (комірка 1.67 мм, r 0.2–0.4 мм) і частіші дрібні (комірка
+        // 1 мм, r 0.15–0.25 мм).
+        let big = speckle(p * 0.6 * scale, 0.45, 0.12, 0.24, world_fw * 0.6 * scale);
+        let small = speckle(p * scale + 7.3, 0.4, 0.15, 0.25, world_fw * scale);
+        let w = clamp(big + small, 0.0, 1.0) * strength;
         s.base = mix(s.base, m.p3.rgb, w);
-        s.roughness = mix(s.roughness, s.roughness * 0.85, w);
     } else if pattern == PATTERN_SPARKLE {
         // Пласкі лусочки ~0.15 мм з випадковим нахилом: спалахують, коли відбивають
         // світло або софтбокс. Дрібніші за піксель — гаснуть, інакше мерехтіли б.
