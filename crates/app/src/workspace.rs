@@ -475,6 +475,10 @@ impl Workspace {
         self.cancel_navigation();
         self.scene_menu = None;
         let previous = self.page;
+        // Камера (MJPEG-потік чи знімки) живе лише на сторінці «Пристрій».
+        if page != Page::Device {
+            self.cloud.hide_camera();
+        }
         self.page = page;
         // «Перегляд» малює активну пластину в початку координат (див. `solo_plate`): камера
         // переходить разом з нею, щоб на обох сторінках дивитися на ту саму пластину.

@@ -148,6 +148,54 @@ pub fn send(
     }
 }
 
+/// Відкритий потік відповіді (від рядка стану): для MJPEG, який не закінчується.
+pub struct RawStream {
+    pub reader: Box<dyn Read + Send>,
+    /// `curl` для https: вбивається разом із потоком.
+    child: Option<std::process::Child>,
+}
+
+impl Drop for RawStream {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            child.kill().ok();
+            child.wait().ok();
+        }
+    }
+}
+
+/// GET без читання тіла: повертає сирий потік з рядком стану й заголовками. `read_timeout`
+/// — для http (на https тайм-аут простою дає `curl --speed-time`).
+pub fn open_stream(endpoint: &Endpoint, request: &Request<'_>) -> Result<RawStream> {
+    if let Some(key) = request.api_key {
+        check_header_value(key)?;
+    }
+    if endpoint.tls {
+        return curl::open_stream(endpoint, request);
+    }
+    let mut stream = connect(endpoint)?;
+    stream.set_read_timeout(Some(request.timeout)).ok();
+    stream.set_write_timeout(Some(Duration::from_secs(10))).ok();
+    let path = if request.raw_path {
+        request.path.to_owned()
+    } else {
+        format!("{}{}", endpoint.base, request.path)
+    };
+    let mut head = format!(
+        "GET {path} HTTP/1.1\r\nHost: {}\r\nUser-Agent: slicenv\r\nAccept: */*\r\nConnection: close\r\n",
+        endpoint.authority()
+    );
+    if let Some(key) = request.api_key {
+        head += &format!("X-Api-Key: {key}\r\n");
+    }
+    head += "\r\n";
+    stream.write_all(head.as_bytes()).map_err(|e| MoonrakerError::io(&e))?;
+    Ok(RawStream {
+        reader: Box::new(stream),
+        child: None,
+    })
+}
+
 fn connect(endpoint: &Endpoint) -> Result<TcpStream> {
     let addrs: Vec<_> = (endpoint.host.as_str(), endpoint.port)
         .to_socket_addrs()
@@ -403,6 +451,48 @@ mod curl {
             );
         }
         Ok(cfg)
+    }
+
+    pub(super) fn open_stream(endpoint: &Endpoint, request: &Request<'_>) -> Result<RawStream> {
+        let cfg = config(endpoint, request, None)?;
+        let mut child = paths::host::command("curl")
+            .args([
+                "--silent",
+                "--include",
+                "--no-buffer",
+                "--proto",
+                "=https",
+                "--connect-timeout",
+                "5",
+                // Камера замовкла на 10 с — curl виходить, потік закінчується.
+                "--speed-time",
+                "10",
+                "--speed-limit",
+                "1",
+                "-K",
+                "-",
+            ])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|e| {
+                if e.kind() == io::ErrorKind::NotFound {
+                    MoonrakerError::NoCurl
+                } else {
+                    MoonrakerError::Io(e.to_string())
+                }
+            })?;
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin
+                .write_all(cfg.as_bytes())
+                .map_err(|e| MoonrakerError::Io(e.to_string()))?;
+        }
+        let out = child.stdout.take().ok_or(MoonrakerError::Io("curl stdout".into()))?;
+        Ok(RawStream {
+            reader: Box::new(out),
+            child: Some(child),
+        })
     }
 
     pub(super) fn send(

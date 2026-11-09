@@ -590,15 +590,9 @@ impl Worker {
                 let mut stream = lan::camera::CameraStream::open(&printer)?;
                 while !stop.load(Ordering::Acquire) {
                     let jpeg = stream.next_frame()?;
-                    let Ok(decoded) =
-                        image::load_from_memory_with_format(&jpeg, image::ImageFormat::Jpeg)
-                    else {
+                    let Some(bgra) = super::jpeg_to_bgra(&jpeg, super::CameraFlip::default()) else {
                         continue;
                     };
-                    let mut bgra = decoded.to_rgba8();
-                    for px in bgra.pixels_mut() {
-                        px.0.swap(0, 2);
-                    }
                     if ui.unbounded_send(CloudMsg::CameraFrame(bgra)).is_err() {
                         break;
                     }

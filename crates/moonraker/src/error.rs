@@ -36,6 +36,12 @@ pub enum MoonrakerError {
     NoCurl,
     /// Операцію скасовано користувачем.
     Cancelled,
+    /// Значення команди поза межами або порожній рядок G-code (у мережу нічого не пішло).
+    InvalidCommand(String),
+    /// Klipper відхилив G-code (повідомлення Klipper, напр. `Must home axis first`).
+    Gcode(String),
+    /// Потік камери не MJPEG (WebRTC, HLS, сторінка) або обірвався.
+    NotMjpeg(String),
 }
 
 pub type Result<T> = std::result::Result<T, MoonrakerError>;
@@ -65,13 +71,22 @@ impl MoonrakerError {
             Self::Io(_) => "Помилка вводу-виводу",
             Self::NoCurl => "Для https потрібна програма curl: встановіть її або використайте http",
             Self::Cancelled => "Скасовано",
+            Self::InvalidCommand(_) => "Недопустима команда або значення поза межами",
+            Self::Gcode(_) => "Klipper відхилив команду",
+            Self::NotMjpeg(_) => "Камера не віддає MJPEG-потік",
         }
     }
 
     /// Технічна деталь (англійською від сервера або системи); порожньо, якщо нічого додати.
     pub fn detail(&self) -> String {
         match self {
-            Self::Unreachable(d) | Self::Interrupted(d) | Self::Protocol(d) | Self::Io(d) => {
+            Self::Unreachable(d)
+            | Self::Interrupted(d)
+            | Self::Protocol(d)
+            | Self::Io(d)
+            | Self::InvalidCommand(d)
+            | Self::Gcode(d)
+            | Self::NotMjpeg(d) => {
                 d.clone()
             }
             Self::KlippyNotReady { state, message } => {
