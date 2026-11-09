@@ -492,6 +492,10 @@ impl Workspace {
             self.renderer.set_overlay(&[]);
             self.sync_plate_scene();
         }
+        // «Перегляд» до нарізки показує ту саму сцену, що й «Підготовка», але моделі —
+        // напівпрозорим сірим силуетом, як у Bambu Studio.
+        self.renderer
+            .set_ghost_models(page == Page::Preview && self.preview.is_none());
         if page == Page::Prepare {
             self.refresh_prepare_mesh();
         }

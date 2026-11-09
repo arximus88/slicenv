@@ -562,55 +562,6 @@ fn slice_stage_name(stage: &str, engine: Option<&str>) -> String {
 pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoElement {
     let z = zed();
     if ws.preview.is_none() {
-        // Під час нарізки — прогрес замість «ще нічого не нарізано». Відсоток, етап і номер
-        // шару — з логу рушія; до першого звіту смуга біжить.
-        if let Some(job) = ws.jobs.get(crate::jobs::JobKind::Slice) {
-            let percent = job.progress.as_ref().and_then(|p| p());
-            let stage = job.stage.as_ref().and_then(|s| s());
-            let elapsed = job.started.elapsed().as_secs();
-            let detail = match percent {
-                Some(p) => crate::tr_format!("{} % · {} с", p, elapsed),
-                None => crate::tr_format!("{} с", elapsed),
-            };
-            let title: SharedString = job.label.clone().unwrap_or_else(|| "Нарізка…".into());
-            return div()
-                .flex()
-                .flex_1()
-                .bg(z.editor)
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .size_full()
-                        .items_center()
-                        .justify_center()
-                        .gap(px(8.))
-                        .child(gpui_component::Icon::new(IconName::Scissors).size(px(32.)).text_color(z.text_placeholder))
-                        .child(
-                            div()
-                                .text_base()
-                                .font_weight(gpui::FontWeight::MEDIUM)
-                                .child(crate::i18n::tr(&title)),
-                        )
-                        .children(stage.map(|text| div().text_sm().text_color(z.text_muted).child(text)))
-                        .child(div().w(px(320.)).mt(px(4.)).child(match percent {
-                            // Відсоток невідомий (рушій ще не звітував, сумісний режим) — смуга біжить,
-                            // щоб було видно, що робота йде.
-                            Some(p) if p > 0 => crate::widgets::progress(f32::from(p)).into_any_element(),
-                            _ => crate::widgets::progress_indeterminate("slice-progress"),
-                        }))
-                        .child(div().text_sm().text_color(z.text_muted).child(detail))
-                        .child(
-                            ui::ghost_button("empty-slice-cancel", Some(IconName::X), "Скасувати")
-                                .mt(px(4.))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.cancel_slice();
-                                    cx.notify();
-                                })),
-                        ),
-                )
-                .into_any_element();
-        }
         // Невдала нарізка — картка: що сталось, хто виправляє, що зробити, деталі.
         if let crate::workspace::SliceState::Failed(err, failure) = &ws.slice_state {
             return div()
@@ -620,26 +571,15 @@ pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoEleme
                 .child(failure_card(err.clone(), failure.clone(), ws.can_slice(), ws.slice_exhausted, ws.slice_fallback.clone(), cx))
                 .into_any_element();
         }
-        let can_slice = ws.can_slice();
-        return div()
-            .flex()
-            .flex_1()
-            .bg(z.editor)
-            .child(ui::empty_state(
-                IconName::Layers,
-                "Ще нічого не нарізано",
-                "Нарізай пластину — тут з’являться траєкторії по шарах, час і витрата філаменту.",
-                vec![
-                    ui::accent_button("empty-slice", IconName::Scissors, "Нарізати", can_slice)
-                        .when(can_slice, |d| {
-                            d.on_click(
-                                cx.listener(|this, _, window, cx| this.start_slice(window, cx)),
-                            )
-                        })
-                        .into_any_element(),
-                ],
-            ))
-            .into_any_element();
+        // Прев’ю скинули, поки сторінка відкрита (зміна пластини, геометрії): сцена знову
+        // показує моделі замість траєкторії.
+        if ws.renderer.has_toolpath() {
+            ws.enter_page(crate::workspace::Page::Preview, cx);
+        }
+        // Ще не нарізано (або йде нарізка): та сама сцена, що й на «Підготовці», моделі —
+        // силуетом, підказка компактна поверх сцени.
+        let center = ws.viewport_view("preview-unsliced", |ws, _, cx| unsliced_center(ws, cx), cx);
+        return crate::prepare::docked("preview-unsliced-docks", ws, None, center, None).into_any_element();
     }
     // Центр зі сценою — окремий вид: рух камери не перебудовує статистику праворуч.
     let center = ws.viewport_view("preview-center", |ws, _, cx| center(ws, cx), cx);
@@ -647,6 +587,154 @@ pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoEleme
     // дерева об’єктів, а перемикач правого доку той самий, що в Prepare.
     let right = ws.cached_panel("preview-summary", |ws, _, cx| summary_panel(ws, cx), cx);
     crate::prepare::docked("preview-docks", ws, None, center, Some(right)).into_any_element()
+}
+
+/// Хлібні крихти Preview: модель і пластина.
+fn crumbs(ws: &Workspace) -> Vec<SharedString> {
+    let mut crumbs: Vec<SharedString> = vec![ws.model_name.clone()];
+    if let Some(n) = ws.plate_to_slice() {
+        crumbs.push(crate::tr_format!("Пластина {n}").into());
+    }
+    crumbs
+}
+
+/// Картка поверх сцени внизу по центру: не закриває об’єкти й не ловить орбіту камери.
+fn scene_card(id: &'static str, content: impl IntoElement) -> gpui::Div {
+    let z = zed();
+    div()
+        .absolute()
+        .left(px(12.))
+        .right(px(12.))
+        .bottom(px(16.))
+        .flex()
+        .justify_center()
+        .child(
+            ui::scene_control(id)
+                .flex()
+                .items_center()
+                .gap(px(12.))
+                .max_w(px(560.))
+                .px(px(12.))
+                .py(px(8.))
+                .rounded(px(6.))
+                .bg(z.panel.opacity(0.94))
+                .border_1()
+                .border_color(z.border_variant)
+                .shadow_sm()
+                .child(content),
+        )
+}
+
+/// Хід нарізки: етап і номер шару з логу рушія; до першого звіту смуга біжить.
+fn slice_progress(ws: &Workspace, cx: &mut Context<Workspace>) -> Option<gpui::Div> {
+    let z = zed();
+    let job = ws.jobs.get(JobKind::Slice)?;
+    let percent = job.progress.as_ref().and_then(|p| p());
+    let stage = job.stage.as_ref().and_then(|s| s());
+    let elapsed = job.started.elapsed().as_secs();
+    let detail = match percent {
+        Some(p) => crate::tr_format!("{} % · {} с", p, elapsed),
+        None => crate::tr_format!("{} с", elapsed),
+    };
+    let title: SharedString = job.label.clone().unwrap_or_else(|| "Нарізка…".into());
+    Some(
+        div()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .child(ui::icon(IconName::Scissors).text_color(z.text_muted))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(4.))
+                    .w(px(280.))
+                    .child(
+                        div()
+                            .flex()
+                            .gap(px(8.))
+                            .text_sm()
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .child(crate::i18n::tr(&title)),
+                            )
+                            .child(div().flex_none().text_xs().text_color(z.text_muted).child(detail)),
+                    )
+                    .child(match percent {
+                        // Відсоток невідомий (рушій ще не звітував, сумісний режим) — смуга біжить,
+                        // щоб було видно, що робота йде.
+                        Some(p) if p > 0 => crate::widgets::progress(f32::from(p)).into_any_element(),
+                        _ => crate::widgets::progress_indeterminate("slice-progress"),
+                    })
+                    .children(stage.map(|text| {
+                        div().min_w_0().truncate().text_xs().text_color(z.text_muted).child(text)
+                    })),
+            )
+            .child(
+                ui::ghost_button("empty-slice-cancel", Some(IconName::X), "Скасувати")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.cancel_slice();
+                        cx.notify();
+                    })),
+            ),
+    )
+}
+
+/// Preview до нарізки: сцена «Підготовки» з моделями-силуетами й компактна підказка.
+fn unsliced_center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
+    let z = zed();
+    let can_slice = ws.can_slice();
+    let hint = match slice_progress(ws, cx) {
+        Some(progress) => progress,
+        None => div()
+            .flex()
+            .items_center()
+            .gap(px(12.))
+            .child(ui::icon(IconName::Layers).text_color(z.text_muted))
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .max_w(px(340.))
+                    .child(
+                        div()
+                            .text_sm()
+                            .font_weight(gpui::FontWeight::MEDIUM)
+                            .child(crate::i18n::tr("Ще нічого не нарізано")),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(z.text_muted)
+                            .whitespace_normal()
+                            .child(crate::i18n::tr("Нарізай пластину — тут з’являться траєкторії по шарах, час і витрата філаменту.")),
+                    ),
+            )
+            .child(
+                ui::accent_button("empty-slice", IconName::Scissors, "Нарізати", can_slice)
+                    .flex_none()
+                    .when(can_slice, |d| {
+                        d.on_click(cx.listener(|this, _, window, cx| this.start_slice(window, cx)))
+                    }),
+            ),
+    };
+    div()
+        .flex()
+        .flex_col()
+        .size_full()
+        .min_w_0()
+        .bg(z.editor)
+        .child(ui::toolbar().child(ui::breadcrumbs(crumbs(ws))))
+        .child(
+            ws.viewport(cx)
+                .child(crate::navigation::cube(ws, cx))
+                .child(scene_card("preview-unsliced-card", hint)),
+        )
+        .into_any_element()
 }
 
 /// Центр Preview: панель шару, в’юпорт, повзунки шарів і рухів.
@@ -660,10 +748,7 @@ fn center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
     let layer = toolpath.layers.get(to.saturating_sub(1));
     let mono = |d: gpui::Div| d.font_family(crate::theme::MONO_FONT).text_xs();
 
-    let mut crumbs: Vec<SharedString> = vec![ws.model_name.clone()];
-    if let Some(n) = ws.plate_to_slice() {
-        crumbs.push(crate::tr_format!("Пластина {n}").into());
-    }
+    let mut crumbs = crumbs(ws);
     crumbs.push(
         if from + 1 == to {
             crate::tr_format!("шар {to} з {}", toolpath.layer_count())

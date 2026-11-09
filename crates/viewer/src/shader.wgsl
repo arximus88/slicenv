@@ -96,6 +96,21 @@ fn fs_modifier(in: MeshOut, @builtin(front_facing) front: bool) -> @location(0) 
     return vec4<f32>(orca_light(n, normalize(globals.eye.xyz - in.world), vec3<f32>(0.18, 0.72, 1.0)), 0.28);
 }
 
+// «Перегляд» до нарізки: моделі — напівпрозорим сірим силуетом, як у Bambu Studio.
+// Перший прохід лише пише глибину (альфа 0 при змішуванні не змінює колір), другий з
+// GreaterEqual малює тільки найближчу поверхню — без накладання задніх граней.
+@fragment
+fn fs_ghost_depth(in: MeshOut) -> @location(0) vec4<f32> {
+    return vec4<f32>(0.0);
+}
+
+@fragment
+fn fs_ghost(in: MeshOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
+    var n = normalize(in.normal);
+    if !front { n = -n; }
+    return vec4<f32>(orca_light(n, normalize(globals.eye.xyz - in.world), vec3<f32>(0.62, 0.64, 0.68)), 0.45);
+}
+
 // ---- лінії й плоскі кольорові трикутники ----
 
 struct LineOut {

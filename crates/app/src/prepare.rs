@@ -315,11 +315,17 @@ impl Workspace {
         })
     }
 
+    /// На сцені моделі пластин: «Підготовка» або «Перегляд», доки нічого не нарізано.
+    pub fn scene_shows_models(&self) -> bool {
+        self.page == crate::workspace::Page::Prepare
+            || (self.page == crate::workspace::Page::Preview && self.preview.is_none())
+    }
+
     /// Рамка того, що зараз на сцені: модель пластини чи траєкторія.
     pub fn scene_bounds(&self) -> Option<(glam::Vec3, glam::Vec3)> {
-        match self.page {
-            crate::workspace::Page::Preview => {
-                self.preview.as_ref().and_then(|p| p.built.gpu.bounds)
+        match &self.preview {
+            Some(preview) if self.page == crate::workspace::Page::Preview => {
+                preview.built.gpu.bounds
             }
             _ => {
                 let mut bounds: Option<(glam::Vec3, glam::Vec3)> = None;
@@ -348,7 +354,7 @@ impl Workspace {
     pub fn set_view(&mut self, yaw_deg: f32, pitch_deg: f32) {
         self.cancel_navigation();
         self.camera.set_angles(yaw_deg, pitch_deg);
-        if self.page == crate::workspace::Page::Prepare {
+        if self.scene_shows_models() {
             self.fit_all_plates();
         } else {
             self.camera.frame(self.scene_bounds());
@@ -358,7 +364,7 @@ impl Workspace {
 
     /// «Вписати»: активна пластина; готові ракурси охоплюють усі пластини.
     pub fn zoom_to_fit(&mut self) {
-        if self.page == crate::workspace::Page::Prepare {
+        if self.scene_shows_models() {
             if let Some(plate) = self.plates.get(self.active_plate) {
                 let offset = self.plate_offset(plate.number);
                 let (a, b) = self.bed_bounds();
