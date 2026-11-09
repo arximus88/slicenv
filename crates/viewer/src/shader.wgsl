@@ -265,8 +265,17 @@ fn vs_toolpath(@builtin(vertex_index) vertex: u32) -> ToolpathOut {
     out.n_axis = fwd / hw;
     // Стінки лежать стосом по висоті — поверхня дивиться вбік (до ока); решта ліній
     // лягає поруч у шарі — поверхня дивиться вгору (до ока, якщо знизу).
+    // Бік вибирається один раз на сегмент: від його середини й за його власним напрямком,
+    // не за `v` цього кінця. Інакше, коли око майже в площині стінки (чи шару), знак на
+    // двох кінцях різний, інтерпольована нормаль проходить через нуль — смуги й мерехтіння.
+    // Бісектриса стику тут не годиться: у сусідніх сегментів вона та сама, а напрям — ні.
     let wall = (caps & 4u) != 0u;
-    out.n_far = select(up * sign(v.y + 1e-6), side_n * sign(v.x + 1e-6), wall);
+    let seg_xy = vec2<f32>(fwd.y, -fwd.x);
+    let seg_side = select(vec3<f32>(0.0, -1.0, 0.0), vec3<f32>(normalize(seg_xy), 0.0), dot(seg_xy, seg_xy) > 1e-8);
+    let seg_up = normalize(cross(seg_side, fwd));
+    let seg_eye = globals.eye.xyz - (0.5 * (pt_from + pt_to) - vec3<f32>(0.0, 0.0, hh));
+    let outward = select(seg_up, seg_side, wall);
+    out.n_far = outward * select(-1.0, 1.0, dot(seg_eye, outward) >= 0.0);
 
     let length_hw = len / hw;
     out.clip = globals.view_proj * vec4<f32>(pos, 1.0);
