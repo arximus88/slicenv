@@ -5,6 +5,7 @@
 
 mod guard;
 mod job;
+mod klipper;
 mod lan;
 mod pages;
 pub mod print_paths;
@@ -88,6 +89,8 @@ enum CloudMsg {
     CameraStopped(Option<String>),
     /// Стан LAN-принтерів (`device::lan`); статус, камера й друк ідуть звичайними варіантами.
     Lan(lan::LanMsg),
+    /// Стан принтерів Klipper (`device::klipper`), так само поруч зі звичайними варіантами.
+    Klipper(klipper::KlipperMsg),
 }
 
 /// Верхні вкладки сторінки принтера.
@@ -150,6 +153,8 @@ pub struct CloudState {
     pub camera_auto: Option<DeviceId>,
     /// LAN-принтери поруч із хмарою; `printers` уже містить і їх.
     pub lan: lan::LanUi,
+    /// Принтери Klipper (Moonraker); `printers` містить і їх.
+    pub klipper: klipper::KlipperUi,
     commands: Option<mpsc::Sender<CloudCmd>>,
 }
 
@@ -175,9 +180,18 @@ impl Default for PrintOptions {
 
 impl CloudState {
     pub fn send(&self, cmd: CloudCmd) {
+        let Some(cmd) = self.klipper.route(self.selected.as_ref(), cmd) else {
+            return;
+        };
         let Some(cmd) = self.lan.route(self.selected.as_ref(), cmd) else {
             return;
         };
+        // Вибір принтера Klipper хмарі нецікавий (LAN-робітник уже від’єднався).
+        if let CloudCmd::Select(dev) = &cmd
+            && self.klipper.has(dev)
+        {
+            return;
+        }
         if let Some(tx) = &self.commands {
             tx.send(cmd).ok();
         }
@@ -202,6 +216,11 @@ impl CloudState {
     /// стилі кнопок. Заблоковану команду в канал не кладемо.
     pub fn dispatch(&self, control: Control) -> Result<(), guard::Blocked> {
         let dev = self.selected.clone().ok_or(guard::Blocked::NoPrinter)?;
+        if self.klipper.has(&dev) {
+            klipper::check(&self.klipper, self.selected.as_ref(), self.status.as_ref(), &dev, control)?;
+            self.klipper.send(klipper::KlipperCmd::Control(dev, control));
+            return Ok(());
+        }
         guard::check(&self.snapshot(), &dev, control)?;
         if self.lan.has(&dev) {
             self.lan.send(lan::LanCmd::Control(dev, control));
@@ -212,6 +231,13 @@ impl CloudState {
             .ok_or(guard::Blocked::Disconnected)?
             .send(CloudCmd::Control(dev, control))
             .map_err(|_| guard::Blocked::Disconnected)
+    }
+
+    /// Хмара + LAN + Klipper в одному списку для лівого доку.
+    pub fn rebuild_printers(&mut self) {
+        let mut list = self.lan.union();
+        list.extend(self.klipper.printers().cloned());
+        self.printers = list;
     }
 
     /// Вибір (або скидання) принтера: усе, що належало попередньому, зникає. Зображення
@@ -234,7 +260,14 @@ impl CloudState {
     /// Короткий стан вибраного принтера для заголовка й рядка стану: текст, колір, «живий».
     /// Позначка стану: анімований індикатор під час підключення, інакше кольорова крапка.
     pub fn indicator(&self, id: &'static str, color: gpui::Hsla, live: bool) -> gpui::AnyElement {
-        let waiting_status = self.selected.is_some() && self.status.is_none() && self.error.is_none();
+        let klipper_problem = self
+            .selected
+            .as_ref()
+            .is_some_and(|d| self.klipper.has(d) && self.klipper.problem.is_some());
+        let waiting_status = self.selected.is_some()
+            && self.status.is_none()
+            && self.error.is_none()
+            && !klipper_problem;
         if self.connecting || waiting_status {
             ui::spinner(id)
         } else {
@@ -255,7 +288,7 @@ impl CloudState {
         let name = printer.map_or_else(
             || tr("Пристрої"),
             |p| {
-                if p.model.is_empty() && !p.name.is_empty() {
+                if (p.model.is_empty() || self.klipper.has(dev)) && !p.name.is_empty() {
                     p.name.clone()
                 } else {
                     model_label(p)
@@ -268,6 +301,9 @@ impl CloudState {
                 z.text_placeholder,
                 false,
             );
+        }
+        if self.status.is_none() && self.klipper.has(dev) && self.klipper.problem.is_some() {
+            return (format!("{name} · {}", tr("Klipper не готовий")), z.warning, false);
         }
         let Some(s) = &self.status else {
             return (
@@ -989,6 +1025,7 @@ fn debug_log(msg: &CloudMsg) {
         CloudMsg::CameraFrame(f) => eprintln!("[cloud] кадр {}×{}", f.width(), f.height()),
         CloudMsg::CameraStopped(e) => eprintln!("[cloud] камера зупинена: {e:?}"),
         CloudMsg::Lan(m) => eprintln!("{}", m.describe()),
+        CloudMsg::Klipper(m) => eprintln!("{}", m.describe()),
     }
 }
 
@@ -1220,7 +1257,8 @@ impl Workspace {
         } = link;
         // LAN живе поруч і не залежить від хмари (зокрема при SLICENV_CLOUD_OFF).
         let lan_rx = self.start_lan(window, cx);
-        let mut ui_rx = futures::stream::select(ui_rx, lan_rx);
+        let klipper_rx = self.start_klipper(window, cx);
+        let mut ui_rx = futures::stream::select(futures::stream::select(ui_rx, lan_rx), klipper_rx);
         self.cloud.commands = Some(cmd_tx);
         self.cloud.phase = tr("Запуск…").into();
         self.cloud.jog_step = 1;
@@ -1298,9 +1336,10 @@ impl Workspace {
                                         list.iter().find(|p| p.online).map(|p| p.dev_id.clone());
                                 }
                                 cloud.lan.set_cloud_list(list);
-                                cloud.printers = cloud.lan.union();
+                                cloud.rebuild_printers();
                             }
                             CloudMsg::Lan(msg) => lan::handle(this, msg, window, cx),
+                            CloudMsg::Klipper(msg) => klipper::handle(this, msg, window, cx),
                             CloudMsg::Status(dev, status) => {
                                 if cloud.selected.as_ref() == Some(&dev) {
                                     cloud.status = Some(*status);
@@ -1335,6 +1374,7 @@ impl Workspace {
                             CloudMsg::CloudPrintWorks => cloud.cloud_print_works = true,
                             CloudMsg::PrintSent(result) => {
                                 cloud.sending = false;
+                                cloud.klipper.upload = None;
                                 match result {
                                     Ok(text) => this.toast(ToastKind::Success, text, cx),
                                     Err(text) => this.toast(ToastKind::Error, text, cx),
@@ -1519,13 +1559,18 @@ impl Workspace {
         // Камера на сторінці «Статус» стартує сама один раз на принтер; вимкнену
         // користувачем потім не вмикаємо.
         let online = cloud.printers.iter().any(|p| &p.dev_id == dev && p.online);
+        // Klipper: знімки йдуть з власного принтера по HTTP, без хмари.
+        let link = if cloud.klipper.has(dev) {
+            cloud.klipper.is_up(dev)
+        } else {
+            cloud.connected && paths::env("SLICENV_CLOUD_OFF").is_none()
+        };
         if device_page
             && cloud.tab == DeviceTab::Status
             && online
-            && cloud.connected
+            && link
             && !cloud.camera_on
             && cloud.camera_auto.as_ref() != Some(dev)
-            && paths::env("SLICENV_CLOUD_OFF").is_none()
         {
             cloud.camera_auto = Some(dev.clone());
             cloud.camera_on = true;
@@ -1605,7 +1650,13 @@ fn printers_panel(
         } else {
             p.name.clone()
         };
-        let is_lan = cloud.lan.has(&p.dev_id);
+        let badge = if cloud.klipper.has(&p.dev_id) {
+            Some("Klipper")
+        } else if cloud.lan.has(&p.dev_id) {
+            Some("LAN")
+        } else {
+            None
+        };
         let (state, color, live) = if selected && p.online {
             cloud.summary()
         } else if p.online {
@@ -1647,7 +1698,7 @@ fn printers_panel(
                             .child(div().truncate().child(state)),
                     ),
             )
-            .when(is_lan, |d| {
+            .when_some(badge, |d, badge| {
                 d.child(
                     div()
                         .flex_none()
@@ -1657,7 +1708,7 @@ fn printers_panel(
                         .border_color(z.border_variant)
                         .text_xs()
                         .text_color(z.text_muted)
-                        .child("LAN"),
+                        .child(badge),
                 )
             })
             .on_click(cx.listener(move |this, _, window, cx| {
@@ -1708,6 +1759,7 @@ fn printers_panel(
                 }),
         )
         .child(lan::panel_section(cloud, cx))
+        .child(klipper::panel_section(cloud, cx))
         // Ручне додавання за серійником — хмарне; без робочої хмари воно лише заважає.
         .children(cloud.serial_input.as_ref().filter(|_| cloud.error.is_none()).map(|input| {
             div()
@@ -2082,6 +2134,12 @@ fn filament_slots(gcode_3mf: &std::path::Path) -> usize {
 
 impl Workspace {
     pub fn can_send_print(&self) -> bool {
+        // Klipper: модель не звіряється (профіль користувача), попередження — у діалозі.
+        if self.cloud.selected.as_ref().is_some_and(|d| self.cloud.klipper.has(d)) {
+            return !self.engine_loading
+                && matches!(self.slice_state, crate::workspace::SliceState::Done(_))
+                && !self.cloud.sending;
+        }
         !self.engine_loading
             && matches!(self.slice_state, crate::workspace::SliceState::Done(_))
             && self.cloud.selected.as_ref().is_some_and(|dev| {
@@ -2257,6 +2315,9 @@ impl Workspace {
     pub fn open_print_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.can_send_print() {
             return;
+        }
+        if self.cloud.selected.as_ref().is_some_and(|d| self.cloud.klipper.has(d)) {
+            return self.open_klipper_print_dialog(window, cx);
         }
         let crate::workspace::SliceState::Done(out) = &self.slice_state else {
             return;

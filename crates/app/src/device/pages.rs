@@ -35,6 +35,7 @@ pub(super) fn main_pane(
         },
     );
     let (state, color, live) = cloud.summary();
+    let klipper = cloud.selected.as_ref().is_some_and(|dev| cloud.klipper.has(dev));
 
     let toolbar = ui::toolbar()
         .h(px(40.))
@@ -55,7 +56,7 @@ pub(super) fn main_pane(
         )
         .child(div().flex_1())
         .when(cloud.selected.is_some() && !cloud.link_up(), |d| {
-            let lan = cloud.selected.as_ref().is_some_and(|dev| cloud.lan.has(dev));
+            let lan = klipper || cloud.selected.as_ref().is_some_and(|dev| cloud.lan.has(dev));
             d.child(
                 div()
                     .flex()
@@ -79,7 +80,8 @@ pub(super) fn main_pane(
                 .child(crate::tr_format!("оновлено {secs} с тому"))
         }));
 
-    let tabs = cloud.selected.is_some().then(|| {
+    // Вкладки Сховище / Оновлення / HMS — Bambu; у Klipper своя сторінка.
+    let tabs = (cloud.selected.is_some() && !klipper).then(|| {
         let tab = |id: &'static str, icon: IconName, label: &'static str, which: DeviceTab| {
             ui::tab(id, icon, label, cloud.tab == which).on_click(cx.listener(
                 move |this, _, _, cx| {
@@ -137,6 +139,7 @@ pub(super) fn main_pane(
     });
 
     let body: AnyElement = match (&cloud.status, &cloud.selected) {
+        (_, Some(_)) if klipper => super::klipper::body(cloud, window, cx),
         // Принтера ще немає: головний шлях — LAN без акаунта; стан хмари — окремим рядком.
         (_, None) => {
             let first_found = cloud.lan.found.first().cloned();
@@ -153,6 +156,11 @@ pub(super) fn main_pane(
                         .on_click(cx.listener(move |ws, _, window, cx| {
                             ws.open_lan_dialog(first_found.clone(), window, cx)
                         }))
+                        .into_any_element(),
+                    ui::ghost_button("device-empty-klipper", Some(IconName::Printer), "Додати принтер Klipper")
+                        .border_1()
+                        .border_color(z.border_variant)
+                        .on_click(cx.listener(|ws, _, window, cx| ws.open_klipper_dialog(None, window, cx)))
                         .into_any_element(),
                     ui::ghost_button("device-empty-wizard", Some(IconName::Sparkles), "Майстер налаштування")
                         .border_1()
@@ -234,7 +242,7 @@ pub(super) fn main_pane(
             cloud
                 .error
                 .clone()
-                .filter(|_| cloud.selected.as_ref().is_some_and(|d| !cloud.lan.has(d))),
+                .filter(|_| cloud.selected.as_ref().is_some_and(|d| !cloud.lan.has(d) && !cloud.klipper.has(d))),
             |d, e| {
                 d.child(
                     div()
@@ -292,7 +300,7 @@ fn status_tab(
 }
 
 /// Компактна шапка: мініатюра, назва завдання, прогрес і кнопки керування друком.
-fn job_header(cloud: &CloudState, s: &PrinterStatus, cx: &mut Context<Workspace>) -> gpui::Div {
+pub(super) fn job_header(cloud: &CloudState, s: &PrinterStatus, cx: &mut Context<Workspace>) -> gpui::Div {
     let z = zed();
     let state = s.gcode_state.as_deref();
     let active = job::is_active(state);

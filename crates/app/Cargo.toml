@@ -26,6 +26,7 @@ settings.workspace = true
 gcode.workspace = true
 cloud.workspace = true
 lan.workspace = true
+moonraker.workspace = true
 project.workspace = true
 glam.workspace = true
 futures.workspace = true
