@@ -770,7 +770,7 @@ pub fn handle(ws: &mut Workspace, msg: LanMsg, window: &mut Window, cx: &mut Con
     match msg {
         LanMsg::Printers(list) => {
             cloud.lan.printers = list;
-            cloud.printers = cloud.lan.union();
+            cloud.rebuild_printers();
             if cloud.selected.is_none()
                 && let Some(dev) = cloud.lan.printers.first().map(|p| p.dev_id.clone())
             {
@@ -812,6 +812,7 @@ impl CloudState {
     pub fn link_up(&self) -> bool {
         match &self.selected {
             Some(dev) if self.lan.has(dev) => self.lan.is_up(dev),
+            Some(dev) if self.klipper.has(dev) => self.klipper.is_up(dev),
             _ => self.connected,
         }
     }

@@ -37,6 +37,7 @@ settings = { path = "crates/settings" }
 gcode = { path = "crates/gcode" }
 cloud = { path = "crates/cloud" }
 lan = { path = "crates/lan" }
+moonraker = { path = "crates/moonraker" }
 project = { path = "crates/project" }
 serde = { version = "1", features = ["derive"] }
 cc = "1"

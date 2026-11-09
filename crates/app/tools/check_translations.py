@@ -17,6 +17,8 @@ SOURCES = [
     # Тексти помилок LAN показуються через tr(LanError::key()/detail()).
     ROOT / "crates/lan/src/error.rs",
     ROOT / "crates/lan/src/tls.rs",
+    # Помилки Klipper/Moonraker: tr(MoonrakerError::key()).
+    ROOT / "crates/moonraker/src/error.rs",
 ]
 CYRILLIC = re.compile(r"[А-Яа-яІіЇїЄєҐґ]")
 LITERAL = re.compile(r'"((?:[^"\\\n]|\\.)*)"')
@@ -72,7 +74,7 @@ def main() -> int:
             key = match.group(1)
             # These are logger payloads, test-fixture labels, or interpolation
             # arguments; they are not displayed as independently translated text.
-            if key.startswith(("[cloud]", "[lan]")) or key in {
+            if key.startswith(("[cloud]", "[lan]", "[klipper]")) or key in {
                 "сопла", "столу", "Тестовий A1 (фіктивний)",
                 "Потік хмари завершився з помилкою під час закриття",
                 "не стартував потік хмари",

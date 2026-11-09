@@ -206,6 +206,7 @@ dependencies = [
  "image",
  "lan",
  "mcp",
+ "moonraker",
  "notify",
  "paths",
  "project",
@@ -4018,6 +4019,17 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "moonraker"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "paths",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]
