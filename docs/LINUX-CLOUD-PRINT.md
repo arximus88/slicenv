@@ -1,0 +1,301 @@
+# Друк через інтернет на Linux: порівняння варіантів
+
+Стан на 2026-11-09. Експеримент для рішення дизайнера: як Slicenv на Linux має друкувати на
+принтер Bambu не з локальної мережі. Інтерфейс не змінювався. Код експерименту:
+`tools/studio-handoff-probe.sh` (варіант 1), `crates/cloud/examples/open_plugin_probe.rs`
+(варіант 2). Знімки екрана — у `/tmp/linux-studio-handoff/` на arx-pc (поза git).
+
+**Умови.** Усі запуски: тимчасовий HOME / XDG_*, без мережі (`unshare -rn`, у Flatpak
+`--unshare=network`), Xvfb `:77` з програмним рендерингом (llvmpipe), Ryzen 7 7840HS. Вхід в
+акаунт не виконувався. Жодного друку й жодної команди принтеру. Справжні
+`~/.config/BambuStudio` і `~/.local/share/flatpak/db` не змінювались (mtime ті самі). Плагін
+Bambu зі `~/.config/BambuStudio/plugins` лише копіювався в тимчасову теку.
+
+Чому взагалі питання: хмарний друк з нашого шима завжди повертає -26
+(`BAMBU_NETWORK_SIGNED_ERROR`), бо закритий плагін приймає хмарні завдання лише від програм
+з підписом Bambu Lab ([CLOUD.md](CLOUD.md)). На Windows/macOS є Bambu Connect, на Linux його
+немає.
+
+## Підсумкова таблиця
+
+| | 1. Передати в Bambu Studio | 2a. Відкритий плагін OBN (чистий) | 2b. Форк OBN persano (вшитий секрет) | 3. LAN + Developer Mode |
+|---|---|---|---|---|
+| Друк не з дому | **так** (друкує Bambu Studio, програма з підписом) | **ні**: без ключів слайсера друк заблоковано (див. нижче) | за README — так | ні (лише VPN до домашньої мережі) |
+| Що перевірено тут | відкриття файлу, «Print plate», діалог «Send print job» без входу | збірка, завантаження шимом, старт без входу | нічого не запускалось (лише README) | уже є в Slicenv ([LAN.md](LAN.md)) |
+| Кліки від «Друкувати» в Slicenv до відправки | **4** (файл Orca — 5), перший раз більше | — | ~2 (як зараз LAN) | 2 |
+| Час до готової «Print plate» | 2,9–6,5 с (керований 02.07), 3,6 с теплий / 8,2 с холодний (Flatpak 2.9.1) | старт плагіна 6 мс (закритий — 49–65 мс) | — | — |
+| Вхід | у Bambu Studio (вебвʼю bambulab.com), окремо від Slicenv | наш вхід (браузер / форма) підходить за ABI, сесія — новий файл `obn.auth.json` | як 2a + ключі | не потрібен (код доступу з екрана) |
+| Що встановити | Bambu Studio (наш менеджер рушіїв або Flathub) + у ній закритий плагін Bambu | збірка OBN (C++, 57 с) або їхній архів | їхній архів | нічого |
+| Ризики | дві програми, два входи; файли Orca з `--min-save` валять Studio 02.07 | нічого не дає для друку через інтернет | **вшитий секрет Bambu — заборонено правилами проєкту**, ToS, юридичні | Developer Mode вимикає перевірку команд; без хмари, Handy, історії |
+| Потребує людини на A1 | вхід у Studio, один справжній друк через «Send» | — | — | перемикання режиму, тестовий друк |
+
+**Висновок експерименту** (рішення за дизайнером): єдиний перевірений шлях друку через інтернет
+на Linux без чужих секретів — варіант 1. Варіант 2a друку через хмару не дає. Варіант 2b
+порушує правило проєкту «не використовувати сторонні форки плагіна чи вшиті секрети Bambu».
+
+## Варіант 1 — передача `.gcode.3mf` у Bambu Studio
+
+### Головна знахідка: потрібен `--min-save`
+
+Bambu Studio відкриває `.gcode.3mf` як **нарізаний** (вкладка Preview, активна «Print plate»)
+лише тоді, коли в 3MF **немає об’єктів моделі**. Це видно в
+`Plater::priv::load_files` (BambuStudio v02.07.01.62, `src/slic3r/GUI/Plater.cpp` ≈ 9050):
+`if (model.objects.empty()) { partplate_list.load_gcode_files(); … m_exported_file = true;
+select_tab(tpPreview); }`. Інакше файл відкривається як проєкт на вкладці Prepare, «Print plate»
+неактивна, потрібно «Slice plate». Тоді різатиме вже рушій Studio, а не той, що різав у Slicenv.
+
+Slicenv зараз експортує повний проєкт (`3D/Objects/object_*.model`), тож Studio відкриває його
+як модель (знімок `b1-max.png`). Студійне меню «Export plate sliced file» пише 3MF з
+`SaveStrategy::SkipModel`. CLI робить те саме з прапорцем **`--min-save`**
+(`src/BambuStudio.cpp`: `if (minimum_save) strategy |= SkipModel`). Прапорець є і в
+OrcaSlicer CLI (`--min-save`). Перевірено: обидва рушії з `--min-save` пишуть
+`.gcode.3mf` без `3D/Objects/`, G-code регенерується (md5 інший).
+
+| Файл | Керований Bambu Studio 02.07.01.62 (AppImage) | Flatpak Bambu Studio 2.9.1 |
+|---|---|---|
+| Bambu 02.07, повний (як зараз у Slicenv) | Prepare, «Print plate» неактивна | — |
+| Bambu 02.07, `--min-save` | **Preview, «Print plate» активна** | **Preview, «Print plate» активна** |
+| Orca 2.4.2, повний | діалог «значення замінено» → Prepare, перерізати | — |
+| Orca 2.4.2, `--min-save` | діалог «значення замінено» → **SIGSEGV (exit 139)** | діалог → **Preview, «Print plate» активна** |
+| Orca 2.5.0-beta, `--min-save` | «Newer 3mf version» + діалог → **SIGSEGV** | діалог → **Preview, «Print plate» активна** |
+
+- Orca пише в 3MF `Application = BambuStudio-<сумісна версія>`: 2.4.2 → `02.06.00.51`,
+  2.5.0-beta → `02.08.01.55`. Якщо це новіше за Studio, з’являється вікно «Newer 3mf
+  version». Діалог «The configuration may have been generated by a newer version…» показує
+  параметри Orca, яких Studio не знає (`ensure_vertical_shell_thickness: ensure_all`,
+  `ironing_pattern: rectilinear`): +1 клік «OK».
+- Для куба від Orca 2.4.2 Studio 2.9.1 показує свою оцінку часу (3 год 1 хв разом із
+  «Prepare and timelapse 16m21s + 46m26s») замість 20 хв від Orca. Сам G-code той, що нарізав
+  Orca: Studio його не перерізає. Чи друкується він так само, перевірить лише людина.
+- Падіння керованого 02.07 на файлах Orca з `--min-save` не досліджувалось глибше. Варто
+  перевірити новіший AppImage (02.09) з менеджера рушіїв.
+
+### Запуск і пошук Bambu Studio
+
+- **Керований рушій** (`~/.local/share/slicenv/engines/bambu/<версія>/AppRun`) — це повний GUI,
+  не лише CLI. Без `SSL_CERT_FILE` у середовищі він на старті питає «use system SSL certificate…
+  Do you want to continue?» (знімок `studio-1.png`). Передавати
+  `SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt`, як уже робить `cloud::configure_tls_env`.
+  Для входу GUI потрібен системний `libwebkit2gtk-4.1` (AppImage його не несе, `ldd`).
+- **PATH**: на цій машині `/usr/bin/bambustudio` вже немає (запис у CLAUDE.local.md застарів).
+  `slicer::Engine::discover` шукає `bambu-studio`, `bambustudio`, `BambuStudio` у PATH і
+  `/opt/bambu-studio/…`. Для GUI це те саме виконуване.
+- **Flatpak** `com.bambulab.BambuStudio` (Flathub, тут 2.9.1): пошук за наявністю
+  `/var/lib/flatpak/exports/bin/com.bambulab.BambuStudio` або
+  `~/.local/share/flatpak/exports/bin/…`, без запуску `flatpak`. Права пісочниці
+  `filesystems=home;/media;/run/media`, `/tmp` у неї свій. Перевірено:
+  - `flatpak run com.bambulab.BambuStudio /tmp/…/file.gcode.3mf` → «Bambu Studio error»,
+    файл не видно (знімок `flatpak-tmp-plain.png`);
+  - `flatpak run --file-forwarding com.bambulab.BambuStudio @@ /tmp/…/file.gcode.3mf @@` →
+    файл відкрито через портал документів (`/run/user/<uid>/doc/…`). Знімок
+    `flatpak-tmp-forwarded.png`. Так само робить `.desktop` Flathub
+    (`--command=entrypoint --file-forwarding … @@u %U @@`).
+  - Альтернатива без порталу — класти файл передачі під `$HOME`, наприклад у
+    `~/.cache/slicenv/…` (діє `filesystems=home`).
+  - Flatpak-середовище GNOME 50 вантажить іконки через glycin (`flatpak-spawn --sandbox`), тож
+    без сесійної шини D-Bus Studio падає (exit 134). У звичайній сесії це не проблема.
+
+### Час (від запуску процесу)
+
+| Збірка | Вікно з назвою файлу | «Print plate» активна |
+|---|---|---|
+| Керований 02.07, холодний (page cache рушія скинуто) | 2,7–6,2 с | 3,5–6,5 с |
+| Керований 02.07, повторний | 2,7–3,0 с | 2,9–4,4 с |
+| Flatpak 2.9.1, холодний (скинуто застосунок і GNOME runtime) | 5,0 с | 8,2 с |
+| Flatpak 2.9.1, повторний | 3,5 с | 3,6 с |
+
+«Холодний» тут означає скинутий page cache файлів рушія, а не перезавантаження: GTK і системні
+бібліотеки лишались у кеші. Перший запуск у новому профілі довший і з майстром (див. «Кліки»).
+
+### Чи можна передати файл у вже відкриту Studio
+
+На Linux — **ні** (керований 02.07):
+- без налаштувань кожен виклик — новий процес і нове вікно (`app.single_instance` за
+  замовчуванням вимкнено);
+- прапорець `--single-instance` CLI 02.07 не приймає («Invalid option --single-instance»,
+  exit 254);
+- з `"single_instance": true` у `BambuStudio.conf` другий процес знаходить lock-файл і
+  завершується за 0,06 с (exit 255). Але перший екземпляр не зареєстрував на сесійній шині
+  ім’я `com.bambulab.BambuStudio.InstanceCheck.*` (`ListNames`), і файл за 30 с не відкрився:
+  **файл губиться**. Код слухача (`InstanceCheck.cpp`, `BACKGROUND_MESSAGE_LISTENER`) у цій
+  збірці, схоже, не активний. На Flatpak не перевірялось.
+
+Отже, кожна передача — новий процес Studio (3–8 с), і користувач закриває старі вікна сам.
+
+### Вхід у Bambu Studio і сесія
+
+- Кнопка входу у Studio відкриває вбудований WebKitGTK-вебвʼю зі сторінкою
+  `<bambulab host>/sign-in` (`ZUserLogin`, `WebUserLoginDialog.cpp`). Google/Apple відкривають
+  системний браузер (`thirdparty_login` → `wxLaunchDefaultBrowser`) з поверненням на localhost.
+  Перед входом Studio сама пропонує завантажити свій закритий мережевий плагін. Для неї це
+  дозволено: плагін перевіряє підпис Studio, і хмарний друк проходить.
+- Сесія: `BambuNetworkEngine.conf`, яку шифрує плагін, у `~/.config/BambuStudio/` (Flatpak —
+  `~/.var/app/com.bambulab.BambuStudio/config/BambuStudio/`).
+- **Чи перевикористати сесію Slicenv.** Slicenv уже вміє навпаки: `account::adopt_session`
+  копіює сесію Studio до себе ([CLOUD.md](CLOUD.md)). Формат той самий: файл плагіна Bambu, і
+  плагін 02.08 читав сесію, записану 01.10. Тож скопіювати нашу сесію в теку Studio технічно
+  можливо, але це:
+  - запис у чужу конфігурацію (зараз ми її лише читаємо);
+  - спільний токен: оновлення в одній програмі може анулювати іншу ([CLOUD.md](CLOUD.md),
+    «Спільний токен»).
+
+  Не перевірялось: на цій машині немає власної сесії Slicenv
+  (`~/.local/share/slicenv/cloud/session` відсутня), а вхід без людини заборонено.
+  Простіший шлях — людина один раз входить у Studio, а Slicenv може прийняти цю сесію
+  (уже реалізовано).
+
+### Кліки
+
+Звичайний випадок, Studio вже налаштована й виконано вхід:
+1. «Друкувати» в Slicenv.
+2. «Відкрити в Bambu Studio».
+   - (файл від Orca) «OK» у діалозі про параметри — +1.
+3. «Print plate» у Studio.
+4. «Send» у діалозі «Send print job». Принтер вибирається зі списку акаунта, діалог пам’ятає
+   останній. Без входу список порожній і «Send» неактивна (знімок
+   `print-plate-no-login.png`; процес без мережі, нічого не надсилалось).
+
+Разом **4 кліки** (Orca — 5) і 3–8 с очікування Studio.
+
+Перший раз додається:
+- для керованого AppImage без `SSL_CERT_FILE` — запит про SSL;
+- майстер Studio (регіон, згода, вибір принтерів; без `firstguide.finish` його не закрити:
+  спроба закрити вікно майстра завершила процес);
+- встановлення плагіна в Studio;
+- вхід (email, пароль, код).
+
+## Варіант 2a — ClusterM/open-bamboo-networking (OBN) через наш шим
+
+Збірка з вихідного коду (коміт `95d42f8`, 2026-11-03, AGPL-3.0) у `/tmp/obn`:
+`./configure --prefix=/tmp/obn/inst --with-version=02.08.04.99 --no-conf-patch --enable-tests`,
+`make -j16` — **57 с**. Mosquitto вендориться через FetchContent: при configure потрібна
+мережа до GitHub.
+- `libbambu_networking.so`: 2,1 МБ проти 4,4 МБ закритого, 131 символ `bambu_network_*` — як у
+  закритому 02.08.04.60.
+- Усі 34 функції, які викликає наш шим (`crates/cloud/native/shim.cpp`), є в OBN
+  (`comm` порожній). Зокрема `get_my_token`, `change_user`, `get_my_profile`, `user_logout`,
+  `start_print`.
+
+`open_plugin_probe` (мережа відрізана, порожня тимчасова сесія):
+
+| | OBN 02.08.04.99 | закритий Bambu 02.06.00.50 (копія) |
+|---|---|---|
+| `dlopen` + `create_agent` + `set_config_dir` + `init_log` | так, **6 мс** | так, 49–65 мс |
+| покоління шима | V0208 (версію `02.08.04.xx` приймає) | V0206 |
+| `start` | 0 мс | 3–6 мс |
+| `is_user_login` / `is_server_connected` | false / false | false / false |
+| `destroy_agent` | 0 мс | 71–95 мс |
+
+- **Вхід.** OBN реалізує той самий потік, що наш `browser_login`: браузер → localhost →
+  `get_my_token(ticket)` → `POST /user-service/user/ticket/<T>`, а також `change_user`
+  з токенами. За ABI наш вхід має працювати без змін. Наживо не перевірено (без людини).
+  Сесію OBN пише не в `BambuNetworkEngine.conf`, а у **`obn.auth.json`** — звичайний JSON з
+  правами 0600, без шифрування. Сесія закритого плагіна для OBN непридатна: після заміни
+  плагіна потрібен повторний вхід.
+- **Стан принтерів через хмару.** За замовчуванням `block_cloud = 1`:
+  `bambu_network_connect_server` нічого не робить (`abi_cloud.cpp`), тож хмарного MQTT
+  (статус, температури) немає, доки в `obn.conf` не задати `block_cloud = 0`. REST акаунта
+  (профіль, пресети, Filament Manager) працює і так.
+- **Хмарний друк без власних ключів слайсера** (з коду, без виклику):
+  1. `block_cloud = 1` (за замовчуванням): `run_cloud_print_job` одразу повертає
+     `BAMBU_NETWORK_ERR_INVALID_HANDLE` з «cloud print blocked by config», без мережі
+     (`src/cloud_print.cpp` ≈ 796).
+  2. `block_cloud = 0` з чесним `client_name` (`X-BBL-Client-Name: OpenBambooNetworking`):
+     хмара відповідає на `POST /my/task` **HTTP 403** (README OBN, таблиця «Printing»).
+  3. `block_cloud = 0`, `client_name = BambuStudio`, без `slicer_key.pem`: завдання дійде,
+     але прошивка з Authorization Control відхилить непідписану команду `print`:
+     `MQTT Command verification failed`, `err_code: 84033543` (README OBN, «Option B»).
+     Крім того, підміна імені клієнта — це видавати себе за Bambu Studio.
+
+  Отже, чистий OBN друкує лише по LAN у Developer Mode («Option A»). Це те, що вже робить наш
+  `crates/lan` без жодного плагіна. Наш `Client::start_print` до плагіна й не дійде: він
+  вимагає `is_server_connected`, а з `block_cloud = 1` цього не буває.
+- `start_print` у цьому експерименті не викликався.
+- Що OBN дав би проти закритого плагіна: відкритий код, aarch64, швидкий старт (6 мс проти
+  ~50 мс), відсутність split-lock-гальм. Друку через інтернет не дав би.
+
+## Варіант 2b — форк persano (`option-b-cloud-rescue`)
+
+Не завантажувався й не запускався. Опис — за README на GitHub
+(`github.com/persano/open-bamboo-networking`).
+- **Як підписує.** Як OBN «Option B»: RSA-PKCS#1 v1.5 + SHA-256 для MQTT-команд `print`,
+  установлення свого сертифіката застосунку на принтер. Різниця — ключ слайсера не треба
+  приносити самому. Плагін **сам отримує** `slicer_cert.pem`, `slicer_key.pem`,
+  `slicer_crl.pem` з ендпойнта сертифікатів Bambu (`src/appcert_fetch.cpp`). Для цього в бінарнику
+  **вшитий `client_auth_secret`** і «bootstrap values» (`src/appcert_cipher.cpp`),
+  перевизначення через `OBN_CLIENT_AUTH_SECRET`. Тобто це секрет, витягнутий із закритого
+  плагіна Bambu.
+- **Що від користувача.**
+  - Встановити їхній архів замість плагіна.
+  - В `obn.conf`: `block_cloud = 0`, `client_name = BambuStudio`.
+  - Увійти в акаунт.
+  - Developer Mode не потрібен.
+- **Ризики.**
+  1. Пряме порушення правила проєкту (CLAUDE.md: «не використовувати сторонні форки плагіна
+     чи вшиті секрети Bambu»).
+  2. Імітація Bambu Studio (`client_name`) і обхід Authorization Control — імовірне порушення
+     ToS. Bambu вже погрожувала позовом розробнику форку OrcaSlicer, що ходив у хмару під
+     виглядом Bambu Studio, і добилась видалення форку з GitHub
+     ([derStandard](https://www.derstandard.at/story/3000000320252/3d-druck-eklat-bambu-lab-droht-open-source-entwickler-mit-klage),
+     [All3DP](https://all3dp.com/de/4/bambu-lab-laesst-orcaslicer-fork-entfernen-und-verhilft-ihm-zu-einer-groesseren-reichweit/)).
+  3. Bambu може відкликати сертифікат чи секрет, і друк зламається в усіх одночасно. Можливе
+     блокування акаунта.
+  4. Сертифікат ставиться на принтер користувача — зміна стану принтера.
+  5. За README, логи містять токени, коди доступу й серійники без маскування, а
+     `obn.auth.json` — токен відкритим текстом.
+
+  Рішення, чи це використовувати, за людиною. Цей звіт його не рекомендує.
+
+## Варіант 3 — LAN з Developer Mode (уже є)
+
+`crates/lan`, чистий Rust ([LAN.md](LAN.md)): 2 кліки, без акаунта, без плагіна. Що
+втрачає людина:
+- **друк лише в тій самій мережі**; не з дому — тільки VPN (WireGuard/Tailscale) чи
+  проброс портів 8883/990/6000;
+- у режимі LAN Only принтер від’єднується від хмари: немає Bambu Handy, віддаленої камери,
+  хмарної історії друку й MakerWorld-записів;
+- Developer Mode вимикає перевірку MQTT-команд: будь-хто в мережі з кодом доступу може
+  керувати принтером;
+- перемикати режим треба на екрані принтера; для синхронізації власних філаментів на
+  принтер, за README OBN, доводиться тимчасово повертати хмару.
+
+Чи приймає A1 (прошивка 01.04.60.02, режим cloud) друк по LAN **без** Developer Mode, наживо не
+перевірено. Наш `crates/lan` у такому разі класифікує відмову як `ControlLocked`.
+
+## Що перевірити людині на справжньому A1
+
+1. **Варіант 1, наскрізно.**
+   - Нарізати в Slicenv з `--min-save` (рушій Bambu і рушій Orca).
+   - Відкрити у Flatpak Bambu Studio 2.9.1 з виконаним входом і «Print plate» → «Send».
+   - Перевірити, що друк стартує з тим G-code, який дав Slicenv: час, шари, температури.
+2. **Студія з менеджера рушіїв.** Повторити з керованим AppImage новішої версії (02.09):
+   чи зникло падіння на файлах Orca з `--min-save`.
+3. **Сесія.**
+   - Після входу в Studio: Slicenv «Використати» сесію Studio (уже є), Studio лишається в
+     акаунті.
+   - Окремо — чи не вилогінює одна програма іншу через день-два (спільний токен).
+4. **OBN, за бажання.** Вхід через наш браузерний потік з OBN замість закритого плагіна —
+   лише вхід і список принтерів, без друку.
+5. **LAN.** Чи приймає A1 у режимі cloud (без Developer Mode) команду `project_file` по LAN.
+
+## Як відтворити
+
+```sh
+# Варіант 1: керований рушій або Flatpak, файл .gcode.3mf, cold — скинути page cache
+tools/studio-handoff-probe.sh managed /шлях/file.gcode.3mf cold
+tools/studio-handoff-probe.sh flatpak /шлях/file.gcode.3mf
+
+# --min-save: нарізаний 3MF без об'єктів моделі (і Bambu, і Orca CLI)
+T=$(mktemp -d); HOME=$T XDG_CONFIG_HOME=$T/c XDG_DATA_HOME=$T/d XDG_CACHE_HOME=$T/k \
+  unshare -rn <AppRun> --slice 1 --min-save --outputdir $T --export-3mf out.gcode.3mf in.3mf
+
+# Варіант 2: будь-який плагін через наш шим, без мережі й без входу
+cargo build -p cloud --example open_plugin_probe
+T=$(mktemp -d); HOME=$T XDG_DATA_HOME=$T/d XDG_CONFIG_HOME=$T/c XDG_CACHE_HOME=$T/k \
+  unshare -rn target/debug/examples/open_plugin_probe /tmp/obn/src/build/libbambu_networking.so
+```
+
+Джерела Bambu Studio — тег `v02.07.01.62`: `src/slic3r/GUI/Plater.cpp`, `GUI_App.cpp`,
+`InstanceCheck.cpp`, `WebUserLoginDialog.cpp`, `src/BambuStudio.cpp`. OBN — коміт `95d42f8`:
+`README.md`, `src/abi_print.cpp`, `src/cloud_print.cpp`, `src/abi_cloud.cpp`,
+`src/abi_user.cpp`, `src/auth.cpp`.
