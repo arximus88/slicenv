@@ -5,7 +5,7 @@
 //! працюють той самий буфер шматками, LOD і повзунки. Відрізняється лише вміст кольору:
 //! байт R — номер слота філаменту, байт G — прапорці [`FLAG_SUPPORT`], [`FLAG_SEAM`].
 
-use glam::{Vec2, Vec3};
+use glam::Vec3;
 
 use crate::{FlatVertex, ToolpathInstance};
 
@@ -125,6 +125,8 @@ pub fn instances(toolpath: &gcode::Toolpath) -> PhotoInstances {
         out.travel_layer_ranges
             .push(start_travel..out.travel_vertices.len() as u32);
     }
+    // Спільний косий стик сусідніх сегментів: шейдер обрізає ним циліндр валика (без
+    // перекриття й щілини); вільні кінці — заокруглені.
     ToolpathInstance::join(&mut out.instances);
     out
 }
@@ -177,7 +179,8 @@ pub fn relief_lod(bead_px: f32) -> f32 {
     smoothstep(1.6, 7.0, bead_px)
 }
 
-/// Бічний і верхній напрямки перерізу (як у шейдері; вертикальний рух — бік −Y).
+/// Бічний і верхній напрямки перерізу (як `bead_vertex`): бік — горизонтальний
+/// перпендикуляр до осі (вертикальний рух — −Y), верх — z ≥ 0.
 fn frame(inst: &ToolpathInstance) -> (Vec3, Vec3) {
     let (from, to) = (Vec3::from(inst.from), Vec3::from(inst.to));
     let dir = to - from;
@@ -186,13 +189,14 @@ fn frame(inst: &ToolpathInstance) -> (Vec3, Vec3) {
     } else {
         Vec3::X
     };
-    let side_xy = Vec2::from(inst.side_from);
-    let side = if side_xy.length_squared() < 1e-8 {
+    let side = fwd.cross(Vec3::Z);
+    let side = if side.length_squared() < 1e-8 {
         Vec3::NEG_Y
     } else {
-        side_xy.extend(0.0).normalize()
+        side.normalize()
     };
-    (side, side.cross(fwd).normalize())
+    let up = side.cross(fwd).normalize();
+    (side, if up.z < 0.0 { -up } else { up })
 }
 
 /// Рамка валика з урахуванням заокруглених торців (півширини за кінцем).
