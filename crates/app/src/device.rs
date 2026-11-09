@@ -6,6 +6,7 @@
 mod guard;
 mod job;
 mod klipper;
+mod klipper_controls;
 mod lan;
 mod pages;
 pub mod print_paths;
@@ -233,6 +234,30 @@ impl CloudState {
             .map_err(|_| guard::Blocked::Disconnected)
     }
 
+    /// Кадр камери (BGRA) на сторінку; попередній повертається вікну. Спільне для хмари, LAN
+    /// і Klipper.
+    pub fn show_camera_frame(&mut self, bgra: image::RgbaImage, window: &mut Window) {
+        if !self.camera_on {
+            return;
+        }
+        let frame = Arc::new(gpui::RenderImage::new(vec![image::Frame::new(bgra)]));
+        if let Some(old) = self.camera_frame.replace(frame) {
+            window.drop_image(old).ok();
+        }
+        self.camera_note = None;
+    }
+
+    /// Сторінку «Пристрій» сховано: камеру (потік чи знімки) зупиняємо. Увімкнену
+    /// користувачем знову запустить `after_status`, коли сторінка повернеться.
+    pub fn hide_camera(&mut self) {
+        if self.camera_on {
+            self.camera_on = false;
+            self.camera_note = None;
+            self.camera_auto = None;
+            self.send(CloudCmd::Camera(false));
+        }
+    }
+
     /// Хмара + LAN + Klipper в одному списку для лівого доку.
     pub fn rebuild_printers(&mut self) {
         let mut list = self.lan.union();
@@ -249,6 +274,9 @@ impl CloudState {
         self.versions.clear();
         self.camera_on = false;
         self.camera_note = None;
+        self.klipper.job = None;
+        self.klipper.camera_live = false;
+        self.klipper.history.clear();
         for image in [self.job.clear(), self.camera_frame.take()]
             .into_iter()
             .flatten()
@@ -767,14 +795,7 @@ fn session(
                 while let Some(frame) = cam.try_frame() {
                     last = Some(frame);
                 }
-                if let Some(frame) = last
-                    && let Ok(decoded) =
-                        image::load_from_memory_with_format(&frame.jpeg, image::ImageFormat::Jpeg)
-                {
-                    let mut bgra = decoded.to_rgba8();
-                    for px in bgra.pixels_mut() {
-                        px.0.swap(0, 2);
-                    }
+                if let Some(bgra) = last.and_then(|frame| jpeg_to_bgra(&frame.jpeg, CameraFlip::default())) {
                     send(CloudMsg::CameraFrame(bgra));
                 }
             }
@@ -1381,18 +1402,7 @@ impl Workspace {
                                 }
                             }
                             CloudMsg::Tasks(rows) => cloud.tasks = rows,
-                            CloudMsg::CameraFrame(bgra) => {
-                                if cloud.camera_on {
-                                    let frame =
-                                        Arc::new(gpui::RenderImage::new(vec![image::Frame::new(
-                                            bgra,
-                                        )]));
-                                    if let Some(old) = cloud.camera_frame.replace(frame) {
-                                        window.drop_image(old).ok();
-                                    }
-                                    cloud.camera_note = None;
-                                }
-                            }
+                            CloudMsg::CameraFrame(bgra) => cloud.show_camera_frame(bgra, window),
                             CloudMsg::CameraStopped(note) => {
                                 cloud.camera_on = false;
                                 cloud.camera_note = note.map(Into::into);
@@ -1836,6 +1846,37 @@ pub(self) fn card(title: &str, trailing: Vec<gpui::AnyElement>) -> gpui::Div {
 
 pub(self) const CAMERA_HEIGHT: f32 = 420.;
 
+/// Віддзеркалення й поворот кадру з налаштувань камери (Moonraker `webcams`).
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct CameraFlip {
+    pub horizontal: bool,
+    pub vertical: bool,
+    /// 0 / 90 / 180 / 270.
+    pub rotation: u16,
+}
+
+/// JPEG кадру → BGRA для `gpui::RenderImage`. Спільне для камер Bambu (LAN, хмара) і Klipper.
+pub(crate) fn jpeg_to_bgra(jpeg: &[u8], flip: CameraFlip) -> Option<image::RgbaImage> {
+    let decoded = image::load_from_memory_with_format(jpeg, image::ImageFormat::Jpeg).ok()?;
+    let decoded = match (flip.horizontal, flip.vertical) {
+        (true, true) => decoded.rotate180(),
+        (true, false) => decoded.fliph(),
+        (false, true) => decoded.flipv(),
+        _ => decoded,
+    };
+    let decoded = match flip.rotation {
+        90 => decoded.rotate90(),
+        180 => decoded.rotate180(),
+        270 => decoded.rotate270(),
+        _ => decoded,
+    };
+    let mut bgra = decoded.to_rgba8();
+    for px in bgra.pixels_mut() {
+        px.0.swap(0, 2);
+    }
+    Some(bgra)
+}
+
 pub(self) fn camera_panel(cloud: &CloudState, cx: &mut Context<Workspace>) -> gpui::Div {
     let z = zed();
     let on = cloud.camera_on;
@@ -1911,6 +1952,9 @@ pub(self) fn camera_panel(cloud: &CloudState, cx: &mut Context<Workspace>) -> gp
                     ),
                 })
                 .when(on && cloud.camera_frame.is_some(), |d| {
+                    // Klipper без MJPEG-потоку показує знімки — не «наживо».
+                    let snapshots = cloud.selected.as_ref().is_some_and(|dev| cloud.klipper.has(dev))
+                        && !cloud.klipper.camera_live;
                     d.child(
                         div()
                             .absolute()
@@ -1924,8 +1968,8 @@ pub(self) fn camera_panel(cloud: &CloudState, cx: &mut Context<Workspace>) -> gp
                             .rounded(px(4.))
                             .bg(gpui::black().opacity(0.55))
                             .text_xs()
-                            .child(ui::status_dot(z.error, true))
-                            .child(tr("наживо")),
+                            .child(ui::status_dot(if snapshots { z.text_placeholder } else { z.error }, !snapshots))
+                            .child(tr(if snapshots { "знімок раз на секунду" } else { "наживо" })),
                     )
                 }),
         )

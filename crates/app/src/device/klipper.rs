@@ -22,8 +22,8 @@ use futures::channel::mpsc as async_mpsc;
 use gpui::{AnyElement, Context, SharedString, Window, div, prelude::*, px};
 use gpui_component::input::InputState;
 use moonraker::{
-    Client, JobStatus, KlippyState, MoonrakerError, PrintState, Probe, SavedPrinter,
-    UploadOptions,
+    Client, Command, JobStatus, KlippyState, MoonrakerError, PrintState, Probe, SavedPrinter,
+    UploadOptions, mdns,
 };
 
 use super::{CloudCmd, CloudMsg, CloudState, guard};
@@ -47,6 +47,16 @@ pub enum KlipperCmd {
     /// Перевірити з’єднання й доступ і, якщо вдалося, зберегти.
     Add(Box<SavedPrinter>),
     Remove(String),
+    /// mDNS-пошук `_moonraker._tcp` у локальній мережі.
+    Discover,
+    /// Керування одним скриптом; `console` — рядок з консолі (для історії).
+    Run {
+        dev: DeviceId,
+        commands: Vec<Command>,
+        console: Option<String>,
+    },
+    EmergencyStop(DeviceId),
+    FirmwareRestart(DeviceId),
     Shutdown,
 }
 
@@ -69,6 +79,8 @@ pub struct Info {
     pub klipper: String,
     pub hostname: String,
     pub web_url: String,
+    /// Klippy у shutdown чи error: допомагає `FIRMWARE_RESTART`.
+    pub restartable: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -95,6 +107,18 @@ pub enum KlipperMsg {
     /// Частка завантаження файлу; `None` — завершено.
     Upload(Option<f32>),
     Added(Result<DeviceId, String>),
+    /// Сирий стан Moonraker вибраного принтера (осі, позиція, вентилятор) для керування.
+    Job(DeviceId, Box<JobStatus>),
+    Discovered(Result<Vec<mdns::Found>, String>),
+    /// Кадр камери; `live` — з MJPEG-потоку, а не знімок. `ack` інтерфейс скидає, коли
+    /// показав кадр: доти робітник нових не декодує (пам’ять не росте, UI не захлинається).
+    Frame(image::RgbaImage, bool, Arc<AtomicBool>),
+    /// Результат команди керування. `ok` — що сказати при успіху.
+    Ran {
+        console: Option<String>,
+        ok: Option<&'static str>,
+        result: Result<(), String>,
+    },
 }
 
 impl KlipperMsg {
@@ -107,6 +131,13 @@ impl KlipperMsg {
             Self::Problem(p) => format!("[klipper] проблема: {}", p.is_some()),
             Self::Upload(p) => format!("[klipper] завантаження: {p:?}"),
             Self::Added(r) => format!("[klipper] додавання: {}", r.is_ok()),
+            Self::Job(_, job) => format!("[klipper] осі вдома: {}", job.homed_axes),
+            Self::Discovered(r) => format!(
+                "[klipper] знайдено в мережі: {:?}",
+                r.as_ref().map(Vec::len).map_err(|_| ())
+            ),
+            Self::Frame(f, live, _) => format!("[klipper] кадр {}×{} потік={live}", f.width(), f.height()),
+            Self::Ran { result, .. } => format!("[klipper] команда: {}", result.is_ok()),
         }
     }
 }
@@ -130,6 +161,23 @@ pub struct KlipperUi {
     pub inputs: Option<AddInputs>,
     /// Діалог друку: замінити файл з тією самою назвою.
     pub overwrite: bool,
+    /// Стан Moonraker вибраного принтера як є (для керування).
+    pub job: Option<(DeviceId, JobStatus)>,
+    /// Пошук у мережі: іде, був, знайдене, помилка.
+    pub searching: bool,
+    pub searched: bool,
+    pub found: Vec<mdns::Found>,
+    pub search_error: Option<SharedString>,
+    /// Останній кадр — з MJPEG-потоку (інакше знімок раз на секунду).
+    pub camera_live: bool,
+    pub controls: Option<super::klipper_controls::ControlInputs>,
+    /// Крок джогу — індекс у `moonraker::command::JOG_STEPS`.
+    pub jog_step: usize,
+    /// Скільки команд керування ще виконується.
+    pub running: usize,
+    pub history: Vec<super::klipper_controls::ConsoleLine>,
+    /// Філамент, з якого взято пресети температур, і його значення.
+    pub filament: Option<(String, Option<super::klipper_controls::FilamentTemps>)>,
 }
 
 impl KlipperUi {
@@ -147,6 +195,14 @@ impl KlipperUi {
     }
     pub fn info_for(&self, dev: &DeviceId) -> Option<&Info> {
         self.info.as_ref().filter(|(d, _)| d == dev).map(|(_, i)| i)
+    }
+    pub fn job_for(&self, dev: &DeviceId) -> Option<&JobStatus> {
+        self.job.as_ref().filter(|(d, _)| d == dev).map(|(_, j)| j)
+    }
+    /// Чи можна зараз надіслати команду керування вибраному принтеру.
+    pub fn allow(&self, dev: &DeviceId, command: &Command) -> Result<(), String> {
+        let ready = self.info_for(dev).is_some_and(|i| i.ready);
+        command_block(self.is_up(dev), ready, self.job_for(dev), command)
     }
     pub fn send(&self, cmd: KlipperCmd) {
         if let Some(tx) = &self.commands {
@@ -188,7 +244,8 @@ impl KlipperUi {
 }
 
 /// Перевірка команди до відправки: лише пауза, продовження й скасування, і лише у
-/// відповідному стані. Решта керування (температури, рух) для Klipper поки не підтримана.
+/// відповідному стані. Температури, рух і консоль Klipper ідуть окремо (`KlipperCmd::Run`,
+/// панель `klipper_controls`) зі своїм охоронцем `command_block`.
 pub fn check(
     ui: &KlipperUi,
     selected: Option<&DeviceId>,
@@ -216,6 +273,37 @@ pub fn check(
             "Для Klipper поки підтримано лише паузу, продовження й скасування друку",
         ))),
     }
+}
+
+/// Охоронець керування (і в інтерфейсі, і в робітнику перед відправкою): лише коли Klipper
+/// готовий; під час друку чи паузи — тільки температури; джог — лише осей, що вдома.
+pub fn command_block(
+    up: bool,
+    ready: bool,
+    job: Option<&JobStatus>,
+    command: &Command,
+) -> Result<(), String> {
+    if !up {
+        return Err(tr("Немає зв’язку з принтером Klipper"));
+    }
+    if !ready {
+        return Err(tr("Klipper не готовий: керування недоступне"));
+    }
+    let job = job.ok_or_else(|| tr("Чекаю на стан принтера…"))?;
+    if job.state.is_active() && !command.allowed_while_printing() {
+        return Err(tr(
+            "Під час друку можна змінювати лише температури: рух, Home, вентилятор і консоль заблоковані",
+        ));
+    }
+    if let Command::Jog(axis, _) = command
+        && !job.homed(*axis)
+    {
+        return Err(crate::tr_format!(
+            "Вісь {axis} не в домашній позиції: спершу виконайте Home",
+            axis = axis.letter()
+        ));
+    }
+    command.script().map(|_| ()).map_err(|e| error_text(&e))
 }
 
 pub fn klippy_label(state: &KlippyState) -> String {
@@ -275,6 +363,10 @@ pub fn to_printer_status(s: &JobStatus) -> PrinterStatus {
         nozzle_target_temper: s.extruder.target,
         bed_temper: s.bed.temperature,
         bed_target_temper: s.bed.target,
+        fans: cloud::Fans {
+            part: s.part_fan.map(|f| (f * 100.0).round() as u8),
+            ..Default::default()
+        },
         home_flag: Some(home_flag),
         print_type: Some("local".into()),
         gcode_file: (!s.filename.is_empty()).then(|| s.filename.clone()),
@@ -315,6 +407,11 @@ enum Internal {
     Added(Result<SavedPrinter, MoonrakerError>),
     Printed(Result<String, String>),
     Controlled(Result<(), MoonrakerError>),
+    Ran {
+        console: Option<String>,
+        ok: Option<&'static str>,
+        result: Result<(), MoonrakerError>,
+    },
 }
 
 /// Запускає робітника. `SLICENV_KLIPPER_OFF` вимикає Klipper повністю.
@@ -467,12 +564,14 @@ impl Worker {
                         .map(|p| p.hostname.clone())
                         .unwrap_or_default(),
                     web_url,
+                    restartable: matches!(state, KlippyState::Shutdown | KlippyState::Error),
                 };
                 self.klipper(KlipperMsg::Link(dev.clone(), true));
                 self.klipper(KlipperMsg::Info(dev.clone(), Box::new(info)));
                 match status {
                     Some(status) => {
                         self.klipper(KlipperMsg::Problem(None));
+                        self.klipper(KlipperMsg::Job(dev.clone(), Box::new(status.clone())));
                         self.send(CloudMsg::Status(dev, Box::new(to_printer_status(&status))));
                         self.status = Some(status);
                     }
@@ -595,66 +694,63 @@ impl Worker {
         self.camera = Some(stop.clone());
         let ui = self.ui.clone();
         thread::spawn(move || {
-            let note = (|| -> Option<String> {
-                let cams = match client.webcams() {
-                    Ok(c) => c,
-                    Err(e) => return Some(error_text(&e)),
-                };
-                let Some(cam) = cams.into_iter().find(|c| client.snapshot_target(c).is_some())
-                else {
-                    return Some(tr(
-                        "У Moonraker не налаштовано камери зі знімками (snapshot_url) — відкрийте Mainsail чи Fluidd",
-                    ));
-                };
-                let mut failures = 0;
-                while !stop.load(Ordering::Acquire) {
-                    match client.snapshot(&cam) {
-                        Ok(jpeg) => {
-                            failures = 0;
-                            if let Ok(decoded) =
-                                image::load_from_memory_with_format(&jpeg, image::ImageFormat::Jpeg)
-                            {
-                                let decoded = match (cam.flip_horizontal, cam.flip_vertical) {
-                                    (true, true) => decoded.rotate180(),
-                                    (true, false) => decoded.fliph(),
-                                    (false, true) => decoded.flipv(),
-                                    _ => decoded,
-                                };
-                                let decoded = match cam.rotation {
-                                    90 => decoded.rotate90(),
-                                    180 => decoded.rotate180(),
-                                    270 => decoded.rotate270(),
-                                    _ => decoded,
-                                };
-                                let mut bgra = decoded.to_rgba8();
-                                for px in bgra.pixels_mut() {
-                                    px.0.swap(0, 2);
-                                }
-                                if ui.unbounded_send(CloudMsg::CameraFrame(bgra)).is_err() {
-                                    return None;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            failures += 1;
-                            if failures >= 3 {
-                                return Some(error_text(&e));
-                            }
-                        }
-                    }
-                    // Знімок раз на секунду: MJPEG-потік у GPUI тягнути нема як і нема потреби.
-                    for _ in 0..10 {
-                        if stop.load(Ordering::Acquire) {
-                            return None;
-                        }
-                        thread::sleep(Duration::from_millis(100));
-                    }
-                }
-                None
-            })();
+            let note = camera_loop(&client, &stop, &ui);
             if !stop.load(Ordering::Acquire) {
                 ui.unbounded_send(CloudMsg::CameraStopped(note)).ok();
             }
+        });
+    }
+
+    /// Команди керування: охоронець ще раз — за станом, який бачить робітник.
+    fn run(&mut self, dev: DeviceId, commands: Vec<Command>, console: Option<String>) {
+        let reject = |w: &Self, console: Option<String>, text: String| {
+            w.klipper(KlipperMsg::Ran { console, ok: None, result: Err(text) });
+        };
+        if self.selected.as_deref() != Some(dev.as_str()) {
+            return reject(self, console, guard::Blocked::WrongDevice.message());
+        }
+        let Some(client) = self.client(dev.as_str()) else {
+            return reject(self, console, tr("принтер не збережений як Klipper"));
+        };
+        let ready = self.status.is_some();
+        if let Some(text) = commands
+            .iter()
+            .find_map(|c| command_block(true, ready, self.status.as_ref(), c).err())
+        {
+            return reject(self, console, text);
+        }
+        let internal = self.internal.clone();
+        thread::spawn(move || {
+            let result = client.run(&commands);
+            internal.send(Internal::Ran { console, ok: None, result }).ok();
+        });
+    }
+
+    /// Аварійна зупинка й перезапуск прошивки — без перевірки стану друку: саме тоді вони
+    /// й потрібні. Лише для вибраного збереженого принтера.
+    fn special(&mut self, dev: DeviceId, estop: bool) {
+        if self.selected.as_deref() != Some(dev.as_str()) {
+            return;
+        }
+        let Some(client) = self.client(dev.as_str()) else { return };
+        let internal = self.internal.clone();
+        thread::spawn(move || {
+            let (result, ok) = if estop {
+                (client.emergency_stop(), "Аварійну зупинку виконано: Klipper у стані shutdown")
+            } else {
+                (client.firmware_restart(), "Прошивку перезапущено (FIRMWARE_RESTART)")
+            };
+            internal.send(Internal::Ran { console: None, ok: Some(ok), result }).ok();
+        });
+    }
+
+    fn discover(&self) {
+        let ui = self.ui.clone();
+        thread::spawn(move || {
+            let result = mdns::discover(Duration::from_secs(3)).map_err(|e| {
+                format!("{}: {e}", tr("Пошук у мережі не вдався"))
+            });
+            ui.unbounded_send(CloudMsg::Klipper(KlipperMsg::Discovered(result))).ok();
         });
     }
 
@@ -685,6 +781,14 @@ impl Worker {
                 self.printing = None;
                 self.klipper(KlipperMsg::Upload(None));
                 self.send(CloudMsg::PrintSent(result));
+                self.poll_now();
+            }
+            Internal::Ran { console, ok, result } => {
+                self.klipper(KlipperMsg::Ran {
+                    console,
+                    ok,
+                    result: result.map_err(|e| error_text(&e)),
+                });
                 self.poll_now();
             }
             Internal::Controlled(result) => {
@@ -726,6 +830,10 @@ impl Worker {
             KlipperCmd::Control(dev, control) => self.control(dev, control),
             KlipperCmd::Print(job) => self.print(job),
             KlipperCmd::Camera(on) => self.camera(on),
+            KlipperCmd::Discover => self.discover(),
+            KlipperCmd::Run { dev, commands, console } => self.run(dev, commands, console),
+            KlipperCmd::EmergencyStop(dev) => self.special(dev, true),
+            KlipperCmd::FirmwareRestart(dev) => self.special(dev, false),
             KlipperCmd::Add(printer) => {
                 let internal = self.internal.clone();
                 thread::spawn(move || {
@@ -750,6 +858,133 @@ impl Worker {
         }
         true
     }
+}
+
+/// Найменший проміжок між кадрами потоку, що йдуть в інтерфейс (~15 кадрів/с).
+const FRAME_GAP: Duration = Duration::from_millis(66);
+/// Камера мовчить довше — перепідключення.
+const STREAM_IDLE: Duration = Duration::from_secs(10);
+
+fn sleep_unless(stop: &AtomicBool, total: Duration) -> bool {
+    let until = Instant::now() + total;
+    while Instant::now() < until {
+        if stop.load(Ordering::Acquire) {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
+    !stop.load(Ordering::Acquire)
+}
+
+/// Камера Klipper: MJPEG-потік з `stream_url`, а якщо його немає чи він не MJPEG (WebRTC,
+/// HLS) — знімок `snapshot_url` раз на секунду. Повертає пояснення, чому камера зупинилася.
+fn camera_loop(
+    client: &Client,
+    stop: &AtomicBool,
+    ui: &async_mpsc::UnboundedSender<CloudMsg>,
+) -> Option<String> {
+    let cams = match client.webcams() {
+        Ok(c) => c,
+        Err(e) => return Some(error_text(&e)),
+    };
+    let Some(cam) = cams
+        .into_iter()
+        .find(|c| client.stream_target(c).is_some() || client.snapshot_target(c).is_some())
+    else {
+        return Some(tr(
+            "У Moonraker не налаштовано камери (stream_url чи snapshot_url) — відкрийте Mainsail чи Fluidd",
+        ));
+    };
+    let flip = super::CameraFlip {
+        horizontal: cam.flip_horizontal,
+        vertical: cam.flip_vertical,
+        rotation: cam.rotation,
+    };
+    // true — кадр ще не показано: новий не декодуємо, щоб черга до UI не росла.
+    let pending = Arc::new(AtomicBool::new(false));
+    // `false` — інтерфейс закрився.
+    let show = |jpeg: &[u8], live: bool| -> bool {
+        let Some(bgra) = super::jpeg_to_bgra(jpeg, flip) else { return true };
+        pending.store(true, Ordering::Release);
+        ui.unbounded_send(CloudMsg::Klipper(KlipperMsg::Frame(bgra, live, pending.clone())))
+            .is_ok()
+    };
+
+    if client.stream_target(&cam).is_some() {
+        let mut failures = 0;
+        'stream: while failures < 3 {
+            if stop.load(Ordering::Acquire) {
+                return None;
+            }
+            let mut stream = match client.open_stream(&cam, Duration::from_secs(1)) {
+                Ok(s) => s,
+                // Не MJPEG або сервер відмовив — повтор не допоможе, одразу знімки.
+                Err(MoonrakerError::NotMjpeg(_) | MoonrakerError::Http { .. } | MoonrakerError::Unauthorized) => {
+                    break;
+                }
+                Err(_) => {
+                    failures += 1;
+                    if !sleep_unless(stop, Duration::from_secs(1)) {
+                        return None;
+                    }
+                    continue;
+                }
+            };
+            let mut last: Option<Instant> = None;
+            let mut heard = Instant::now();
+            loop {
+                if stop.load(Ordering::Acquire) {
+                    return None;
+                }
+                match stream.next_frame() {
+                    Ok(jpeg) => {
+                        failures = 0;
+                        heard = Instant::now();
+                        let due = last.is_none_or(|t| t.elapsed() >= FRAME_GAP);
+                        // Кадри, які UI не встигає показати, читаються й відкидаються.
+                        if due && !pending.load(Ordering::Acquire) {
+                            last = Some(Instant::now());
+                            if !show(&jpeg, true) {
+                                return None;
+                            }
+                        }
+                    }
+                    Err(MoonrakerError::Timeout) if heard.elapsed() < STREAM_IDLE => {}
+                    Err(_) => {
+                        failures += 1;
+                        continue 'stream;
+                    }
+                }
+            }
+        }
+    }
+
+    if client.snapshot_target(&cam).is_none() {
+        return Some(tr(
+            "Потік камери недоступний, а знімків (snapshot_url) камера не має — відкрийте Mainsail чи Fluidd",
+        ));
+    }
+    let mut failures = 0;
+    while !stop.load(Ordering::Acquire) {
+        match client.snapshot(&cam) {
+            Ok(jpeg) => {
+                failures = 0;
+                if !pending.load(Ordering::Acquire) && !show(&jpeg, false) {
+                    return None;
+                }
+            }
+            Err(e) => {
+                failures += 1;
+                if failures >= 3 {
+                    return Some(error_text(&e));
+                }
+            }
+        }
+        if !sleep_unless(stop, Duration::from_secs(1)) {
+            return None;
+        }
+    }
+    None
 }
 
 fn worker(commands: mpsc::Receiver<KlipperCmd>, ui: async_mpsc::UnboundedSender<CloudMsg>) {
@@ -796,6 +1031,10 @@ pub fn handle(ws: &mut Workspace, msg: KlipperMsg, window: &mut Window, cx: &mut
     match msg {
         KlipperMsg::Printers(list) => {
             cloud.klipper.entries = list;
+            // Щойно доданий зі списку пошуку більше не пропонуємо.
+            let saved: Vec<String> =
+                cloud.klipper.entries.iter().map(|e| e.address.to_ascii_lowercase()).collect();
+            cloud.klipper.found.retain(|f| !saved.contains(&f.address().to_ascii_lowercase()));
             cloud.rebuild_printers();
             if cloud.selected.is_none()
                 && let Some(dev) = cloud.klipper.entries.first().map(|e| e.printer.dev_id.clone())
@@ -823,6 +1062,61 @@ pub fn handle(ws: &mut Workspace, msg: KlipperMsg, window: &mut Window, cx: &mut
             }
         }
         KlipperMsg::Upload(p) => cloud.klipper.upload = p,
+        KlipperMsg::Job(dev, job) => {
+            if cloud.selected.as_ref() == Some(&dev) {
+                cloud.klipper.job = Some((dev, *job));
+                ws.refresh_klipper_filament();
+                ws.sync_klipper_inputs(window, cx);
+            }
+        }
+        KlipperMsg::Discovered(result) => {
+            let k = &mut cloud.klipper;
+            k.searching = false;
+            k.searched = true;
+            match result {
+                Ok(list) => {
+                    k.search_error = None;
+                    // Уже збережені за адресою не пропонуємо вдруге.
+                    let saved: Vec<String> =
+                        k.entries.iter().map(|e| e.address.to_ascii_lowercase()).collect();
+                    k.found = list
+                        .into_iter()
+                        .filter(|f| !saved.contains(&f.address().to_ascii_lowercase()))
+                        .collect();
+                }
+                Err(text) => {
+                    k.found.clear();
+                    k.search_error = Some(text.into());
+                }
+            }
+        }
+        KlipperMsg::Frame(bgra, live, ack) => {
+            cloud.klipper.camera_live = live;
+            cloud.show_camera_frame(bgra, window);
+            ack.store(false, Ordering::Release);
+        }
+        KlipperMsg::Ran { console, ok, result } => {
+            let k = &mut cloud.klipper;
+            k.running = k.running.saturating_sub(1);
+            // Рядок консолі показує результат у своїй історії — без окремого повідомлення.
+            let from_console = console.is_some();
+            if let Some(line) = console {
+                super::klipper_controls::record(&mut k.history, line, result.clone());
+            }
+            match result {
+                Err(_) if from_console => {}
+                Ok(()) => {
+                    if let Some(text) = ok {
+                        ws.toast(ToastKind::Info, tr(text), cx);
+                    }
+                }
+                Err(text) => ws.toast(
+                    ToastKind::Error,
+                    format!("{}: {text}", tr("Команда не пройшла")),
+                    cx,
+                ),
+            }
+        }
         KlipperMsg::Added(result) => {
             cloud.klipper.adding = false;
             match result {
@@ -859,6 +1153,7 @@ impl Workspace {
                     .masked(true)
             }),
         });
+        self.start_klipper_controls(window, cx);
         rx
     }
 
@@ -884,13 +1179,24 @@ impl Workspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let k = &mut self.cloud.klipper;
-        k.add_error = None;
         let (name, address) = edit
             .as_ref()
-            .and_then(|d| k.entry(d))
+            .and_then(|d| self.cloud.klipper.entry(d))
             .map(|e| (e.printer.name.clone(), e.address.clone()))
             .unwrap_or_default();
+        self.open_klipper_dialog_with(name, address, window, cx);
+    }
+
+    /// Модалка з підставленими назвою й адресою (знайдений у мережі принтер).
+    pub(super) fn open_klipper_dialog_with(
+        &mut self,
+        name: String,
+        address: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let k = &mut self.cloud.klipper;
+        k.add_error = None;
         if let Some(inputs) = &k.inputs {
             for (entity, text) in [(&inputs.name, name), (&inputs.address, address), (&inputs.key, String::new())] {
                 entity.update(cx, |s, cx| s.set_value(text, window, cx));
@@ -1176,10 +1482,55 @@ pub fn panel_section(cloud: &CloudState, cx: &mut Context<Workspace>) -> gpui::D
                         .text_color(z.text_muted)
                         .child(tr("Klipper (Moonraker)")),
                 )
+                .child(if cloud.klipper.searching {
+                    div().size(px(24.)).flex().items_center().justify_center().child(ui::spinner("klipper-search-spin")).into_any_element()
+                } else {
+                    ui::icon_button("klipper-search", IconName::Search, "Знайти принтери Klipper у мережі (mDNS)")
+                        .on_click(cx.listener(|ws, _, _, cx| {
+                            let k = &mut ws.cloud.klipper;
+                            k.searching = true;
+                            k.search_error = None;
+                            k.send(KlipperCmd::Discover);
+                            cx.notify();
+                        }))
+                        .into_any_element()
+                })
                 .child(
                     ui::icon_button("klipper-open", IconName::Plus, "Додати принтер Klipper")
                         .on_click(cx.listener(|ws, _, window, cx| ws.open_klipper_dialog(None, window, cx))),
                 ),
+        )
+        .children(cloud.klipper.found.iter().enumerate().map(|(i, f)| {
+            let (name, address) = (f.display_name(), f.address());
+            let label = address.clone();
+            ui::ghost_button_bare(("klipper-found", i), IconName::Wifi)
+                .w_full()
+                .h(px(40.))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .child(div().min_w_0().truncate().text_sm().child(name.clone()))
+                        .child(div().min_w_0().truncate().text_xs().text_color(z.text_placeholder).child(label)),
+                )
+                .child(ui::icon(IconName::Plus).text_color(z.text_muted))
+                .on_click(cx.listener(move |ws, _, window, cx| {
+                    ws.open_klipper_dialog_with(name.clone(), address.clone(), window, cx)
+                }))
+        }))
+        .when(
+            cloud.klipper.searched && !cloud.klipper.searching && cloud.klipper.found.is_empty(),
+            |d| {
+                d.child(
+                    div().text_xs().text_color(z.text_placeholder).whitespace_normal().child(
+                        cloud.klipper.search_error.clone().unwrap_or_else(|| {
+                            tr("У мережі не знайдено нових Moonraker. Потрібен [zeroconf] у moonraker.conf; інакше додайте за адресою.").into()
+                        }),
+                    ),
+                )
+            },
         )
         .when(cloud.klipper.entries.is_empty(), |d| {
             d.child(div().text_xs().text_color(z.text_placeholder).whitespace_normal().child(tr(
@@ -1203,7 +1554,7 @@ pub fn panel_section(cloud: &CloudState, cx: &mut Context<Workspace>) -> gpui::D
 }
 
 /// Сторінка вибраного принтера Klipper (замість вкладок Bambu).
-pub fn body(cloud: &CloudState, _window: &mut Window, cx: &mut Context<Workspace>) -> AnyElement {
+pub fn body(cloud: &CloudState, window: &mut Window, cx: &mut Context<Workspace>) -> AnyElement {
     let z = zed();
     let Some(dev) = cloud.selected.clone() else {
         return div().into_any_element();
@@ -1243,6 +1594,9 @@ pub fn body(cloud: &CloudState, _window: &mut Window, cx: &mut Context<Workspace
                 .into_any_element(),
         ];
         if reachable {
+            if info.as_ref().is_some_and(|i| i.restartable) {
+                actions.insert(0, super::klipper_controls::restart_button(cx));
+            }
             actions.push(open_web("klipper-web-problem", web_url.clone(), cx));
         }
         return ui::empty_state(
@@ -1301,7 +1655,7 @@ pub fn body(cloud: &CloudState, _window: &mut Window, cx: &mut Context<Workspace
             .text_xs()
             .text_color(z.text_placeholder)
             .whitespace_normal()
-            .child(tr("Температури, рух і макроси — у Mainsail чи Fluidd. Тут: стан, пауза, продовження й скасування.")),
+            .child(tr("Макроси, налаштування й файли на принтері — у Mainsail чи Fluidd.")),
     );
     div()
         .flex()
@@ -1316,7 +1670,8 @@ pub fn body(cloud: &CloudState, _window: &mut Window, cx: &mut Context<Workspace
                 .gap(px(12.))
                 .items_start()
                 .child(super::camera_panel(cloud, cx))
-                .child(state_card),
+                .child(state_card)
+                .child(super::klipper_controls::panel(cloud, window, cx)),
         )
         .into_any_element()
 }

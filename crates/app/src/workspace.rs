@@ -470,6 +470,10 @@ impl Workspace {
         self.finish_scene_gesture();
         self.cancel_navigation();
         self.scene_menu = None;
+        // Камера (MJPEG-потік чи знімки) живе лише на сторінці «Пристрій».
+        if page != Page::Device {
+            self.cloud.hide_camera();
+        }
         self.page = page;
         self.drag_from = None;
         self.panning = None;
