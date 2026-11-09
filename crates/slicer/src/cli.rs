@@ -57,6 +57,24 @@ impl Drop for ProcessState {
         }
     }
 }
+
+/// `spawn` з повтором на ETXTBSY. Поки один потік щойно записав виконуваний
+/// файл (рушій після розпакування, мок у тестах), інший потік міг зробити
+/// fork, і дочірній процес до свого exec тримає копію дескриптора на запис.
+/// Вікно коротке, тому кілька повторів із паузою його переживають.
+fn spawn_retrying_busy(command: &mut Command) -> std::io::Result<std::process::Child> {
+    let mut attempt = 0;
+    loop {
+        match command.spawn() {
+            Err(e) if e.kind() == std::io::ErrorKind::ExecutableFileBusy && attempt < 20 => {
+                attempt += 1;
+                std::thread::sleep(Duration::from_millis(5 * attempt));
+            }
+            other => return other,
+        }
+    }
+}
+
 impl SliceCancellation {
     pub fn cancel(&self) {
         let mut state = self.0.lock().unwrap();
@@ -134,7 +152,7 @@ impl SliceCancellation {
             if state.cancelled {
                 return Err(Cancelled.into());
             }
-            state.child = Some(command.spawn()?);
+            state.child = Some(spawn_retrying_busy(command)?);
         }
         let started = Instant::now();
         loop {
@@ -1220,7 +1238,7 @@ Start processing gcode,  Resident memory: 333MB; Shared memory: 84MB; Private me
         .unwrap();
         fs::set_permissions(&script, fs::Permissions::from_mode(0o755)).unwrap();
         let args = command_args(&request("part.stl"), 1, Some("part-plate3.gcode.3mf"), |_| true);
-        assert!(Command::new(script).args(&args).status().unwrap().success());
+        assert!(spawn_retrying_busy(Command::new(script).args(&args)).unwrap().wait().unwrap().success());
         assert_eq!(
             fs::read_to_string(capture).unwrap(),
             "--debug\n4\n--load-settings\nmachine.json;process.json\n--load-filaments\nfilament.json\n--load-defaultfila\n--orient\n0\n--arrange\n1\n--slice\n3\n--outputdir\n.\n--export-3mf\npart-plate3.gcode.3mf\npart.stl\n"
