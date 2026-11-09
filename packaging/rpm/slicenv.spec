@@ -11,6 +11,7 @@ Version:        %{pkgversion}
 Release:        1%{?dist}
 Summary:        3D printing slicer front-end (OrcaSlicer / Bambu Studio engines)
 License:        AGPL-3.0-or-later
+Packager:       Borys Kharchenko <7512615+arximus88@users.noreply.github.com>
 ExclusiveArch:  x86_64
 # Автоматичні Requires за sonames (libxkbcommon, libxcb…) генерує rpmbuild. Решта — runtime:
 # Vulkan-loader і libwayland відкриваються через dlopen, python3 запускає менеджер рушіїв.
@@ -53,5 +54,5 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 %doc %{_docdir}/%{name}
 
 %changelog
-* Fri Nov 06 2026 Slicenv maintainers <packaging@example.invalid> - 0.1.0-1
+* Fri Nov 06 2026 Borys Kharchenko <7512615+arximus88@users.noreply.github.com> - 0.1.0-1
 - Перший пакет.
