@@ -683,7 +683,7 @@ impl SliceAttempt<'_> {
             }
             let status = cancellation
                 .run(
-                    paths::host::command(&binary)
+                    crate::engine::engine_command(&binary)
                         .current_dir(work)
                         .args(args)
                         .stdin(Stdio::null())

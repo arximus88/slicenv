@@ -190,9 +190,25 @@ impl Engine {
         self.probe_cancellable(&crate::SliceCancellation::default())
     }
 
+    /// Версія й прапорці рушія. Результат `--help` кешується в процесі за шляхом, розміром і
+    /// часом зміни файлу: застосунок питає рушій під час завантаження, а кожна нарізка інакше
+    /// запускала б `--help` ще раз (Orca 2.4 через `AppRun` — 0,3–0,5 с стіни, 0,3 с CPU).
+    /// Оновлений на місці рушій має інший розмір або час зміни — і пробується знову.
     pub fn probe_cancellable(&self, cancellation: &crate::SliceCancellation) -> Result<EngineInfo> {
         let binary = fs::canonicalize(&self.path)
             .with_context(|| format!("missing engine {}", self.path.display()))?;
+        let key = ProbeKey::new(self.kind, &self.path, &binary);
+        if let Some(info) = key.as_ref().and_then(|key| PROBES.lock().unwrap().get(key).cloned()) {
+            return Ok(info);
+        }
+        let info = self.probe_uncached(&binary, cancellation)?;
+        if let Some(key) = key {
+            PROBES.lock().unwrap().insert(key, info.clone());
+        }
+        Ok(info)
+    }
+
+    fn probe_uncached(&self, binary: &Path, cancellation: &crate::SliceCancellation) -> Result<EngineInfo> {
         // Windows, OrcaSlicer: `--help` не викликаємо. З 2.4 `CLI::print_help` робить
         // `AttachConsole`/`AllocConsole` + `freopen("CONOUT$")`: довідка йде в консоль, а не в наші
         // дескриптори (порожній вивід → «did not identify»), а з GUI Slicenv без консолі Orca
@@ -215,7 +231,7 @@ impl Engine {
         }
         let probe_dir = tempfile::tempdir()?;
         let output = bounded_output_cancellable(
-            paths::host::command(&binary)
+            engine_command(binary)
                 .arg("--help")
                 .current_dir(probe_dir.path()),
             cancellation,
@@ -294,7 +310,7 @@ impl Engine {
         let temp = tempfile::tempdir()?;
         let output_path = temp.path().join("defaults.json");
         let output = bounded_output(
-            paths::host::command(&binary)
+            engine_command(&binary)
                 .arg("--export-settings")
                 .arg(&output_path)
                 .current_dir(temp.path()),
@@ -316,6 +332,48 @@ impl Engine {
             .cloned()
             .context("exported defaults must be a JSON object")
     }
+}
+
+/// Ключ кешу [`Engine::probe_cancellable`]: шлях, як його задано, і справжній файл (для
+/// `AppRun` — сам скрипт), з розміром і часом зміни обох.
+#[derive(Clone, PartialEq, Eq, Hash)]
+struct ProbeKey {
+    kind: EngineKind,
+    files: Vec<(PathBuf, u64, Option<std::time::SystemTime>)>,
+}
+
+impl ProbeKey {
+    fn new(kind: EngineKind, path: &Path, binary: &Path) -> Option<Self> {
+        let stat = |p: &Path| {
+            let m = fs::metadata(p).ok()?;
+            Some((p.to_owned(), m.len(), m.modified().ok()))
+        };
+        Some(Self {
+            kind,
+            files: vec![stat(path)?, stat(binary)?],
+        })
+    }
+}
+
+static PROBES: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<ProbeKey, EngineInfo>>> =
+    std::sync::LazyLock::new(Default::default);
+
+/// Команда запуску рушія (довідка, нарізка, експорт налаштувань).
+///
+/// `AppRun` OrcaSlicer під Wayland щоразу запускає `glxinfo`, щоб на NVIDIA з драйвером
+/// новішим за 555 перемкнути GL на zink (0,1–0,2 с стіни на кожен запуск). Без пропрієтарного
+/// драйвера NVIDIA (`/proc/driver/nvidia`) ця гілка нічого не змінює, тож її вимикаємо
+/// тим самим прапорцем, який читає `AppRun`: `ZINK_DISABLE_OVERRIDE=1`. Значення
+/// користувача не перекриваємо.
+pub(crate) fn engine_command(binary: &Path) -> Command {
+    let mut command = paths::host::command(binary);
+    if cfg!(target_os = "linux")
+        && env::var_os("ZINK_DISABLE_OVERRIDE").is_none()
+        && !Path::new("/proc/driver/nvidia").exists()
+    {
+        command.env("ZINK_DISABLE_OVERRIDE", "1");
+    }
+    command
 }
 
 // File-backed capture avoids a full stdout pipe blocking a child before wait.
@@ -659,6 +717,27 @@ mod tests {
         let info = engine.probe().unwrap();
         assert_eq!(info.version, "2.3.1");
         assert!(info.supports_flag("--export-settings"));
+    }
+
+    #[test]
+    fn probe_is_cached_until_the_engine_file_changes() {
+        let (dir, engine) = mock("");
+        let count = dir.path().join("runs");
+        let script = |version: &str| {
+            format!(
+                "#!/bin/sh\necho x >> '{}'\necho 'OrcaSlicer version {version}'\necho '  --slice'\n",
+                count.display()
+            )
+        };
+        let runs = || fs::read_to_string(&count).unwrap_or_default().lines().count();
+        fs::write(&engine.path, script("2.4.2")).unwrap();
+        assert_eq!(engine.probe().unwrap().version, "2.4.2");
+        assert_eq!(engine.probe().unwrap().version, "2.4.2");
+        assert_eq!(runs(), 1, "другий probe — з кешу");
+        // Оновлення на місці: інший розмір файлу — новий запуск `--help`.
+        fs::write(&engine.path, script("2.5.0-beta")).unwrap();
+        assert_eq!(engine.probe().unwrap().version, "2.5.0-beta");
+        assert_eq!(runs(), 2);
     }
 
     #[test]
