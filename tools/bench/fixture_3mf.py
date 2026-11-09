@@ -2,7 +2,9 @@
 """Детерміновані 3MF-фікстури для порівняльного бенча (tools/bench/compare.py).
 
   small  — 1 пластина, 1 UV-сфера ≈20 000 △ (r 20 мм);
-  heavy  — 4 пластини по одній UV-сфері 250 000 △ (r 30 мм), разом ≈1 000 000 △.
+  heavy  — 4 пластини по одній UV-сфері 250 000 △ (r 30 мм), разом ≈1 000 000 △;
+  plates4, plates12 — 4 / 12 пластин з легкими сферами різного радіуса (колонка пластин
+           «Перегляду», нарізка всіх пластин справжнім рушієм за секунди).
 
 Формат — як пише Bambu Studio: метадані `Application`, пластини в
 `Metadata/model_settings.config`, глобальна сітка пластин із кроком стіл × 1.2
@@ -38,7 +40,11 @@ KINDS = {
     # (пластин, slices, stacks, радіус): △ = 2 · slices · (stacks − 1)
     'small': (1, 100, 101, 20.0),
     'heavy': (4, 500, 251, 30.0),
+    'plates4': (4, 48, 25, 10.0),
+    'plates12': (12, 32, 17, 8.0),
 }
+# Радіус сфери пластини k множиться на цей ряд (лише plates*): мініатюри відрізняються.
+SCALES = (1.0, 1.6, 2.2, 1.3)
 
 
 def sphere(n, m, r):
@@ -183,12 +189,14 @@ def main():
                    help='resources/profiles рушія (з теки BBL беруться пресети A1)')
     a = p.parse_args()
     plates, n, m, r = KINDS[a.kind]
-    mesh = sphere(n, m, r)
+    varied = a.kind.startswith('plates')
+    meshes = [sphere(n, m, r * (SCALES[k % len(SCALES)] if varied else 1.0)) for k in range(plates)]
+    mesh = meshes[0]
     columns = max(1, math.ceil(math.sqrt(plates)))
     objects, items = [], []
     for k in range(plates):
         oid = k + 1
-        objects.append((oid, mesh))
+        objects.append((oid, meshes[k]))
         items.append((oid, (BED_CENTER + (k % columns) * STRIDE, BED_CENTER - (k // columns) * STRIDE)))
     with zipfile.ZipFile(a.out, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         z.writestr('[Content_Types].xml', CONTENT_TYPES)
