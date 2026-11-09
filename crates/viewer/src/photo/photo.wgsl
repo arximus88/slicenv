@@ -96,8 +96,9 @@ fn fbm(p: vec3<f32>) -> f32 {
 
 // Вкраплення: у кожній комірці з імовірністю `density` — куля радіуса r_lo…r_hi (частки
 // комірки), зміщена так, щоб не виходити за комірку (сусідів перевіряти не треба). Край
-// чіткий (лише згладжування на піксель); `fw` — розмір пікселя в комірках: дрібні плями
-// плавно стають середнім покриттям (частка площі зрізу кулі, ∫π(r²−z²)dz = 4πr³/3 на комірку).
+// м’який (розмитий на 60 % радіуса — пляма «під поверхнею»); `fw` — розмір пікселя в комірках:
+// дрібні плями плавно стають середнім покриттям (частка площі зрізу кулі,
+// ∫π(r²−z²)dz = 4πr³/3 на комірку).
 fn speckle(q: vec3<f32>, density: f32, r_lo: f32, r_hi: f32, fw: f32) -> f32 {
     let cell = floor(q);
     let h = hash33(cell);
@@ -105,7 +106,7 @@ fn speckle(q: vec3<f32>, density: f32, r_lo: f32, r_hi: f32, fw: f32) -> f32 {
     let r = mix(r_lo, r_hi, hash31(cell + vec3<f32>(11.0, 3.0, 7.0)));
     let on = select(0.0, 1.0, hash31(cell + vec3<f32>(5.0, 19.0, 2.0)) < density);
     let d = length(fract(q) - center);
-    let edge = max(r * 0.12, fw);
+    let edge = max(r * 0.6, fw);
     let cover = on * (1.0 - smoothstep(r - edge * 0.5, r + edge * 0.5, d));
     let r_mid = 0.5 * (r_lo + r_hi);
     let mean = density * 4.18879 * r_mid * r_mid * r_mid;
@@ -399,6 +400,8 @@ struct BeadOut {
     // Шлях променя крізь цей валик, мм (clear.wgsl).
     @location(8) chord: f32,
     @location(9) front: vec3<f32>,
+    // Точка осі валика під пікселем (див. `Bead::axis`).
+    @location(10) axis: vec3<f32>,
 }
 
 fn bead_out(vertex: u32, pick: u32) -> BeadOut {
@@ -415,6 +418,7 @@ fn bead_out(vertex: u32, pick: u32) -> BeadOut {
     out.half = b.half;
     out.chord = b.chord;
     out.front = b.front;
+    out.axis = b.axis;
     return out;
 }
 
@@ -559,18 +563,25 @@ fn bead_shading(in: BeadOut) -> BeadShading {
     let pattern = u32(m.p2.x + 0.5);
     let scale = m.p2.y;
     let strength = m.p2.z;
-    let p = surface;
+    // Стінка: точка на огинальній поверхні шарів (бічне зміщення від осі — рівно ±hw), тож
+    // сусідні шари беруть ту саму площину й вкраплення не розрізаються межами шарів — інакше
+    // біля борозенки поверхня глибша, і зріз кулі там інший.
+    var p = surface;
+    if wall {
+        let side_dir = normalize(in.n_far);
+        let r_side = dot(surface - in.axis, side_dir);
+        p = surface + side_dir * (select(-1.0, 1.0, r_side >= 0.0) * in.half.x - r_side);
+    }
     if pattern == PATTERN_MARBLE {
-        // Bambu PLA Marble — однотонний матовий пластик із розкиданими рівномірно круглими
-        // вкрапленнями 0.3–0.8 мм різного розміру (темні на світлому, світлі на темному —
-        // `MaterialTable::resolve`). Прожилок і плям немає. Вкраплення — кулі в комірках
-        // 3D-сітки: зріз поверхнею дає круглу крапку не більшу за кулю, тож розміри
-        // природно різняться; дрібніші за кілька пікселів зливаються в середній тон.
-        // Два розміри: рідші більші (комірка 1.67 мм, r 0.2–0.4 мм) і частіші дрібні (комірка
-        // 1 мм, r 0.15–0.25 мм).
-        let big = speckle(p * 0.6 * scale, 0.45, 0.12, 0.24, world_fw * 0.6 * scale);
-        let small = speckle(p * scale + 7.3, 0.4, 0.15, 0.25, world_fw * scale);
-        let w = clamp(big + small, 0.0, 1.0) * strength;
+        // Bambu PLA Marble — однотонний матовий пластик із густими дрібними круглими
+        // вкрапленнями різного розміру, розкиданими рівномірно; прожилок і плям немає. Плями —
+        // кулі в комірках 3D-сітки: зріз поверхнею дає круглу пляму з м’яким краєм, тож
+        // розміри природно різняться. Два шари: густі дрібні (комірка 0.31 мм) і рідші більші
+        // (комірка 0.91 мм, до ~0.45 мм у діаметрі; зріз — менше). Колір —
+        // `material::marble_speck`, змішаний з основою частково: сірий тон, не чорний.
+        let fine = speckle(p * 3.2 * scale, 0.7, 0.14, 0.3, world_fw * 3.2 * scale);
+        let coarse = speckle(p * 1.1 * scale + 7.3, 0.12, 0.12, 0.24, world_fw * 1.1 * scale);
+        let w = clamp(fine * 0.55 + coarse * 0.75, 0.0, 1.0) * strength;
         s.base = mix(s.base, m.p3.rgb, w);
     } else if pattern == PATTERN_SPARKLE {
         // Пласкі лусочки ~0.15 мм з випадковим нахилом: спалахують, коли відбивають
