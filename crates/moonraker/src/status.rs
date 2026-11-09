@@ -109,6 +109,19 @@ pub struct JobStatus {
     pub bed: Heater,
     /// `toolhead.homed_axes`, напр. `xyz`.
     pub homed_axes: String,
+    /// `toolhead.position` (X, Y, Z), мм.
+    pub position: Option<[f64; 3]>,
+    /// `fan.speed` — вентилятор обдуву деталі, 0.0–1.0; `None`, якщо `[fan]` немає.
+    pub part_fan: Option<f64>,
+}
+
+impl JobStatus {
+    /// Вісь у домашній позиції (`homed_axes`).
+    pub fn homed(&self, axis: crate::command::Axis) -> bool {
+        self.homed_axes
+            .to_ascii_lowercase()
+            .contains(axis.letter().to_ascii_lowercase())
+    }
 }
 
 impl JobStatus {
@@ -243,6 +256,12 @@ pub fn job_status(v: &Value) -> Result<JobStatus> {
             .get("toolhead")
             .map(|t| str_of(t, "homed_axes"))
             .unwrap_or_default(),
+        position: status
+            .get("toolhead")
+            .and_then(|t| t.get("position"))
+            .and_then(Value::as_array)
+            .and_then(|p| Some([p.first()?.as_f64()?, p.get(1)?.as_f64()?, p.get(2)?.as_f64()?])),
+        part_fan: num(status.get("fan"), "speed").map(|f| f.clamp(0.0, 1.0)),
     })
 }
 
@@ -311,7 +330,8 @@ mod tests {
             "display_status": {"progress": 0.24, "message": null},
             "extruder": {"temperature": 214.8, "target": 215.0, "power": 0.4},
             "heater_bed": {"temperature": 59.9, "target": 60.0},
-            "toolhead": {"homed_axes": "xyz"}
+            "toolhead": {"homed_axes": "xyz", "position": [10.0, 20.5, 0.2, 100.0]},
+            "fan": {"speed": 0.5, "rpm": null}
         }});
         let s = job_status(&v).unwrap();
         assert_eq!(s.state, PrintState::Printing);
@@ -321,6 +341,9 @@ mod tests {
         assert_eq!(s.extruder.target, Some(215.0));
         assert_eq!(s.bed.temperature, Some(59.9));
         assert_eq!(s.homed_axes, "xyz");
+        assert!(s.homed(crate::command::Axis::Z));
+        assert_eq!(s.position, Some([10.0, 20.5, 0.2]));
+        assert_eq!(s.part_fan, Some(0.5));
         assert_eq!(s.remaining_secs(), Some(1800.0));
 
         // Без heater_bed і virtual_sdcard (принтер без столу, старий Klipper): поля порожні.
@@ -331,6 +354,8 @@ mod tests {
         assert_eq!(s.bed, Heater::default());
         assert_eq!(s.current_layer, None);
         assert_eq!(s.remaining_secs(), None);
+        assert_eq!((s.position, s.part_fan), (None, None));
+        assert!(!s.homed(crate::command::Axis::X));
         assert!(job_status(&json!({})).is_err());
     }
 

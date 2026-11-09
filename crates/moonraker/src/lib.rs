@@ -10,14 +10,21 @@
 //!    `heater_bed`, `toolhead`;
 //! 4. [`Client::upload`] — `POST /server/files/upload` (root=gcodes), друк одразу чи ні;
 //! 5. [`Client::pause`] / [`Client::resume`] / [`Client::cancel`];
-//! 6. [`Client::webcams`] / [`Client::snapshot`] — знімок камери (`snapshot_url`).
+//! 6. [`Client::webcams`] / [`Client::snapshot`] — знімок камери (`snapshot_url`),
+//!    [`Client::open_stream`] — MJPEG-потік (`stream_url`, модуль [`mjpeg`]);
+//! 7. [`Client::run`] — керування G-code (`/printer/gcode/script`, модуль [`command`]),
+//!    [`Client::emergency_stop`], [`Client::firmware_restart`];
+//! 8. [`mdns::discover`] — пошук `_moonraker._tcp` у локальній мережі.
 //!
 //! Що перевірено і як — docs/KLIPPER.md.
 pub mod address;
+pub mod command;
 pub mod error;
 #[doc(hidden)]
 pub mod fake;
 pub mod http;
+pub mod mdns;
+pub mod mjpeg;
 pub mod status;
 pub mod store;
 
@@ -28,6 +35,8 @@ use std::{
 };
 
 pub use address::Endpoint;
+pub use command::{Axis, Command, HeaterKind, Home};
+pub use mjpeg::MjpegStream;
 pub use error::{MoonrakerError, Result};
 pub use status::{
     Heater, JobStatus, KlippyState, PrintState, PrinterInfo, ServerInfo, UploadResult, Webcam,
@@ -38,7 +47,7 @@ use http::{Request, Response, Upload};
 
 /// Об’єкти Klipper для стану на сторінці «Пристрій».
 pub const STATUS_QUERY: &str =
-    "/printer/objects/query?print_stats&virtual_sdcard&display_status&extruder&heater_bed&toolhead";
+    "/printer/objects/query?print_stats&virtual_sdcard&display_status&extruder&heater_bed&toolhead&fan";
 
 #[derive(Clone, Debug)]
 pub struct Client {
@@ -247,7 +256,17 @@ impl Client {
     /// Куди йти по знімок: відносний `snapshot_url` — від вебсервера (Mainsail/Fluidd) того
     /// ж хоста, абсолютний — як є. Ключ надсилається лише на адресу самого Moonraker.
     pub fn snapshot_target(&self, webcam: &Webcam) -> Option<(Endpoint, String, bool)> {
-        let url = webcam.snapshot_url.trim();
+        self.camera_target(&webcam.snapshot_url)
+    }
+
+    /// Те саме для `stream_url`. WebRTC / HLS-камери мають тут сторінку, а не MJPEG — це
+    /// з’ясовується лише за `Content-Type` відповіді ([`MoonrakerError::NotMjpeg`]).
+    pub fn stream_target(&self, webcam: &Webcam) -> Option<(Endpoint, String, bool)> {
+        self.camera_target(&webcam.stream_url)
+    }
+
+    fn camera_target(&self, url: &str) -> Option<(Endpoint, String, bool)> {
+        let url = url.trim();
         if url.is_empty() {
             return None;
         }
@@ -289,6 +308,62 @@ impl Client {
             return Err(MoonrakerError::Protocol("snapshot is not JPEG".into()));
         }
         Ok(response.body)
+    }
+
+    /// MJPEG-потік з `stream_url`. `read_timeout` — скільки чекати байтів до
+    /// `Err(Timeout)` у [`MjpegStream::next_frame`] (щоб викликач міг перевірити «стоп»).
+    pub fn open_stream(&self, webcam: &Webcam, read_timeout: Duration) -> Result<MjpegStream> {
+        let (endpoint, path, same) = self
+            .stream_target(webcam)
+            .ok_or_else(|| MoonrakerError::NotMjpeg("webcam without stream_url".into()))?;
+        let mut request = Request::get(&path, if same { self.key() } else { None });
+        request.raw_path = true;
+        request.timeout = read_timeout;
+        MjpegStream::open(http::open_stream(&endpoint, &request)?)
+    }
+
+    /// Виконує G-code (`POST /printer/gcode/script`). Moonraker відповідає, коли Klipper
+    /// виконав скрипт, тож тайм-аут довгий (хоумінг, нагрів з `M109`).
+    pub fn gcode(&self, script: &str) -> Result<()> {
+        let path = format!("/printer/gcode/script?script={}", command::query_encode(script));
+        let mut request = Request::post(&path, self.key());
+        request.timeout = Duration::from_secs(180);
+        let response = http::send(
+            &self.endpoint,
+            &request,
+            None,
+            &mut |_, _| {},
+            &AtomicBool::new(false),
+        )?;
+        match check(response) {
+            // Klipper відхилив команду: 400 з його повідомленням (`Must home axis first…`).
+            Err(MoonrakerError::Http { status: 400, message }) => Err(MoonrakerError::Gcode(message)),
+            other => other.map(|_| ()),
+        }
+    }
+
+    /// Команди одним скриптом (рядки через `\n`) — Klipper виконає їх підряд.
+    pub fn run(&self, commands: &[Command]) -> Result<()> {
+        if commands.is_empty() {
+            return Err(MoonrakerError::InvalidCommand(String::new()));
+        }
+        let script = commands
+            .iter()
+            .map(Command::script)
+            .collect::<Result<Vec<_>>>()?
+            .join("\n");
+        self.gcode(&script)
+    }
+
+    /// Аварійна зупинка (M112 поза чергою G-code): Klipper переходить у shutdown, нагрів і
+    /// мотори вимикаються. Повернути — [`Client::firmware_restart`].
+    pub fn emergency_stop(&self) -> Result<()> {
+        self.post_ok("/printer/emergency_stop")
+    }
+
+    /// `FIRMWARE_RESTART` — після аварійної зупинки чи помилки MCU.
+    pub fn firmware_restart(&self) -> Result<()> {
+        self.post_ok("/printer/firmware_restart")
     }
 
     /// Адреса вебінтерфейсу (Mainsail / Fluidd) для кнопки «Відкрити».
