@@ -470,7 +470,14 @@ impl Workspace {
         self.finish_scene_gesture();
         self.cancel_navigation();
         self.scene_menu = None;
+        let previous = self.page;
         self.page = page;
+        // «Перегляд» малює активну пластину в початку координат (див. `solo_plate`): камера
+        // переходить разом з нею, щоб на обох сторінках дивитися на ту саму пластину.
+        if previous == Page::Preview && page != Page::Preview {
+            let number = self.plates.get(self.active_plate).map_or(0, |p| p.number);
+            self.camera.target += self.plate_offset(number);
+        }
         self.drag_from = None;
         self.panning = None;
         self.moving = None;
@@ -512,6 +519,9 @@ impl Workspace {
         self.update_highlight();
         if page == Page::Preview {
             self.apply_preview_view(cx);
+            if previous != Page::Preview {
+                self.frame_active_plate();
+            }
         }
         self.dirty = true;
     }
