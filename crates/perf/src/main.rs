@@ -584,6 +584,45 @@ fn photo_gpu(report: &mut Report) -> Result<()> {
         timed(|| drop(std::hint::black_box(renderer.render_photo_png(3840, 2160, &camera).unwrap())))
     });
 
+    // Той самий кадр прозорим філаментом: прохід товщини, глибина й колір прозорих, карта
+    // пропускання для кольорової тіні (docs/PHOTO-MODE.md, «Прозорі філаменти»).
+    let clear = table.resolve(table.index_of("translucent").context("пресет translucent")?, [0.38, 0.69, 1.0]);
+    renderer.set_photo(Some(viewer::PhotoSettings { materials: vec![clear], ..settings.clone() }));
+    camera.frame_scene(lo, hi, w as f32 / h as f32);
+    for (name, idle) in [
+        ("Photo translucent orbit frame", 0),
+        ("Photo translucent orbit frame after 25 ms idle", 25),
+    ] {
+        report.time(name, 2, 30, || {
+            std::thread::sleep(Duration::from_millis(idle));
+            camera.orbit(4., 1.);
+            timed(|| {
+                assert!(renderer.submit_frame(w, h, &camera).unwrap());
+                wait(&mut renderer).unwrap();
+            })
+        });
+    }
+    let mut top = layers;
+    report.time("Photo translucent layer-slider frame (shadow maps redrawn)", 2, 20, || {
+        top = if top <= layers / 2 { layers } else { top - 7 };
+        renderer.set_visible_layers(0..top);
+        timed(|| {
+            assert!(renderer.submit_frame(w, h, &camera).unwrap());
+            wait(&mut renderer).unwrap();
+        })
+    });
+    renderer.set_all_layers_visible();
+    camera.target = lo + size * Vec3::new(0.5, 0.5, 1.0);
+    camera.pitch = 75f32.to_radians();
+    camera.distance = size.length() * 0.25;
+    report.time("Photo translucent close-up frame from above", 2, 20, || {
+        camera.orbit(2., 0.);
+        timed(|| {
+            assert!(renderer.submit_frame(w, h, &camera).unwrap());
+            wait(&mut renderer).unwrap();
+        })
+    });
+
     // Вихід із режиму: ресурси «Фото» звільняються, Preview повертається до своїх чисел.
     renderer.set_photo(None);
     renderer.set_toolpath(&built.gpu);

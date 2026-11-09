@@ -21,7 +21,12 @@
 #   sheen                м’який «оксамитовий» відблиск на краях (матові, TPU)
 #   anisotropy           анізотропний блиск уздовж валика (Silk)
 #   translucency         світло, що проходить крізь тонку стінку (обгортка дифузу,
-#                        підсвічування ззаду); справжня товщина — етап 2
+#                        підсвічування ззаду) — для непрозорих
+#   transmission         частка світла, що проходить крізь пластик (прозорі): > 0 —
+#                        окремий прохід із поглинанням за товщиною (Бугер–Ламберт),
+#                        просвічуванням внутрішніх стінок і кольоровою тінню
+#   haze                 каламутність прозорого: розсіяння в об’ємі (0 — скло)
+#   absorption_distance  мм; колір профілю — колір пластику такої товщини (типово 1.5)
 #   emission             власне світіння кольором філаменту (Glow)
 #   pattern              none | marble | sparkle | carbon | wood — процедурний шум у шейдері
 #   pattern_scale        масштаб візерунка (1 — типовий розмір)
@@ -49,11 +54,15 @@ anisotropy = 0.8
 id = "translucent"
 label = "Напівпрозорий"
 keywords = ["translucent", "transparent", "clear", "crystal"]
-roughness = 0.08
-specular = 0.6
-clearcoat = 0.8
-clearcoat_roughness = 0.04
-translucency = 0.75
+# Як скло (Bambu PETG Translucent): колір густішає з товщиною, видно внутрішні стінки,
+# тінь кольорова. Глянець із різкими відблисками на ребрах шарів.
+roughness = 0.05
+specular = 0.7
+clearcoat = 1.0
+clearcoat_roughness = 0.025
+transmission = 0.92
+haze = 0.25
+absorption_distance = 1.5
 
 [[preset]]
 id = "marble"
@@ -155,10 +164,10 @@ label = "PETG"
 keywords = ["petg", "pctg"]
 types = ["PETG", "PCTG", "PET"]
 # Глянець: чіткі відблиски на кожному ребрі шару.
-roughness = 0.1
+roughness = 0.08
 specular = 0.6
-clearcoat = 0.8
-clearcoat_roughness = 0.04
+clearcoat = 0.9
+clearcoat_roughness = 0.03
 translucency = 0.2
 
 [[preset]]

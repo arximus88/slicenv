@@ -9,6 +9,30 @@
 const FLAG_SUPPORT: u32 = 1u;
 const FLAG_SEAM: u32 = 2u;
 
+// Які валики малює прохід (`pick.x` у `bead_vertex`): усі; лише непрозорі слоти; лише
+// прозорі. `pick.y` — маска прозорих слотів (біт = слот, як `Photo::transparent_mask`).
+const BEADS_ALL: u32 = 0u;
+const BEADS_OPAQUE: u32 = 1u;
+const BEADS_CLEAR: u32 = 2u;
+
+struct Material {
+    // rgb — колір (лінійний; для прозорих — пропускання шару absorption_distance),
+    // a — напівпрозорість.
+    base: vec4<f32>,
+    // roughness, metallic, specular, clearcoat
+    p0: vec4<f32>,
+    // clearcoat roughness, sheen, anisotropy, emission
+    p1: vec4<f32>,
+    // pattern, scale, strength, transmission
+    p2: vec4<f32>,
+    // rgb — другий колір візерунка (лінійний), a — розсіяння σs (1/мм)
+    p3: vec4<f32>,
+    // rgb — поглинання σa (1/мм, лінійне), a — absorption_distance (мм)
+    p4: vec4<f32>,
+}
+
+const MAX_MATERIALS: u32 = 32u;
+
 fn seg_f(base: u32, i: u32) -> f32 {
     return bitcast<f32>(segments[base + i]);
 }
@@ -27,14 +51,16 @@ struct Bead {
     n_far: vec3<f32>,
     // Півширина й піввисота перерізу, мм (профіль валика в photo.wgsl).
     half: vec2<f32>,
+    // Середній шлях променя ока крізь злитий переріз валика, мм (товщина прозорого).
+    chord: f32,
     // x — слот філаменту, y — прапорці.
     material: vec2<u32>,
 }
 
 // `eye.w` = 0: перспективне око в точці eye.xyz; 1 — ортогональна камера, eye.xyz — напрямок
 // до неї. `view.x` — режим підтримок (2 — сховати), view.y/z — перший і останній видимі
-// інстанси (межі повзунків отримують заокруглені торці).
-fn bead_vertex(vertex: u32, view_proj: mat4x4<f32>, eye: vec4<f32>, view: vec4<u32>) -> Bead {
+// інстанси (межі повзунків отримують заокруглені торці). `pick` — див. `BEADS_*`.
+fn bead_vertex(vertex: u32, view_proj: mat4x4<f32>, eye: vec4<f32>, view: vec4<u32>, pick: vec2<u32>) -> Bead {
     var out: Bead;
     let local = vertex / 6u;
     let instance = chunk.x + local;
@@ -49,8 +75,10 @@ fn bead_vertex(vertex: u32, view_proj: mat4x4<f32>, eye: vec4<f32>, view: vec4<u
     let caps = segments[base + 10u];
     out.material = vec2<u32>(packed & 0xffu, (packed >> 8u) & 0xffu);
 
-    if (out.material.y & FLAG_SUPPORT) != 0u && view.x == 2u {
-        // Сховані підтримки: вироджений трикутник за межами кліпу.
+    let clear = ((pick.y >> min(out.material.x, MAX_MATERIALS - 1u)) & 1u) == 1u;
+    let skipped = (pick.x == BEADS_OPAQUE && clear) || (pick.x == BEADS_CLEAR && !clear);
+    if ((out.material.y & FLAG_SUPPORT) != 0u && view.x == 2u) || skipped {
+        // Сховані підтримки й валики іншого проходу: вироджений трикутник за межами кліпу.
         out.clip = vec4<f32>(0.0, 0.0, -2.0, 1.0);
         return out;
     }
@@ -97,6 +125,13 @@ fn bead_vertex(vertex: u32, view_proj: mat4x4<f32>, eye: vec4<f32>, view: vec4<u
     out.n_far = select(up * sign(v.y + 1e-6), side_n, wall);
 
     out.half = vec2<f32>(hw, hh);
+    // Паралельні промені крізь прямокутник 2hw × 2hh (злиті валики): середній шлях =
+    // площа / ширина проєкції, у 3D — поділений ще на частку напрямку в площині перерізу,
+    // тож компоненти беруться ненормованими. Уздовж осі — не довше за сам валик.
+    let ray = normalize(to_eye);
+    let across_side = abs(dot(ray, side_n));
+    let across_up = abs(dot(ray, up));
+    out.chord = min(2.0 * hw * hh / max(hw * across_up + hh * across_side, 1e-4), len + 2.0 * hw);
     let length_hw = len / hw;
     out.clip = view_proj * vec4<f32>(pos, 1.0);
     out.world = pos;

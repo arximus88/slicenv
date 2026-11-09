@@ -53,6 +53,16 @@ pub struct Preset {
     pub anisotropy: f32,
     #[serde(default)]
     pub translucency: f32,
+    /// Частка світла, що проходить крізь пластик: > 0 — прозорий прохід (поглинання за
+    /// товщиною, просвічування внутрішніх стінок, кольорова тінь).
+    #[serde(default)]
+    pub transmission: f32,
+    /// Каламутність прозорого (розсіяння в об’ємі): 0 — скло.
+    #[serde(default)]
+    pub haze: f32,
+    /// Товщина (мм), на якій пластик має колір профілю.
+    #[serde(default = "absorption_distance")]
+    pub absorption_distance: f32,
     #[serde(default)]
     pub emission: f32,
     #[serde(default)]
@@ -77,6 +87,54 @@ fn tenth() -> f32 {
 }
 fn one() -> f32 {
     1.0
+}
+fn absorption_distance() -> f32 {
+    ABSORPTION_DISTANCE
+}
+
+/// Типова товщина (мм), на якій прозорий пластик має колір профілю: стінка з 2–4 ліній.
+pub const ABSORPTION_DISTANCE: f32 = 1.5;
+/// Найменша хроматична оптична густина кольору прозорого на `absorption_distance`: світліший
+/// (пастельний) колір підсилюється до неї, інакше «Translucent Blue» виглядає сіро-блакитним.
+pub const MIN_CHROMA_DENSITY: f32 = 1.2;
+
+fn srgb_to_linear(c: f32) -> f32 {
+    if c <= 0.04045 {
+        c / 12.92
+    } else {
+        ((c + 0.055) / 1.055).powf(2.4)
+    }
+}
+
+fn linear_to_srgb(c: f32) -> f32 {
+    if c <= 0.003_130_8 {
+        c * 12.92
+    } else {
+        1.055 * c.powf(1.0 / 2.4) - 0.055
+    }
+}
+
+/// Коефіцієнт поглинання σₐ (1/мм, лінійні RGB) прозорого пластику кольору `color` (sRGB).
+///
+/// Колір профілю — пропускання шару товщиною `distance`: σₐ = −ln(колір) / distance
+/// (Бугер–Ламберт, T = e^(−σₐ·d)). Оптична густина D = −ln(колір) розкладається на сіру частину
+/// (найменша з каналів) і хроматичну (решта). Якщо найбільша хроматична густина менша за
+/// [`MIN_CHROMA_DENSITY`] (світлий, пастельний колір), хроматична частина множиться до неї:
+/// колір стає насиченішим і трохи темнішим, а відтінок (співвідношення каналів) не змінюється.
+/// Білий і сірі кольори лишаються як є (прозорий безбарвний, димчастий).
+pub fn absorption(color: [f32; 3], distance: f32) -> [f32; 3] {
+    let density = color.map(|c| -srgb_to_linear(c).clamp(0.005, 1.0).ln());
+    let gray = density.iter().copied().fold(f32::INFINITY, f32::min);
+    let chroma = density.map(|d| d - gray);
+    let peak = chroma.iter().copied().fold(0.0, f32::max);
+    let boost = if peak > 0.02 { (MIN_CHROMA_DENSITY / peak).max(1.0) } else { 1.0 };
+    std::array::from_fn(|i| (gray + chroma[i] * boost) / distance.max(0.05))
+}
+
+/// Колір (sRGB) пластику товщиною `distance` з поглинанням `sigma` — те, що бачить шейдер як
+/// «колір» прозорого (дифуз, розсіяння).
+pub fn transmitted_color(sigma: [f32; 3], distance: f32) -> [f32; 3] {
+    sigma.map(|s| linear_to_srgb((-s * distance).exp()))
 }
 
 fn hex_opt<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<[f32; 3]>, D::Error> {
@@ -135,6 +193,8 @@ impl MaterialTable {
                 ("sheen", p.sheen),
                 ("anisotropy", p.anisotropy),
                 ("translucency", p.translucency),
+                ("transmission", p.transmission),
+                ("haze", p.haze),
                 ("emission", p.emission),
                 ("pattern_strength", p.pattern_strength),
                 ("tint_amount", p.tint_amount),
@@ -148,6 +208,11 @@ impl MaterialTable {
             anyhow::ensure!(
                 p.pattern_scale > 0.0 && p.pattern_scale.is_finite(),
                 "пресет «{}»: pattern_scale має бути > 0",
+                p.id
+            );
+            anyhow::ensure!(
+                (0.05..=50.0).contains(&p.absorption_distance),
+                "пресет «{}»: absorption_distance має бути 0.05…50 мм",
                 p.id
             );
         }
@@ -221,12 +286,42 @@ pub struct PhotoMaterial {
     pub sheen: f32,
     pub anisotropy: f32,
     pub translucency: f32,
+    /// > 0 — прозорий (окремий прохід). Див. [`Preset::transmission`].
+    pub transmission: f32,
+    pub haze: f32,
+    /// мм, див. [`absorption`].
+    pub absorption_distance: f32,
     pub emission: f32,
     pub pattern: Pattern,
     pub pattern_scale: f32,
     pub pattern_strength: f32,
     /// sRGB.
     pub pattern_color: [f32; 3],
+}
+
+impl PhotoMaterial {
+    pub fn is_transparent(&self) -> bool {
+        self.transmission > 0.0
+    }
+
+    /// σₐ (1/мм, лінійні RGB) для прозорого; для непрозорого — нулі.
+    pub fn absorption(&self) -> [f32; 3] {
+        if self.is_transparent() {
+            absorption(self.color, self.absorption_distance)
+        } else {
+            [0.0; 3]
+        }
+    }
+
+    /// Колір, яким шейдер фарбує поверхню (sRGB): для прозорих — пропускання шару
+    /// `absorption_distance` після компенсації пастельних кольорів, інакше колір як є.
+    pub fn shading_color(&self) -> [f32; 3] {
+        if self.is_transparent() {
+            transmitted_color(self.absorption(), self.absorption_distance)
+        } else {
+            self.color
+        }
+    }
 }
 
 impl Default for PhotoMaterial {
@@ -258,6 +353,9 @@ impl MaterialTable {
             sheen: p.sheen,
             anisotropy: p.anisotropy,
             translucency: p.translucency,
+            transmission: p.transmission,
+            haze: p.haze,
+            absorption_distance: p.absorption_distance,
             emission: p.emission,
             pattern: p.pattern,
             pattern_scale: p.pattern_scale,
@@ -298,6 +396,42 @@ mod tests {
         assert!(p("cf").roughness < p("matte").roughness);
         assert!(p("petg").clearcoat > p("basic").clearcoat);
         assert!(p("silk").anisotropy >= 0.7);
+        // Прозорий — лише «Напівпрозорий»: решта малюються як і раніше, непрозорими.
+        for preset in &t.presets {
+            assert_eq!(preset.transmission > 0.0, preset.id == "translucent", "{}", preset.id);
+        }
+        assert!(p("translucent").roughness <= p("petg").roughness);
+    }
+
+    #[test]
+    fn absorption_follows_profile_colour_and_boosts_pastels() {
+        let close = |a: [f32; 3], b: [f32; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 2e-3);
+        // Насичений колір (Bambu PETG Translucent Light Blue #61B0FF) — без змін: на 1.5 мм
+        // пропускання дорівнює кольору профілю.
+        let blue = parse_hex("#61B0FF").unwrap();
+        let sigma = absorption(blue, 1.5);
+        assert!(close(transmitted_color(sigma, 1.5), blue), "{:?}", transmitted_color(sigma, 1.5));
+        assert_eq!(sigma[2], 0.0);
+        // Товще — темніше й насиченіше (Бугер–Ламберт).
+        let thick = transmitted_color(sigma, 4.0);
+        assert!(thick[0] < blue[0] * 0.5 && thick[1] < blue[1] && thick[2] > 0.999);
+        // Пастельний (Ice Blue #B8CDE9) підсилюється: відтінок той самий, синій — синіший.
+        let ice = parse_hex("#B8CDE9").unwrap();
+        let s = absorption(ice, 1.5);
+        let shown = transmitted_color(s, 1.5);
+        assert!(shown[0] < ice[0] - 0.1 && shown[2] > shown[1] && shown[1] > shown[0], "{shown:?}");
+        let peak = (s[0] - s[2]) * 1.5;
+        assert!((peak - MIN_CHROMA_DENSITY).abs() < 1e-3, "{peak}");
+        // Білий (Clear) — безбарвний і майже без поглинання; сірий — лише сірий.
+        assert!(absorption([1.0; 3], 1.5).iter().all(|&a| a < 1e-6));
+        let gray = absorption(parse_hex("#8E8E8E").unwrap(), 1.5);
+        assert!((gray[0] - gray[2]).abs() < 1e-6 && gray[0] > 0.5);
+        // Непрозорий матеріал: колір як у профілі, поглинання немає.
+        let t = MaterialTable::builtin();
+        let basic = t.resolve(t.default, ice);
+        assert_eq!((basic.shading_color(), basic.absorption()), (ice, [0.0; 3]));
+        let clear = t.resolve(t.index_of("translucent").unwrap(), ice);
+        assert!(clear.is_transparent() && close(clear.shading_color(), shown));
     }
 
     #[test]
@@ -352,6 +486,8 @@ mod tests {
             "default = \"a\"\n[[preset]]\nid = \"a\"\nlabel = \"A\"\npattern_color = \"red\"\n",
             "default = \"a\"\n[[preset]]\nid = \"a\"\nlabel = \"A\"\n[[preset]]\nid = \"a\"\nlabel = \"B\"\n",
             "default = \"a\"\npreset = []\n",
+            "default = \"a\"\n[[preset]]\nid = \"a\"\nlabel = \"A\"\nabsorption_distance = 0.0\n",
+            "default = \"a\"\n[[preset]]\nid = \"a\"\nlabel = \"A\"\ntransmission = 2.0\n",
         ] {
             assert!(MaterialTable::parse(bad).is_err(), "{bad}");
         }
