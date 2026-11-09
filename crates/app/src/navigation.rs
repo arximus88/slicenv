@@ -253,7 +253,8 @@ pub fn cube(ws: &Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
     }
     let entity = cx.entity();
     let prepare = ws.page == crate::workspace::Page::Prepare;
-    let right = if prepare { 12. } else { 76. };
+    // Справа від куба в Preview — повзунок шарів; до нарізки його немає.
+    let right = if prepare || ws.preview.is_none() { 12. } else { 76. };
     div()
         .id("navigation-cube")
         .occlude()

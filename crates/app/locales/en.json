@@ -1523,5 +1523,7 @@
   "Зберегти проєкт…": "Save project…",
   "Порожня пластина з поточними профілями (Ctrl+N)": "Empty plate with the current profiles (Ctrl+N)",
   "Новий проєкт, ще не збережено — правий клік: зберегти чи закрити": "New project, not saved yet — right-click to save or close",
-  "ще не збережено": "not saved yet"
+  "ще не збережено": "not saved yet",
+  "Параметри змінено — нарізка застаріла": "Settings changed — slice is outdated",
+  "Перерізати": "Re-slice"
 }

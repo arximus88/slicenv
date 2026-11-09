@@ -130,6 +130,8 @@ pub struct Renderer {
     bind_group: wgpu::BindGroup,
     mesh_pipeline: wgpu::RenderPipeline,
     modifier_pipeline: wgpu::RenderPipeline,
+    ghost_depth_pipeline: wgpu::RenderPipeline,
+    ghost_pipeline: wgpu::RenderPipeline,
     section_pipeline: wgpu::RenderPipeline,
     bed_pipeline: wgpu::RenderPipeline,
     bed_grid_pipeline: wgpu::RenderPipeline,
@@ -179,6 +181,8 @@ pub struct Renderer {
     visible: Option<(Range<u32>, Range<u32>)>,
     show_travel: bool,
     show_bed: bool,
+    /// Моделі сцени — напівпрозорим силуетом (`set_ghost_models`).
+    ghost_models: bool,
     flat_toolpath: bool,
     targets: Option<Targets>,
     pending: Option<PendingFrame>,
@@ -374,6 +378,24 @@ impl Renderer {
             wgpu::PrimitiveTopology::TriangleList,
             false,
         );
+        let ghost_depth_pipeline = pipeline(
+            "ghost_depth",
+            "vs_mesh",
+            "fs_ghost_depth",
+            size_of::<MeshVertex>() as u64,
+            &mesh_attrs,
+            wgpu::PrimitiveTopology::TriangleList,
+            true,
+        );
+        let ghost_pipeline = pipeline(
+            "ghost",
+            "vs_mesh",
+            "fs_ghost",
+            size_of::<MeshVertex>() as u64,
+            &mesh_attrs,
+            wgpu::PrimitiveTopology::TriangleList,
+            false,
+        );
         // Стіл і оверлей не пишуть глибину: стіл знизу напівпрозорий, гізмо завжди поверх.
         let bed_pipeline = pipeline(
             "bed",
@@ -544,6 +566,8 @@ impl Renderer {
             bind_group,
             mesh_pipeline,
             modifier_pipeline,
+            ghost_depth_pipeline,
+            ghost_pipeline,
             section_pipeline,
             bed_pipeline,
             bed_grid_pipeline,
@@ -588,6 +612,7 @@ impl Renderer {
             visible: None,
             show_travel: false,
             show_bed: true,
+            ghost_models: false,
             flat_toolpath: false,
             targets: None,
             pending: None,
@@ -1182,6 +1207,16 @@ impl Renderer {
     pub fn set_flat_toolpath(&mut self, flat: bool) {
         self.flat_toolpath = flat;
     }
+    /// Моделі (`set_mesh`, сітки й елементи сцени) — напівпрозорим сірим силуетом замість
+    /// кольору філаменту: «Перегляд», доки пластину не нарізано.
+    pub fn set_ghost_models(&mut self, ghost: bool) {
+        self.ghost_models = ghost;
+    }
+
+    pub fn has_toolpath(&self) -> bool {
+        self.toolpath.is_some()
+    }
+
     pub fn set_show_bed(&mut self, show: bool) {
         self.show_bed = show;
     }
@@ -1626,27 +1661,34 @@ impl Renderer {
                 draw_bed(&mut pass);
             }
 
-            if let Some((buffer, count)) = &self.mesh {
-                pass.set_pipeline(&self.mesh_pipeline);
-                pass.set_vertex_buffer(1, self.zero_offset.slice(..));
-                pass.set_vertex_buffer(0, buffer.slice(..));
-                pass.draw(0..*count, 0..1);
-            }
+            let passes: &[&wgpu::RenderPipeline] = if self.ghost_models {
+                &[&self.ghost_depth_pipeline, &self.ghost_pipeline]
+            } else {
+                &[&self.mesh_pipeline]
+            };
+            for &mesh_pipeline in passes {
+                if let Some((buffer, count)) = &self.mesh {
+                    pass.set_pipeline(mesh_pipeline);
+                    pass.set_vertex_buffer(1, self.zero_offset.slice(..));
+                    pass.set_vertex_buffer(0, buffer.slice(..));
+                    pass.draw(0..*count, 0..1);
+                }
 
-            for mesh in self.scene_meshes.values() {
-                pass.set_pipeline(&self.mesh_pipeline);
-                pass.set_vertex_buffer(0, mesh.vertices.0.slice(..));
-                pass.set_vertex_buffer(1, mesh.offset.slice(..));
-                pass.draw(0..mesh.vertices.1, 0..1);
-            }
+                for mesh in self.scene_meshes.values() {
+                    pass.set_pipeline(mesh_pipeline);
+                    pass.set_vertex_buffer(0, mesh.vertices.0.slice(..));
+                    pass.set_vertex_buffer(1, mesh.offset.slice(..));
+                    pass.draw(0..mesh.vertices.1, 0..1);
+                }
 
-            if let Some(items) = &self.scene_items {
-                pass.set_pipeline(&self.mesh_pipeline);
-                pass.set_vertex_buffer(1, items.transforms.slice(..));
-                for (key, instances) in &items.groups {
-                    if let Some(mesh) = self.volume_meshes.get(key) {
-                        pass.set_vertex_buffer(0, mesh.vertices.slice(..));
-                        pass.draw(0..mesh.count, instances.clone());
+                if let Some(items) = &self.scene_items {
+                    pass.set_pipeline(mesh_pipeline);
+                    pass.set_vertex_buffer(1, items.transforms.slice(..));
+                    for (key, instances) in &items.groups {
+                        if let Some(mesh) = self.volume_meshes.get(key) {
+                            pass.set_vertex_buffer(0, mesh.vertices.slice(..));
+                            pass.draw(0..mesh.count, instances.clone());
+                        }
                     }
                 }
             }
