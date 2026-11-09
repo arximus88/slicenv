@@ -191,6 +191,9 @@ pub struct Workspace {
     /// Новий проєкт «Без назви»: `path` — лише запропоноване ім’я в теці бібліотеки, файлу
     /// ще немає. Перше збереження питає шлях.
     pub untitled: bool,
+    /// Шлях, який людина підтвердила в діалозі збереження для цього відкритого проєкту:
+    /// Ctrl+S пише туди без питань. Скидається при відкритті й закритті файлу (`save_flow`).
+    pub save_target: Option<PathBuf>,
     pub transform_inputs: Option<crate::objects::TransformInputs>,
     pub viewport_bounds: Option<gpui::Bounds<Pixels>>,
     /// Миша рушила після натискання — це обертання камери, а не клік-вибір.
@@ -406,6 +409,7 @@ impl Workspace {
             plate_press: None,
             edited: false,
             untitled: false,
+            save_target: None,
             transform_inputs: None,
             scrub: None,
             scrub_bindings: Default::default(),
@@ -695,6 +699,7 @@ impl Workspace {
         self.cut_enabled = false;
         self.edited = false;
         self.untitled = false;
+        self.save_target = None;
         self.renderer.set_highlight(None);
         self.model_name = path
             .file_name()
@@ -1577,6 +1582,9 @@ impl Render for Workspace {
                 .on_action(cx.listener(|this, _: &crate::SaveProject, window, cx| {
                     this.prompt_save(window, cx)
                 }))
+                .on_action(cx.listener(|this, _: &crate::SaveProjectAs, window, cx| {
+                    this.prompt_save_as(window, cx)
+                }))
                 .on_action(cx.listener(|this, _: &crate::CloseFile, window, cx| {
                     this.close_file(window, cx)
                 }))
@@ -1790,7 +1798,7 @@ impl Workspace {
                             .inert(self.project.is_none())
                             .when(self.project.is_some(), |d| {
                                 d.on_click(
-                                    cx.listener(|this, _, window, cx| this.prompt_save(window, cx)),
+                                    cx.listener(|this, _, window, cx| this.prompt_save_as(window, cx)),
                                 )
                             }),
                     ),

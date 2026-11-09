@@ -44,6 +44,7 @@ mod ui;
 mod ui_state;
 mod viewport;
 mod widgets;
+mod save_flow;
 mod scrub;
 mod workspace;
 mod wizard;
@@ -64,6 +65,7 @@ gpui::actions!(
     [
         OpenPreferences,
         SaveProject,
+        SaveProjectAs,
         CloseFile,
         NewProject,
         UndoProject,
@@ -159,6 +161,7 @@ fn main() {
             cx.bind_keys([
                 gpui::KeyBinding::new("ctrl-,", OpenPreferences, None),
                 gpui::KeyBinding::new("ctrl-s", SaveProject, None),
+                gpui::KeyBinding::new("ctrl-shift-s", SaveProjectAs, None),
                 gpui::KeyBinding::new("ctrl-z", UndoProject, Some("Workspace && !Input")),
                 gpui::KeyBinding::new("ctrl-shift-z", RedoProject, Some("Workspace && !Input")),
                 gpui::KeyBinding::new("ctrl-y", RedoProject, Some("Workspace && !Input")),

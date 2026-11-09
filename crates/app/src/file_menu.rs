@@ -97,6 +97,7 @@ impl Workspace {
         self.model_name = "кубик 20 мм".into();
         self.path = None;
         self.untitled = false;
+        self.save_target = None;
         self.plates = vec![viewer::Plate {
             number: 1,
             name: None,
@@ -274,18 +275,31 @@ pub fn render(ws: &Workspace, cx: &mut Context<Workspace>) -> Option<AnyElement>
         .shadow_lg()
         .text_color(z.text)
         .on_mouse_down_out(cx.listener(|this, _, _, cx| this.close_file_menu(cx)))
-        // «Зберегти проєкт» — та сама дія, що Ctrl+S і кнопка в заголовку (`prompt_save`):
-        // вона завжди питає шлях, тож окремий «Зберегти як…» був би її копією.
+        // «Зберегти проєкт» — та сама дія, що Ctrl+S і кнопка в заголовку (`prompt_save`).
+        // Трикрапка — лише поки шлях не підтверджено: тоді вона відкриє діалог.
         .when(current && ws.project.is_some(), |menu| {
             let (gap, keys) = shortcut("Ctrl+S");
+            let (gap_as, keys_as) = shortcut("Ctrl+Shift+S");
+            let save_label =
+                if ws.save_target.is_some() { "Зберегти проєкт" } else { "Зберегти проєкт…" };
             menu.child(
-                ui::ghost_button("file-menu-save", Some(IconName::Save), "Зберегти проєкт…")
+                ui::ghost_button("file-menu-save", Some(IconName::Save), save_label)
                     .w_full()
                     .child(gap)
                     .child(keys)
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.close_file_menu(cx);
                         this.prompt_save(window, cx);
+                    })),
+            )
+            .child(
+                ui::ghost_button("file-menu-save-as", Some(IconName::Save), "Зберегти як…")
+                    .w_full()
+                    .child(gap_as)
+                    .child(keys_as)
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.close_file_menu(cx);
+                        this.prompt_save_as(window, cx);
                     })),
             )
             .when(on_disk, |menu| menu.child(div().h(px(1.)).my(px(3.)).bg(z.border_variant)))
