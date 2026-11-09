@@ -19,7 +19,9 @@ void cloud_free(CloudBytes bytes);
 int cloud_call(void *handle, int op, const char *a, const char *b, int number, CloudBytes *out);
 // Поля: dev, task, project, preset, file, config, ams, ams2, ams_info, nozzle,
 // nozzles_info, bed, extra.
-int cloud_print(void *handle, const char *const *fields, int plate, uint32_t flags);
+// mode 0 — start_print (хмара), 1 — start_local_print (LAN: count >= 16, поля 13..15).
+int cloud_print(void *handle, const char *const *fields, int count, int plate, uint32_t flags,
+                int mode);
 int cloud_camera_open(const char *path, const char *url, void **out);
 int cloud_camera_start(void *handle);
 int cloud_camera_read(void *handle, CloudBytes *out, uint64_t *timestamp);

@@ -20,6 +20,7 @@ mod library;
 mod migration;
 mod navigation;
 mod objects;
+mod open_plugin;
 mod orient;
 mod plate_controls;
 mod plate_strip;
@@ -114,6 +115,10 @@ fn main() {
     // Майстер: нік знайденої сесії і вхід токенами — плагін вантажиться лише в дочірньому
     // процесі (його SIGSEGV не зачіпає застосунок).
     if let Some(code) = wizard::child_main(arg.as_deref()) {
+        std::process::exit(code);
+    }
+    // Друк по LAN через відкритий плагін (Open Bamboo Networking) — теж в окремому процесі.
+    if let Some(code) = open_plugin::child_main(arg.as_deref()) {
         std::process::exit(code);
     }
     // Тека в аргументах — додатковий корінь бібліотеки на цей сеанс; файл просто відкривається.

@@ -5,6 +5,12 @@
 а завантажує з серверів Bambu лише за явною згодою користувача (як OrcaSlicer). Вхід в акаунт —
 власна форма (без webview) або наявна сесія Bambu Studio / OrcaSlicer на цьому комп’ютері.
 
+На Linux замість закритого плагіна користувач може **сам вибрати** відкритий плагін Open Bamboo
+Networking (збірка persano): друк без Developer Mode, сторонній код із вшитим ключем Bambu —
+[OPEN-PLUGIN.md](OPEN-PLUGIN.md). Коли його вибрано, `plugin::find_plugins` повертає його першим,
+а `account::find_sessions` — лише його сесію (`obn.auth.json`). Без вибору OBN у теках Studio/Orca
+пропускається.
+
 Цільовий сценарій: людина встановила лише Slicenv (без Bambu Studio), рушій поставила нашим
 менеджером пакетів — і може увійти в Bambu Cloud.
 
@@ -42,8 +48,10 @@ cloud::setup()  ──► NoPlugin ──► plugin::fetch_remote → Consent::a
   `..`, абсолютний шлях → відмова); CRC перевіряє zip-рідер; `libbambu_networking.so` має бути
   ELF. Розпакування в `.staging-*` у тій самій теці, далі `rename` — частково встановленого плагіна
   не буває; при помилці чернетка зникає.
-- Пріоритет пошуку: керований → `~/.config/BambuStudio/plugins` → `~/.config/OrcaSlicer/plugins`
-  (Orca називає файл `libbambu_networking_<версія>.so`). Чужі теки лише читаються.
+- Пріоритет пошуку: вибраний відкритий плагін (`obn::active`) → керований →
+  `~/.config/BambuStudio/plugins` → `~/.config/OrcaSlicer/plugins` (Orca називає файл
+  `libbambu_networking_<версія>.so`). Чужі теки лише читаються; OBN у них без вибору
+  користувача пропускається (`obn::is_open_plugin`).
 
 ### ABI
 

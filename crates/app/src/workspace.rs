@@ -152,6 +152,8 @@ pub struct Workspace {
     /// Правки «Фото» попереднього прев’ю (інша пластина, нова нарізка), див. `PhotoMemory`.
     pub photo_memory: Option<crate::photo_mode::PhotoMemory>,
     pub cloud: CloudState,
+    /// Модалка «Відкритий плагін (Open Bamboo Networking)».
+    pub open_plugin: crate::open_plugin::OpenPluginUi,
     /// Відкрита модалка (будується заново щокадру — бачить поточний стан).
     pub modal: Option<crate::widgets::ModalBuilder>,
     /// Майстер налаштування (перший запуск або з налаштувань); малюється під модалками.
@@ -385,6 +387,7 @@ impl Workspace {
             preview: None,
             photo_memory: None,
             cloud: CloudState::default(),
+            open_plugin: Default::default(),
             modal: None,
             wizard: None,
             toasts: Vec::new(),

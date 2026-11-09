@@ -43,6 +43,25 @@ FAKE_API int bambu_network_start_print(void *, FakeParams p, std::function<void(
     up(7, 0, "synthetic");
     return 0;
 }
+// LAN (start_local_print, без OnWaitFn): IP, код доступу, bblp, connection_type "lan".
+FAKE_API int bambu_network_start_local_print(void *, FakeParams p,
+                                             std::function<void(int, int, std::string)> up,
+                                             std::function<bool()>) {
+    if (p.dev_id != "SYNTHETIC12345678" || p.plate_index != 3 || p.dev_ip != "192.0.2.7" ||
+        p.password != "syn-code" || p.username != "bblp" || p.connection_type != "lan" ||
+        p.dev_name != "syn-printer" || !p.use_ssl_for_ftp || !p.use_ssl_for_mqtt ||
+        !p.task_bed_leveling || p.task_use_ams || p.task_bed_type != "textured_plate" ||
+        p.ams_mapping != "[-1]" || p.print_type != "from_normal" ||
+        p.extruder_cali_manual_mode != -1)
+        return -96;
+#ifdef FAKE_0208
+    if (!p.svc_context.empty() || !p.queue_plate_id.empty())
+        return -95;
+#endif
+    up(1, 100, "");
+    up(6, 0, "");
+    return 0;
+}
 FAKE_API int bambu_network_get_my_profile(void *, std::string token, unsigned *code, std::string *body) {
     *code = token == "syn-access" ? 200 : 401;
     *body = R"({"uidStr":"42","name":"syn","account":"a@example.invalid","avatar":""})";

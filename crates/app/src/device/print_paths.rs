@@ -66,6 +66,9 @@ pub struct Inputs {
     pub lan: Lan,
     /// Хмарний друк уже хоч раз пройшов (напр. майбутній підписаний плагін).
     pub cloud_print_works: bool,
+    /// Користувач вибрав відкритий плагін (Open Bamboo Networking): LAN-друк підписує він,
+    /// Bambu Connect не потрібен. Хмара — лише якщо її ввімкнено (`cloud_print_works`).
+    pub open_plugin: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -82,6 +85,30 @@ pub struct Paths {
 
 pub fn choose(i: Inputs) -> Paths {
     let mut secondary = Vec::new();
+    if i.open_plugin {
+        let primary = match (i.lan, i.cloud_print_works) {
+            (Lan::Saved, _) => Action::LanSend,
+            (Lan::Found, cloud) => {
+                if cloud {
+                    secondary.push(Action::Cloud);
+                }
+                Action::LanAdd
+            }
+            (Lan::Absent, true) => {
+                secondary.push(Action::LanManual);
+                Action::Cloud
+            }
+            (Lan::Absent, false) => Action::LanManual,
+        };
+        if i.lan == Lan::Saved && i.cloud_print_works {
+            secondary.push(Action::Cloud);
+        }
+        if i.connect_installed {
+            secondary.push(Action::Connect);
+        }
+        let print_options = matches!(primary, Action::LanSend | Action::Cloud);
+        return Paths { primary: Some(primary), secondary, notice: ConnectNotice::None, print_options };
+    }
     let (primary, notice) = if i.lan == Lan::Saved {
         if i.connect_installed {
             secondary.push(Action::Connect);
@@ -124,7 +151,7 @@ mod tests {
     use super::*;
 
     fn paths(os: Os, connect_installed: bool, lan: Lan) -> Paths {
-        choose(Inputs { os, connect_installed, lan, cloud_print_works: false })
+        choose(Inputs { os, connect_installed, lan, cloud_print_works: false, open_plugin: false })
     }
 
     #[test]
@@ -193,7 +220,7 @@ mod tests {
     #[test]
     fn cloud_appears_only_after_real_success() {
         let ok = |connect_installed, lan| {
-            choose(Inputs { os: Os::Windows, connect_installed, lan, cloud_print_works: true })
+            choose(Inputs { os: Os::Windows, connect_installed, lan, cloud_print_works: true, open_plugin: false })
         };
         let p = ok(false, Lan::Absent);
         assert_eq!(p.primary, Some(Action::Cloud));
@@ -205,5 +232,31 @@ mod tests {
         assert_eq!(p.primary, Some(Action::Cloud));
         assert_eq!(p.secondary, vec![Action::LanAdd]);
         assert_eq!(ok(false, Lan::Saved).primary, Some(Action::LanSend));
+    }
+
+    #[test]
+    fn open_plugin_prints_over_lan_without_connect_notice() {
+        let obn = |lan, cloud| {
+            choose(Inputs { os: Os::Linux, connect_installed: false, lan, cloud_print_works: cloud, open_plugin: true })
+        };
+        for lan in [Lan::Saved, Lan::Found, Lan::Absent] {
+            for cloud in [false, true] {
+                let p = obn(lan, cloud);
+                assert_eq!(p.notice, ConnectNotice::None, "{lan:?} {cloud}");
+                assert!(p.primary.is_some());
+                assert_eq!(p.primary == Some(Action::Cloud) || p.secondary.contains(&Action::Cloud), cloud);
+            }
+        }
+        let p = obn(Lan::Saved, false);
+        assert_eq!(p.primary, Some(Action::LanSend));
+        assert!(p.secondary.is_empty() && p.print_options);
+        assert_eq!(obn(Lan::Found, false).primary, Some(Action::LanAdd));
+        let p = obn(Lan::Absent, false);
+        assert_eq!(p.primary, Some(Action::LanManual));
+        assert!(!p.print_options);
+        let p = obn(Lan::Absent, true);
+        assert_eq!(p.primary, Some(Action::Cloud));
+        assert_eq!(p.secondary, vec![Action::LanManual]);
+        assert_eq!(obn(Lan::Saved, true).secondary, vec![Action::Cloud]);
     }
 }

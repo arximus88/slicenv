@@ -99,6 +99,10 @@ fn own_in(dir: &Path) -> Option<FoundSession> {
 
 /// Сесії за пріоритетом: власна → Bambu Studio → OrcaSlicer.
 pub fn find_sessions() -> Vec<FoundSession> {
+    // Відкритий плагін має власну сесію (`obn.auth.json`); сесії закритого йому непридатні.
+    if crate::obn::active().is_some() {
+        return obn_session().into_iter().collect();
+    }
     let config = paths::vendor_config_home();
     own_in(&own_session_dir())
         .into_iter()
@@ -113,6 +117,29 @@ pub fn find_sessions() -> Vec<FoundSession> {
             "OrcaSlicer.conf",
         ))
         .collect()
+}
+
+/// Сесія відкритого плагіна у [`paths::open_plugin_config_dir`].
+fn obn_session() -> Option<FoundSession> {
+    let dir = paths::open_plugin_config_dir();
+    let file = fs::symlink_metadata(dir.join(crate::obn::SESSION_FILE))
+        .ok()
+        .filter(|m| m.is_file() && m.len() > 2)?;
+    Some(FoundSession {
+        origin: SessionOrigin::Own,
+        modified: file.modified().ok(),
+        country_code: country_of(&dir),
+        dir,
+        adopted_from: None,
+    })
+}
+
+/// Код країни, записаний під час входу (`prepare_own_session`), інакше «Others».
+pub(crate) fn country_of(dir: &Path) -> String {
+    fs::read(dir.join(META))
+        .ok()
+        .and_then(|b| serde_json::from_slice::<Meta>(&b).ok())
+        .map_or_else(|| "Others".into(), |m| m.country_code)
 }
 
 pub(crate) fn private_dir(dir: &Path) -> Result<()> {
@@ -139,15 +166,19 @@ fn write_meta(dir: &Path, meta: &Meta) -> Result<()> {
 /// Підготувати власну теку перед входом через форму (плагін запише туди сесію).
 pub fn prepare_own_session(country_code: &str) -> Result<PathBuf> {
     let dir = own_session_dir();
-    private_dir(&dir)?;
+    prepare_session_in(&dir, country_code)?;
+    Ok(dir)
+}
+
+pub(crate) fn prepare_session_in(dir: &Path, country_code: &str) -> Result<()> {
+    private_dir(dir)?;
     write_meta(
-        &dir,
+        dir,
         &Meta {
             origin: SessionOrigin::Own,
             country_code: country_code.into(),
         },
-    )?;
-    Ok(dir)
+    )
 }
 
 /// «Використати сесію Bambu Studio/Orca»: копія файлу у власну теку (0600). Оригінал не

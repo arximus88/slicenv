@@ -65,6 +65,8 @@ pub enum PluginOrigin {
     Managed,
     BambuStudio,
     OrcaSlicer,
+    /// Відкритий плагін Open Bamboo Networking, який користувач сам вибрав ([`crate::obn`]).
+    OpenBamboo,
 }
 
 #[derive(Clone, Debug)]
@@ -167,16 +169,24 @@ fn foreign_in(dir: &Path, origin: PluginOrigin) -> Vec<InstalledPlugin> {
 }
 
 /// Усі знайдені плагіни за пріоритетом; чужі каталоги лише читаються.
+///
+/// Відкритий плагін іде першим, лише якщо користувач його вибрав ([`crate::obn::active`]).
+/// Інакше OBN у теці Bambu Studio / Orca сюди не потрапляє: мовчки підхопити сторонній
+/// плагін замість закритого не можна (і його сесія — не `BambuNetworkEngine.conf`).
 pub fn find_plugins() -> Vec<InstalledPlugin> {
-    let mut list = managed_in(&managed_root());
-    list.extend(foreign_in(
+    let mut list: Vec<InstalledPlugin> = crate::obn::active().into_iter().collect();
+    list.extend(managed_in(&managed_root()));
+    let foreign = foreign_in(
         &paths::vendor_config_dir("BambuStudio").join("plugins"),
         PluginOrigin::BambuStudio,
-    ));
-    list.extend(foreign_in(
+    )
+    .into_iter()
+    .chain(foreign_in(
         &paths::vendor_config_dir("OrcaSlicer").join("plugins"),
         PluginOrigin::OrcaSlicer,
-    ));
+    ))
+    .filter(|p| !crate::obn::is_open_plugin(&p.library));
+    list.extend(foreign);
     list
 }
 

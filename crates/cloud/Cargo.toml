@@ -12,6 +12,7 @@ serde_json.workspace = true
 tempfile.workspace = true
 libc.workspace = true
 zip.workspace = true
+sha2 = "0.10"
 
 [build-dependencies]
 cc.workspace = true

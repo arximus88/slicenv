@@ -66,6 +66,8 @@ There are also costs:
 **Why can't Slicenv print through Bambu Cloud?**
 Bambu Lab's network plugin accepts cloud print jobs only from software signed by Bambu Lab; anything else gets error `-26`. Slicenv cannot honestly get around this. To print over the internet, Slicenv hands the file to Bambu Connect. On your local network it prints directly in LAN mode. Status and camera over the cloud still work.
 
+On Linux, where there is no Bambu Connect, you can choose the third-party open plugin Open Bamboo Networking (persano build) yourself. It prints without Developer Mode, but it contains a key extracted from Bambu's software, so use it at your own risk. Slicenv does not ship it: it either copies the copy you already installed in OrcaSlicer or downloads the persano release from GitHub with your consent ([docs/OPEN-PLUGIN.md](docs/OPEN-PLUGIN.md)).
+
 **Do I need OrcaSlicer or Bambu Studio installed?**
 Yes, one of them does the slicing. If neither is installed, the first-run wizard can download an official build for you.
 
