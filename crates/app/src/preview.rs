@@ -686,9 +686,18 @@ fn center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
                 .child(crate::tr_format!("Z {:.2} мм", l.z))
                 .child(crate::tr_format!("h {:.2} мм", l.height))
         }))
-        .when(ws.jobs.is_running(JobKind::ToolpathBuild), |d| {
-            d.child(ui::spinner("preview-rebuild"))
-        });
+        // Місце під спінер перебудови зарезервоване завжди: поява й зникнення не зсувають рядок.
+        .child(
+            div()
+                .flex_none()
+                .size(px(16.))
+                .flex()
+                .items_center()
+                .justify_center()
+                .when(ws.jobs.is_running(JobKind::ToolpathBuild), |d| {
+                    d.child(ui::spinner("preview-rebuild"))
+                }),
+        );
 
     // Вертикальний повзунок шарів праворуч.
     let layers_card = ui::scene_control("preview-layer-card")
