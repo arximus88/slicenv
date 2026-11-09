@@ -139,6 +139,8 @@ pub struct Workspace {
     pub filament_editor: Option<PresetEditor>,
     pub machine_editor: Option<PresetEditor>,
     pub slice_state: SliceState,
+    /// Preview, відкритий з G-code ще до кінця нарізки (`load_early_preview`).
+    pub(crate) early_preview: Option<crate::preview::EarlyPreview>,
     /// Ревізія входу нарізки: зростає з кожною зміною, після якої G-code застарілий
     /// (значення редакторів, профілі, конфіг об’єктів, пластина, геометрія).
     pub slice_revision: u64,
@@ -372,6 +374,7 @@ impl Workspace {
             filament_editor: None,
             machine_editor: None,
             slice_state: SliceState::Idle,
+            early_preview: None,
             slice_revision: 0,
             preview: None,
             cloud: CloudState::default(),
@@ -1034,10 +1037,14 @@ impl Workspace {
                     );
                     let gcode = out.gcode_3mf.with_file_name(format!("plate_{plate}.gcode"));
                     this.slice_state = SliceState::Done(out);
-                    this.load_preview(gcode, window, cx);
+                    this.finish_early_preview(gcode, window, cx);
                 }
-                Err(err) if err.is::<slicer::Cancelled>() => this.slice_state = SliceState::Idle,
+                Err(err) if err.is::<slicer::Cancelled>() => {
+                    this.drop_early_preview();
+                    this.slice_state = SliceState::Idle
+                }
                 Err(err) => {
+                    this.drop_early_preview();
                     let failure = err.downcast_ref::<slicer::SliceFailure>().cloned().map(std::sync::Arc::new);
                     // Аварія на всіх стадіях (зараз або вже запам’ятована для цього рушія):
                     // головна дія — інший рушій, а не повтор тим самим.
@@ -1063,8 +1070,43 @@ impl Workspace {
                 .set_progress(job, Arc::new(move || progress.progress()));
             self.jobs.set_stage(job, crate::preview::slice_stage(token.clone(), self.engine_identity.clone()));
             // Скасування вбиває процес рушія й чекає на нього (kill + wait).
+            let early = token.clone();
             self.jobs.on_cancel(job, move || token.cancel());
+            self.watch_early_gcode(early, cx);
         }
+    }
+
+    /// Чекає на G-code пластини, поки рушій ще працює (далі він пише `.gcode.3mf`: 0,1–0,25 с
+    /// на малій пластині, 0,6–0,9 с на 250 тис. △), і відкриває з нього Preview. Зупиняється з
+    /// кінцем нарізки або новою ревізією входу.
+    fn watch_early_gcode(&mut self, token: slicer::SliceCancellation, cx: &mut Context<Self>) {
+        let revision = self.slice_revision;
+        let window = self.window_handle;
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(20))
+                    .await;
+                let ready = token.gcode_ready();
+                let stop = cx
+                    .update_window(window, |_, window, cx| {
+                        this.update(cx, |this, cx| {
+                            if this.slice_revision != revision || !this.slicing() {
+                                return true;
+                            }
+                            let Some(gcode) = ready else { return false };
+                            this.load_early_preview(gcode, window, cx);
+                            true
+                        })
+                        .unwrap_or(true)
+                    })
+                    .unwrap_or(true);
+                if stop {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     /// Текст рядка стану для запущених задач (нарізка, орієнтація, плавці…).
@@ -1087,6 +1129,7 @@ impl Workspace {
         }
         // Рушій спільний для GUI і MCP-сесій поза цим вікном.
         slicer::cancel_active_slice();
+        self.early_preview = None;
         self.slice_state = SliceState::Idle;
     }
 

@@ -40,6 +40,10 @@ struct ProcessState {
     stage: Option<String>,
     /// Номер шару, який рушій зараз переводить у G-code (`Generating G-code: layer 80`).
     layer: Option<u32>,
+    /// G-code пластини, який пише поточний запуск рушія.
+    gcode: Option<PathBuf>,
+    /// `gcode` уже є на диску.
+    gcode_ready: bool,
 }
 #[derive(Debug)]
 pub struct Cancelled;
@@ -98,12 +102,42 @@ impl SliceCancellation {
         self.0.lock().unwrap().layer
     }
 
+    /// G-code пластини, щойно рушій його записав, — ще до експорту `.gcode.3mf` і виходу
+    /// процесу (0,13–0,25 с на малій пластині, 0,6–0,9 с на 250 тис. △). Bambu Studio й
+    /// OrcaSlicer пишуть `plate_N.gcode.tmp` і перейменовують його в `plate_N.gcode` вже
+    /// готовим, тож файл можна читати для Preview. Друкувати — лише з [`SliceOutput`]:
+    /// після цього рушій ще може відмовити (і, наприклад, повторити запуск з `--no-check`).
+    pub fn gcode_ready(&self) -> Option<PathBuf> {
+        let state = self.0.lock().unwrap();
+        state.gcode.clone().filter(|_| state.gcode_ready)
+    }
+
     /// Новий запуск рушія (наступна стадія сумісного режиму) починає прогрес спочатку.
     fn reset_progress(&self) {
         let mut state = self.0.lock().unwrap();
         state.progress = None;
         state.stage = None;
         state.layer = None;
+        state.gcode_ready = false;
+    }
+
+    fn watch_gcode(&self, path: Option<PathBuf>) {
+        let mut state = self.0.lock().unwrap();
+        state.gcode = path;
+        state.gcode_ready = false;
+    }
+
+    fn check_gcode(&self) {
+        let path = {
+            let state = self.0.lock().unwrap();
+            match &state.gcode {
+                Some(path) if !state.gcode_ready => path.clone(),
+                _ => return,
+            }
+        };
+        if path.is_file() {
+            self.0.lock().unwrap().gcode_ready = true;
+        }
     }
 
     /// Останній статус з хвостів логів рушія.
@@ -181,6 +215,7 @@ impl SliceCancellation {
                 bail!("engine probe timed out");
             }
             self.read_logs();
+            self.check_gcode();
             std::thread::sleep(Duration::from_millis(10));
         }
     }
@@ -677,6 +712,9 @@ impl SliceAttempt<'_> {
             // Хвіст логу попередньої стадії не має показувати старий етап.
             let _ = fs::remove_file(work.join("00000.log"));
             cancellation.reset_progress();
+            // Повтор з `--no-check` перепише G-code: готовим вважається лише новий файл.
+            let _ = fs::remove_file(&gcode_path);
+            cancellation.watch_gcode(Some(gcode_path.clone()));
             let mut args = command_args(&request, filaments, export, |f| info.supports_flag(f));
             if no_check {
                 args.insert(0, "--no-check".into());

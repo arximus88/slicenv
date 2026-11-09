@@ -1582,5 +1582,7 @@
   "Файл на принтері: {name}": "File on the printer: {name}",
   "Надіслати на Klipper": "Send to Klipper",
   "Профіль «{machine}» — для принтера Bambu Lab. G-code з нього може не підійти для Klipper: виберіть профіль свого принтера.": "Profile “{machine}” is for a Bambu Lab printer. Its G-code may not suit Klipper: choose your printer's profile.",
-  "Klipper зараз не готовий ({state}): друк не почнеться, але файл можна завантажити.": "Klipper is not ready right now ({state}): printing won't start, but you can upload the file."
+  "Klipper зараз не готовий ({state}): друк не почнеться, але файл можна завантажити.": "Klipper is not ready right now ({state}): printing won't start, but you can upload the file.",
+  "Пакую .gcode.3mf": "Packing .gcode.3mf",
+  "[preview] ранній G-code: {err:#}": "[preview] early G-code: {err:#}"
 }
