@@ -335,6 +335,8 @@ impl Workspace {
                     .into_owned()
                     .into();
                 self.path = Some(path);
+                // Файл тепер на диску, навіть якщо проєкт був «Без назви».
+                self.untitled = false;
             }
             self.edited = dirty;
             cx.notify();

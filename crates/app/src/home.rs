@@ -900,6 +900,16 @@ fn grid(
                 )
                 .child(div().flex_1())
                 .child(
+                    ui::ghost_button("home-new", Some(IconName::Plus), "Новий проєкт")
+                        .tooltip(|window, cx| {
+                            gpui_component::tooltip::Tooltip::new(crate::i18n::tr(
+                                "Порожня пластина з поточними профілями (Ctrl+N)",
+                            ))
+                            .build(window, cx)
+                        })
+                        .on_click(cx.listener(|this, _, window, cx| this.new_project(window, cx))),
+                )
+                .child(
                     ui::ghost_button("home-open", Some(IconName::FolderOpen), "Відкрити модель…")
                         .on_click(cx.listener(|this, _, window, cx| this.prompt_open(window, cx))),
                 )
