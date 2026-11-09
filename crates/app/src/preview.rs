@@ -1437,7 +1437,13 @@ fn estimation(preview: &Preview) -> Vec<gpui::AnyElement> {
         rows.push(stat_row("Таймлапс", short_time(t)).into_any_element());
     }
     rows.push(stat_row("Друк моделі", short_time(r.model_time)).into_any_element());
-    rows.push(stat_row("Загальний час", short_time(r.total_time)).into_any_element());
+    // Підсумок, заради якого дивляться на оцінку: жирним і основним кольором.
+    rows.push(
+        stat_row("Загальний час", short_time(r.total_time))
+            .font_weight(gpui::FontWeight::BOLD)
+            .text_color(z.text)
+            .into_any_element(),
+    );
     rows.push(stat_row("Шарів", preview.toolpath.layer_count().to_string()).into_any_element());
     let note = match (r.rows_source, r.total_source) {
         (gcode::Source::Engine, _) => {
