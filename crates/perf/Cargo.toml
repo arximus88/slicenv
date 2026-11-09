@@ -17,3 +17,11 @@ glam.workspace = true
 project.workspace = true
 serde_json.workspace = true
 viewer.workspace = true
+paths.workspace = true
+slicer.workspace = true
+tempfile.workspace = true
+
+# Розклад однієї нарізки на етапи без вікна (docs/BENCHMARK.md, «Розклад нарізки»).
+[[bin]]
+name = "slice-profile"
+path = "src/slice_profile.rs"

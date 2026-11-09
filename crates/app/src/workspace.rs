@@ -140,6 +140,8 @@ pub struct Workspace {
     pub filament_editor: Option<PresetEditor>,
     pub machine_editor: Option<PresetEditor>,
     pub slice_state: SliceState,
+    /// Preview, відкритий з G-code ще до кінця нарізки (`load_early_preview`).
+    pub(crate) early_preview: Option<crate::preview::EarlyPreview>,
     /// Ревізія входу нарізки: зростає з кожною зміною, після якої G-code застарілий
     /// (значення редакторів, профілі, конфіг об’єктів, пластина, геометрія).
     pub slice_revision: u64,
@@ -375,6 +377,7 @@ impl Workspace {
             filament_editor: None,
             machine_editor: None,
             slice_state: SliceState::Idle,
+            early_preview: None,
             slice_revision: 0,
             plate_slicing: Default::default(),
             preview: None,
@@ -766,6 +769,7 @@ impl Workspace {
             self.reset_geometry_caches();
             self.rebuild_instance_bounds();
             self.preview = None;
+            self.early_preview = None;
             self.slice_revision = self.slice_revision.wrapping_add(1);
             self.jobs.cancel(JobKind::GcodePreview);
         }
@@ -1098,14 +1102,17 @@ impl Workspace {
                         this.slice_state = SliceState::Done(out);
                         // Окрема нарізка відкриває «Перегляд»; черга — лише якщо він уже відкритий.
                         let open = !batch || this.page == Page::Preview;
-                        this.load_preview(gcode, open, cx);
+                        this.finish_early_preview(plate, gcode, open, cx);
                     }
                 }
                 Err(err) if err.is::<slicer::Cancelled>() => {
+                    this.drop_early_preview(plate, cx);
                     this.restore_slice_state();
                     return;
                 }
                 Err(err) => {
+                    // До `record_plate_slice`: відмова затирає попередню нарізку пластини.
+                    this.drop_early_preview(plate, cx);
                     let failure = err.downcast_ref::<slicer::SliceFailure>().cloned().map(std::sync::Arc::new);
                     // Аварія на всіх стадіях (зараз або вже запам’ятована для цього рушія):
                     // головна дія — інший рушій, а не повтор тим самим.
@@ -1142,9 +1149,50 @@ impl Workspace {
                 .set_progress(job, Arc::new(move || progress.progress()));
             self.jobs.set_stage(job, crate::preview::slice_stage(token.clone(), self.engine_identity.clone()));
             // Скасування вбиває процес рушія й чекає на нього (kill + wait).
+            let early = token.clone();
             self.jobs.on_cancel(job, move || token.cancel());
+            self.watch_early_gcode(plate, job, early, cx);
         }
         started
+    }
+
+    /// Чекає на G-code пластини `plate`, поки рушій ще працює (далі він пише `.gcode.3mf`:
+    /// 0,1–0,25 с на малій пластині, 0,6–0,9 с на 250 тис. △), і відкриває з нього Preview,
+    /// коли пластину вибрано в «Перегляді» (зокрема вибрано вже під час нарізки). Живе, поки
+    /// триває задача `job`; зупинену нарізку замінює попередньою (`release_stopped_early_preview`).
+    fn watch_early_gcode(&mut self, plate: u32, job: crate::jobs::JobId, token: slicer::SliceCancellation, cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            // G-code, з якого цей спостерігач відкрив ранній Preview.
+            let mut shown: Option<PathBuf> = None;
+            loop {
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(20))
+                    .await;
+                let ready = token.gcode_ready();
+                let stop = this
+                    .update(cx, |this, cx| {
+                        if this.jobs.current(JobKind::Slice) != Some(job) {
+                            if let Some(gcode) = &shown {
+                                this.release_stopped_early_preview(plate, gcode, cx);
+                            }
+                            return true;
+                        }
+                        if let Some(gcode) = ready
+                            && this.early_preview.is_none()
+                            && this.plate_to_slice() == Some(plate)
+                        {
+                            shown = Some(gcode.clone());
+                            this.load_early_preview(plate, gcode, cx);
+                        }
+                        false
+                    })
+                    .unwrap_or(true);
+                if stop {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     /// Текст рядка стану для запущених задач (нарізка, орієнтація, плавці…).
@@ -1176,6 +1224,11 @@ impl Workspace {
         }
         // Рушій спільний для GUI і MCP-сесій поза цим вікном.
         slicer::cancel_active_slice();
+        // Ранній Preview спостерігач нарізки замінить попередньою нарізкою (див.
+        // `release_stopped_early_preview`): тут немає `cx`.
+        if let Some(early) = &mut self.early_preview {
+            early.stopped = true;
+        }
         self.restore_slice_state();
     }
 

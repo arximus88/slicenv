@@ -40,6 +40,10 @@ struct ProcessState {
     stage: Option<String>,
     /// Номер шару, який рушій зараз переводить у G-code (`Generating G-code: layer 80`).
     layer: Option<u32>,
+    /// G-code пластини, який пише поточний запуск рушія.
+    gcode: Option<PathBuf>,
+    /// `gcode` уже є на диску.
+    gcode_ready: bool,
 }
 #[derive(Debug)]
 pub struct Cancelled;
@@ -98,12 +102,42 @@ impl SliceCancellation {
         self.0.lock().unwrap().layer
     }
 
+    /// G-code пластини, щойно рушій його записав, — ще до експорту `.gcode.3mf` і виходу
+    /// процесу (0,13–0,25 с на малій пластині, 0,6–0,9 с на 250 тис. △). Bambu Studio й
+    /// OrcaSlicer пишуть `plate_N.gcode.tmp` і перейменовують його в `plate_N.gcode` вже
+    /// готовим, тож файл можна читати для Preview. Друкувати — лише з [`SliceOutput`]:
+    /// після цього рушій ще може відмовити (і, наприклад, повторити запуск з `--no-check`).
+    pub fn gcode_ready(&self) -> Option<PathBuf> {
+        let state = self.0.lock().unwrap();
+        state.gcode.clone().filter(|_| state.gcode_ready)
+    }
+
     /// Новий запуск рушія (наступна стадія сумісного режиму) починає прогрес спочатку.
     fn reset_progress(&self) {
         let mut state = self.0.lock().unwrap();
         state.progress = None;
         state.stage = None;
         state.layer = None;
+        state.gcode_ready = false;
+    }
+
+    fn watch_gcode(&self, path: Option<PathBuf>) {
+        let mut state = self.0.lock().unwrap();
+        state.gcode = path;
+        state.gcode_ready = false;
+    }
+
+    fn check_gcode(&self) {
+        let path = {
+            let state = self.0.lock().unwrap();
+            match &state.gcode {
+                Some(path) if !state.gcode_ready => path.clone(),
+                _ => return,
+            }
+        };
+        if path.is_file() {
+            self.0.lock().unwrap().gcode_ready = true;
+        }
     }
 
     /// Останній статус з хвостів логів рушія.
@@ -181,6 +215,7 @@ impl SliceCancellation {
                 bail!("engine probe timed out");
             }
             self.read_logs();
+            self.check_gcode();
             std::thread::sleep(Duration::from_millis(10));
         }
     }
@@ -432,7 +467,10 @@ pub fn slice_with_engine_cancellable(
     if store.engine_kind().is_some_and(|kind| kind != engine.kind) {
         bail!("каталог профілів належить іншому рушію");
     }
-    let info = engine.probe_cancellable(cancellation)?;
+    let info = {
+        let _s = paths::profile::Span::new("slice::probe");
+        engine.probe_cancellable(cancellation)?
+    };
     // Обов’язкові лише прапорці, без яких нарізати неможливо; решту передаємо, тільки якщо рушій
     // їх знає (старі збірки нарізають і без них), а без `--export-3mf` — одразу в сумісному режимі.
     for flag in ["--slice", "--outputdir", "--load-settings", "--load-filaments"] {
@@ -474,6 +512,7 @@ pub fn slice_with_engine_cancellable(
 
     let selection = &request.selection;
     let overrides = &request.overrides;
+    let flatten_span = paths::profile::Span::new("slice::flatten");
     let mut machine = store.flatten(Kind::Machine, &selection.machine)?;
     machine.extend(overrides.machine.clone());
     let mut process = store.flatten(Kind::Process, &selection.process)?;
@@ -488,11 +527,13 @@ pub fn slice_with_engine_cancellable(
     let mut project_settings = machine.clone();
     project_settings.extend(process.clone());
     project_settings.extend(filament.clone());
+    drop(flatten_span);
     // Конфіг проєкту в 3MF рушій бере за основу, а `--load-settings` лише перекриває ключі, що
     // є в наших JSON. Тому копію 3MF для нарізки виправляємо (файл користувача не змінюється):
     // OrcaSlicer ≤ 2.3 відкидає нулі «філамент для елемента» з Bambu Studio (код −18), а
     // проєкти, збережені Slicenv до виправлення розгортання `inherits`, несуть ключі від
     // батька чужого вендора, яких немає в пресетах (`use_relative_e_distances` = 0 → вага ×140).
+    let rewrite_span = paths::profile::Span::new("slice::rewrite_input");
     let request = if is_stl(&request.input) {
         request
     } else {
@@ -511,7 +552,9 @@ pub fn slice_with_engine_cancellable(
             }
         }
     };
+    drop(rewrite_span);
     let selection = &request.selection;
+    let write_span = paths::profile::Span::new("slice::write_configs");
     // Для `.gcode.3mf`, який у сумісному режимі збирає Slicenv: модель принтера й кольори.
     let package_meta = crate::safe_mode::PackageMeta {
         printer_model_id: store.machine_model_id(&selection.machine).unwrap_or_default(),
@@ -537,6 +580,7 @@ pub fn slice_with_engine_cancellable(
             "selection": { "machine": selection.machine, "process": selection.process, "filament": selection.filament, "bed_type": selection.bed_type },
         }))?,
     )?;
+    drop(write_span);
 
     // Сумісний режим (див. `safe_mode`): після аварії рушія — безпечніша стадія; досягнута
     // стадія запам’ятовується для цього рушія, щоб наступна нарізка не падала знову.
@@ -677,13 +721,17 @@ impl SliceAttempt<'_> {
             // Хвіст логу попередньої стадії не має показувати старий етап.
             let _ = fs::remove_file(work.join("00000.log"));
             cancellation.reset_progress();
+            // Повтор з `--no-check` перепише G-code: готовим вважається лише новий файл.
+            let _ = fs::remove_file(&gcode_path);
+            cancellation.watch_gcode(Some(gcode_path.clone()));
             let mut args = command_args(&request, filaments, export, |f| info.supports_flag(f));
             if no_check {
                 args.insert(0, "--no-check".into());
             }
+            let _s = paths::profile::Span::new("slice::engine_process");
             let status = cancellation
                 .run(
-                    paths::host::command(&binary)
+                    crate::engine::engine_command(&binary)
                         .current_dir(work)
                         .args(args)
                         .stdin(Stdio::null())
@@ -768,6 +816,7 @@ impl SliceAttempt<'_> {
             .into());
         }
 
+        let _read_span = paths::profile::Span::new("slice::read_result");
         let result_plate = result
             .as_ref()
             .and_then(|r| r.get("sliced_plates"))
@@ -1064,9 +1113,9 @@ fn safe_component(s: &str) -> String {
 /// Кількість слотів філаменту в проєкті 3MF (`filament_settings_id`); для STL — 1.
 fn project_filament_count(path: &std::path::Path) -> usize {
     let count = (|| -> Option<usize> {
-        let mut archive = zip::ZipArchive::new(fs::File::open(path).ok()?).ok()?;
+        let mut archive = zip::ZipArchive::new(std::io::BufReader::new(fs::File::open(path).ok()?)).ok()?;
         let file = archive.by_name("Metadata/project_settings.config").ok()?;
-        let config: Value = serde_json::from_reader(file).ok()?;
+        let config: Value = serde_json::from_reader(std::io::BufReader::new(file)).ok()?;
         ["filament_settings_id", "filament_colour", "filament_type"]
             .iter()
             .find_map(|key| config[key].as_array().map(Vec::len))

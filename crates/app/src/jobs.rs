@@ -266,7 +266,6 @@ impl<T: JobTask> Jobs<T> {
         self.slots[kind.index()].is_some()
     }
 
-    #[cfg(test)]
     pub fn current(&self, kind: JobKind) -> Option<JobId> {
         self.slots[kind.index()].as_ref().map(|s| s.id)
     }
