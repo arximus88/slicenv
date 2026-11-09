@@ -20,7 +20,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 use settings::{Locale, Schema};
-use slicer::{Engine, EngineKind, Kind, PresetStore, SliceRequest};
+use slicer::{Engine, Kind, PresetStore, SliceRequest};
 
 /// Інструменти, що змінюють проєкт або пишуть файл; без `--allow-edit` їх немає в `tools/list`.
 pub const EDIT_TOOLS: &[&str] = &[
@@ -246,9 +246,9 @@ impl Session {
 
     fn presets(&mut self) -> Result<&Presets> {
         if self.presets.is_none() {
-            let engine = Engine::discover(EngineKind::Bambu)
-                .or_else(|_| Engine::discover(EngineKind::Orca))
-                .ok();
+            // Той самий рушій, що й у застосунку: активний з engines.json, системний,
+            // а потім встановлений менеджером Slicenv (профілі — з його бібліотеки).
+            let engine = Engine::startup().ok();
             let store = match &engine {
                 Some(e) => PresetStore::open_for_engine(e).or_else(|_| PresetStore::open_default()),
                 None => PresetStore::open_default(),

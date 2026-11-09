@@ -19,7 +19,15 @@ struct Client {
 
 impl Client {
     fn start(args: &[&str], env: &[(&str, &str)]) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_slicenv-mcp"))
+        Self::start_with(args, env, &[])
+    }
+
+    fn start_with(args: &[&str], env: &[(&str, &str)], remove: &[&str]) -> Self {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_slicenv-mcp"));
+        for key in remove {
+            command.env_remove(key);
+        }
+        let mut child = command
             .args(args)
             .envs(env.iter().copied())
             .stdin(Stdio::piped())
@@ -47,6 +55,12 @@ impl Client {
         assert_eq!(init["result"]["serverInfo"]["name"], "slicenv");
         c.send(json!({"jsonrpc": "2.0", "method": "notifications/initialized"}));
         c
+    }
+
+    /// Без змінних, якими можна вказати рушій чи профілі напряму: так видно, що сервер сам
+    /// знаходить рушій.
+    fn start_clean(args: &[&str], env: &[(&str, &str)]) -> Self {
+        Self::start_with(args, env, &["BAMBU_STUDIO", "ORCA_SLICER", "SLICENV_PROFILE_ROOT", "ORCA_PROFILE_ROOT"])
     }
 
     fn send(&mut self, message: Value) {
@@ -202,4 +216,87 @@ fn summarizes_a_real_project_when_present() {
     let object = &reply["result"]["structuredContent"]["plates"][0]["objects"][0];
     assert!(object["triangles"].as_u64().unwrap() > 1000);
     assert!(object["size_mm"][2].as_f64().unwrap() > 10.0);
+}
+
+/// Фіктивний рушій, встановлений менеджером Slicenv: без власних JSON-профілів (як Orca 2.5
+/// з `.opc`), профілі — у бібліотеці `<data>/slicenv/profiles/orca/<версія>`.
+fn fake_managed_orca(data: &std::path::Path, version: &str) -> std::path::PathBuf {
+    use std::fs;
+    let root = data.join("slicenv/engines/orca").join(version);
+    fs::create_dir_all(root.join("bin")).unwrap();
+    let exe = root.join("bin/orca-slicer");
+    fs::write(&exe, "#!/bin/sh\nexit 1\n").unwrap();
+    fs::write(
+        root.join("manifest.json"),
+        json!({"managed": true, "family": "orca", "version": version,
+               "executable_path": exe}).to_string(),
+    )
+    .unwrap();
+    let catalog = data.join("slicenv/profiles/orca").join(version);
+    for (dir, name, extra) in [
+        ("machine", "Fake Printer 0.4 nozzle", json!({"printable_area": ["0x0", "180x0", "180x180", "0x180"]})),
+        ("process", "0.20mm Fake", json!({"compatible_printers": ["Fake Printer 0.4 nozzle"]})),
+        ("filament", "Fake PLA", json!({"compatible_printers": ["Fake Printer 0.4 nozzle"]})),
+    ] {
+        let path = catalog.join("BBL").join(dir);
+        fs::create_dir_all(&path).unwrap();
+        let mut value = json!({"name": name, "type": dir, "instantiation": "true", "from": "system"});
+        value.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
+        fs::write(path.join(format!("{name}.json")), value.to_string()).unwrap();
+    }
+    fs::write(catalog.join("BBL.json"), json!({"name": "BBL", "version": "1"}).to_string()).unwrap();
+    fs::write(
+        catalog.join("catalog.json"),
+        json!({"family": "orca", "version": version, "vendors": ["BBL"]}).to_string(),
+    )
+    .unwrap();
+    exe
+}
+
+/// Раніше `slicenv-mcp` шукав рушій лише в PATH і системних теках, тож керовані рушії
+/// й бібліотека профілів були йому невидимі, хоч застосунок їх бачив.
+#[test]
+fn sees_profiles_of_engine_installed_by_manager() {
+    let home = tempfile::tempdir().unwrap();
+    let h = home.path();
+    let data = h.join("d");
+    fake_managed_orca(&data, "2.5.0");
+    let empty_path = h.join("empty-bin");
+    std::fs::create_dir_all(&empty_path).unwrap();
+    let env = [
+        ("HOME", h.to_str().unwrap().to_owned()),
+        ("XDG_CONFIG_HOME", h.join("c").to_str().unwrap().to_owned()),
+        ("XDG_DATA_HOME", data.to_str().unwrap().to_owned()),
+        ("XDG_CACHE_HOME", h.join("k").to_str().unwrap().to_owned()),
+        ("XDG_STATE_HOME", h.join("s").to_str().unwrap().to_owned()),
+        // Без системних рушіїв з PATH (на машині розробника є /usr/bin/bambustudio).
+        ("PATH", empty_path.to_str().unwrap().to_owned()),
+        ("SLICENV_CLOUD_OFF", "1".into()),
+        ("SLICENV_LAN_OFF", "1".into()),
+    ];
+    let env: Vec<(&str, &str)> = env.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let mut c = Client::start_clean(&[], &env);
+
+    let machines = c.call("list_profiles", json!({"kind": "machine"}));
+    let names = &machines["result"]["structuredContent"]["names"];
+    assert!(
+        names.as_array().is_some_and(|n| n.contains(&json!("Fake Printer 0.4 nozzle"))),
+        "{machines}"
+    );
+    for kind in ["process", "filament"] {
+        let reply = c.call(
+            "list_profiles",
+            json!({"kind": kind, "machine": "Fake Printer 0.4 nozzle"}),
+        );
+        assert_eq!(reply["result"]["structuredContent"]["count"], 1, "{kind}: {reply}");
+    }
+    let profile = c.call(
+        "get_profile",
+        json!({"kind": "machine", "name": "Fake Printer 0.4 nozzle", "keys": ["printable_area"]}),
+    );
+    assert_eq!(
+        profile["result"]["structuredContent"]["values"]["printable_area"],
+        json!(["0x0", "180x0", "180x180", "0x180"]),
+        "{profile}"
+    );
 }

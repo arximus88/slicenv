@@ -1150,26 +1150,10 @@ pub(crate) fn list(dirs: &Dirs) -> Result<Vec<Value>> {
 /// Виконувані файли встановлених менеджером версій — лише з маніфестів, без обходу тек
 /// (для списку рушіїв, який перечитується щокадру).
 pub(crate) fn managed_executables(dirs: &Dirs) -> Vec<(String, PathBuf)> {
-    let mut out = Vec::new();
-    for (family, _) in REPOS {
-        let Ok(entries) = std::fs::read_dir(dirs.engines.join(family)) else { continue };
-        for entry in entries.flatten() {
-            if entry.file_name().to_string_lossy().starts_with('.') {
-                continue;
-            }
-            let Ok(bytes) = std::fs::read(entry.path().join("manifest.json")) else { continue };
-            let Ok(data) = serde_json::from_slice::<Value>(&bytes) else { continue };
-            if data["managed"] == true
-                && data["family"] == family
-                && let Some(exe) = data["executable_path"].as_str().map(PathBuf::from)
-                && exe.is_file()
-                && exe.starts_with(entry.path())
-            {
-                out.push((family.to_owned(), exe));
-            }
-        }
-    }
-    out
+    slicer::Engine::managed(&dirs.engines)
+        .into_iter()
+        .map(|e| (e.kind.name().to_owned(), e.path))
+        .collect()
 }
 
 /// Версія з маніфесту менеджера поруч із виконуваним файлом (корінь теки версії — до

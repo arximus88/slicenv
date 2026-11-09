@@ -186,6 +186,86 @@ impl Engine {
         )
     }
 
+    /// Рушій, з яким стартує Slicenv: активний з `engines.json`, потім `PATH`/системні
+    /// установки, потім версії, встановлені менеджером рушіїв. Спільне для застосунку й
+    /// `slicenv-mcp`, щоб обидва бачили той самий рушій і ті самі профілі.
+    pub fn startup() -> Result<Self> {
+        Self::startup_in(
+            &paths::config_dir().join("engines.json"),
+            &paths::data_dir().join("engines"),
+        )
+    }
+
+    /// [`Engine::startup`] з явними шляхами (тести).
+    pub fn startup_in(config: &Path, engines_dir: &Path) -> Result<Self> {
+        if let Some(saved) = fs::read(config)
+            .ok()
+            .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+            .and_then(|config| Self::decode(&config["active"]))
+            .filter(|e| e.path.is_file())
+        {
+            return Ok(saved);
+        }
+        let discovered = Self::discover(EngineKind::Bambu).or_else(|_| Self::discover(EngineKind::Orca));
+        if discovered.is_ok() {
+            return discovered;
+        }
+        let managed = Self::managed(engines_dir);
+        [EngineKind::Bambu, EngineKind::Orca]
+            .into_iter()
+            .find_map(|kind| managed.iter().rev().find(|e| e.kind == kind).cloned())
+            .map_or(discovered, Ok)
+    }
+
+    /// Запис `{"kind": "bambu"|"orca", "path": …}` з `engines.json`.
+    pub fn decode(value: &serde_json::Value) -> Option<Self> {
+        let kind = match value["kind"].as_str()? {
+            "bambu" => EngineKind::Bambu,
+            "orca" => EngineKind::Orca,
+            _ => return None,
+        };
+        Some(Self {
+            kind,
+            path: value["path"].as_str()?.into(),
+        })
+    }
+
+    /// Версії, встановлені менеджером Slicenv (`<engines_dir>/<family>/<версія>/manifest.json`),
+    /// у порядку назв тек. Лише з маніфестів, без обходу дерева версії.
+    pub fn managed(engines_dir: &Path) -> Vec<Self> {
+        let mut out = Vec::new();
+        for kind in [EngineKind::Bambu, EngineKind::Orca] {
+            let Ok(entries) = fs::read_dir(engines_dir.join(kind.name())) else {
+                continue;
+            };
+            let mut entries: Vec<_> = entries.flatten().map(|e| e.path()).collect();
+            entries.sort();
+            for entry in entries {
+                if entry
+                    .file_name()
+                    .is_some_and(|n| n.to_string_lossy().starts_with('.'))
+                {
+                    continue;
+                }
+                let Ok(bytes) = fs::read(entry.join("manifest.json")) else {
+                    continue;
+                };
+                let Ok(data) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+                    continue;
+                };
+                if data["managed"] == true
+                    && data["family"] == kind.name()
+                    && let Some(exe) = data["executable_path"].as_str().map(PathBuf::from)
+                    && exe.is_file()
+                    && exe.starts_with(&entry)
+                {
+                    out.push(Self { kind, path: exe });
+                }
+            }
+        }
+        out
+    }
+
     pub fn probe(&self) -> Result<EngineInfo> {
         self.probe_cancellable(&crate::SliceCancellation::default())
     }
@@ -627,6 +707,51 @@ mod version_tests {
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn startup_prefers_active_engine_and_lists_managed_versions() {
+        let dir = tempfile::tempdir().unwrap();
+        let engines = dir.path().join("engines");
+        let mut exes = Vec::new();
+        for (family, version) in [("orca", "2.4.2"), ("orca", "2.5.0"), ("bambu", ".partial")] {
+            let root = engines.join(family).join(version);
+            fs::create_dir_all(&root).unwrap();
+            let exe = root.join("AppRun");
+            fs::write(&exe, "").unwrap();
+            fs::write(
+                root.join("manifest.json"),
+                serde_json::json!({"managed": true, "family": family, "version": version,
+                                   "executable_path": exe})
+                .to_string(),
+            )
+            .unwrap();
+            exes.push(exe);
+        }
+        // Тека з крапкою — незавершене встановлення.
+        let managed = Engine::managed(&engines);
+        assert_eq!(
+            managed.iter().map(|e| e.path.clone()).collect::<Vec<_>>(),
+            exes[..2].to_vec()
+        );
+        assert!(managed.iter().all(|e| e.kind == EngineKind::Orca));
+
+        let config = dir.path().join("engines.json");
+        fs::write(
+            &config,
+            serde_json::json!({"active": {"kind": "orca", "path": exes[0]}}).to_string(),
+        )
+        .unwrap();
+        let active = Engine::startup_in(&config, &engines).unwrap();
+        assert_eq!((active.kind, active.path), (EngineKind::Orca, exes[0].clone()));
+        // Активний рушій зник — не береться; далі PATH/системні або керовані.
+        fs::write(
+            &config,
+            serde_json::json!({"active": {"kind": "orca", "path": dir.path().join("gone")}}).to_string(),
+        )
+        .unwrap();
+        let fallback = Engine::startup_in(&config, &engines).unwrap();
+        assert_ne!(fallback.path, dir.path().join("gone"));
+    }
 
     #[test]
     fn installed_candidates_follow_os_layout() {
