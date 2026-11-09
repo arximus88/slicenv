@@ -67,7 +67,6 @@ pub enum Transform {
 #[derive(Clone)]
 pub enum Target {
     Text,
-    Setting(settings::PresetType, String),
     Transform(Transform),
 }
 #[derive(Clone)]
@@ -332,10 +331,6 @@ impl Workspace {
                 }
                 self.finish_live_drag();
                 self.project_changed(window, cx);
-            }
-            Target::Setting(kind, key) if !cancel => {
-                let text = gesture.input.read(cx).value().to_string();
-                self.commit_value(kind, &key, &text, window, cx);
             }
             Target::Text if !cancel => gesture.input.update(cx, |_, cx| {
                 cx.emit(InputEvent::PressEnter {

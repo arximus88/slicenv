@@ -409,17 +409,8 @@ impl Workspace {
         }
         let text = display_value(editor.preset.shown_value(key));
         let input = cx.new(|cx| InputState::new(window, cx).default_value(text.clone()));
-        if let Some(spec) = schema()
-            .options
-            .get(key)
-            .and_then(|def| crate::scrub::Spec::option(def, text.parse().unwrap_or(0.0)))
-        {
-            self.bind_scrub(
-                &input,
-                spec,
-                crate::scrub::Target::Setting(kind, key.to_owned()),
-            );
-        }
+        // Перетягування мишею (scrub) тут свідомо вимкнене: параметри друку потребують
+        // точних значень, випадковий рух миші їх псує. Scrub лишається в панелях трансформацій.
         let owned_key = key.to_owned();
         let sub = cx.subscribe_in(
             &input,
