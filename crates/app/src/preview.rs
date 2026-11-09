@@ -385,6 +385,7 @@ impl Workspace {
             scheme: ColorScheme::ALL[scheme_index],
             ..Default::default()
         };
+        self.remember_photo(false);
         self.preview = Some(Preview {
             built,
             options,
@@ -415,6 +416,13 @@ impl Workspace {
         }
         if scheme_index != 0 {
             self.rebuild_toolpath(cx);
+        }
+        // Інша пластина: «Фото» вмикається знову з тими самими правками.
+        if self.page == crate::workspace::Page::Preview
+            && let Some(memory) = &mut self.photo_memory
+            && std::mem::take(&mut memory.resume)
+        {
+            self.set_photo_mode(true, window, cx);
         }
     }
 

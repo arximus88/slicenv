@@ -175,10 +175,14 @@ const BEADS_ALL: u32 = 0;
 const BEADS_OPAQUE: u32 = 1;
 const BEADS_CLEAR: u32 = 2;
 
-/// Ціль товщини прозорого під поточний розмір кадру.
-struct Thickness {
+/// Цілі кадру під поточний розмір, обидві на півроздільності: глибина попереднього
+/// проходу валиків і товщина прозорого (без прозорих — заглушка 1×1). У групі 2 валиків.
+struct FrameTargets {
     size: (u32, u32),
-    view: wgpu::TextureView,
+    prepass: wgpu::TextureView,
+    /// Найближчі прозорі й товщина — лише з прозорими.
+    clear_prepass: Option<wgpu::TextureView>,
+    thickness: Option<wgpu::TextureView>,
     bind: wgpu::BindGroup,
 }
 
@@ -297,12 +301,15 @@ pub(crate) struct Photo {
     shadow_pipeline: wgpu::RenderPipeline,
     /// Непрозорі валики, коли є й прозорі.
     bead_opaque_pipeline: wgpu::RenderPipeline,
-    /// Прозорі: глибина найближчих, потім колір зі змішуванням.
-    clear_depth_pipeline: wgpu::RenderPipeline,
+    /// Прозорі: колір найближчих зі змішуванням.
     clear_pipeline: wgpu::RenderPipeline,
     thickness_pipeline: wgpu::RenderPipeline,
-    thickness_layout: wgpu::BindGroupLayout,
-    thickness: Option<Thickness>,
+    /// Попередній прохід: трасована глибина непрозорих валиків.
+    prepass_pipeline: wgpu::RenderPipeline,
+    /// Те саме для найближчих прозорих.
+    clear_prepass_pipeline: wgpu::RenderPipeline,
+    frame_layout: wgpu::BindGroupLayout,
+    frame: Option<FrameTargets>,
     transmit_pipeline: wgpu::RenderPipeline,
     transmit_pass: wgpu::Buffer,
     transmit_bind: wgpu::BindGroup,
@@ -330,14 +337,17 @@ const CLEAR_DUAL_SOURCE: &str = "
 struct ClearOut {
     @location(0) @blend_src(0) color: vec4<f32>,
     @location(0) @blend_src(1) transmit: vec4<f32>,
+    @builtin(frag_depth) depth: f32,
 }
 
+//@early_depth_test(less_equal)
 @fragment
 fn fs_clear(in: BeadOut) -> ClearOut {
     let c = clear_shade(in);
     var out: ClearOut;
     out.color = vec4<f32>(tonemap(c.color), 1.0);
     out.transmit = vec4<f32>(c.transmit, 0.0);
+    out.depth = c.depth;
     return out;
 }
 ";
@@ -357,11 +367,18 @@ fn gpu_key(m: &PhotoMaterial) -> [u32; 4] {
     [g.p2[3], g.p4[0], g.p4[1], g.p4[2]].map(f32::to_bits)
 }
 
-/// Збирає шейдер із частин: спільний код спереду.
+/// Збирає шейдер із частин: спільний код спереду. Валики пишуть трасовану глибину
+/// (`frag_depth`), що вимикає ранній тест глибини; з `SHADER_EARLY_DEPTH_TEST` (Vulkan,
+/// GLES) розкоментовується `//@early_depth_test(…)`: трасована поверхня завжди не ближча
+/// за прямокутник, тож тест за глибиною прямокутника лишається раннім.
 fn module(device: &wgpu::Device, label: &str, parts: &[&str]) -> wgpu::ShaderModule {
+    let mut source = parts.concat();
+    if device.features().contains(wgpu::Features::SHADER_EARLY_DEPTH_TEST) {
+        source = source.replace("//@early_depth_test(", "@early_depth_test(");
+    }
     device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some(label),
-        source: wgpu::ShaderSource::Wgsl(parts.concat().into()),
+        source: wgpu::ShaderSource::Wgsl(source.into()),
     })
 }
 
@@ -686,11 +703,58 @@ impl Photo {
                 include_str!("photo/photo.wgsl"),
             ],
         );
+        // Група 2 валиків: товщина прозорого (0), глибина попередніх проходів непрозорих (1)
+        // і прозорих (2).
+        let frame_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("photo_frame"),
+            entries: &[
+                texture_entry(0, wgpu::TextureViewDimension::D2, float),
+                texture_entry(1, wgpu::TextureViewDimension::D2, wgpu::TextureSampleType::Depth),
+                texture_entry(2, wgpu::TextureViewDimension::D2, wgpu::TextureSampleType::Depth),
+            ],
+        });
         let bead_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("photo_beads"),
+            bind_group_layouts: &[Some(&layout), Some(toolpath_layout), Some(&frame_layout)],
+            ..Default::default()
+        });
+        // Проходи, що самі пишуть цілі кадру (глибина, товщина): без групи 2.
+        let bead_plain_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("photo_beads_plain"),
             bind_group_layouts: &[Some(&layout), Some(toolpath_layout)],
             ..Default::default()
         });
+        let prepass_of = |label: &str, vs: &str| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&bead_plain_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some(vs),
+                    compilation_options: Default::default(),
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_bead_prepass"),
+                    compilation_options: Default::default(),
+                    targets: &[],
+                }),
+                primitive: Default::default(),
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: Some(true),
+                    depth_compare: Some(wgpu::CompareFunction::GreaterEqual),
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: Default::default(),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let prepass_pipeline = prepass_of("photo_bead_prepass", "vs_bead_prepass");
+        let clear_prepass_pipeline = prepass_of("photo_clear_prepass", "vs_bead_clear_prepass");
         // Стіл, підлога, фон і лінії не читають траєкторію: група 1 їм не потрібна.
         let scene_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("photo_scene"),
@@ -780,7 +844,8 @@ impl Photo {
         // Тіньові проходи: лише глибина, стандартна (не обернена), з нахиловим зсувом.
         let pass_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("photo_shadow_pass"),
-            entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX), uniform_entry(1, wgpu::ShaderStages::FRAGMENT)],
+            // Прохід читає й фрагментний шейдер: трасування капсули валика (bead.wgsl).
+            entries: &[uniform_entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT), uniform_entry(1, wgpu::ShaderStages::FRAGMENT)],
         });
         let shadow_shader = module(
             device,
@@ -898,13 +963,9 @@ impl Photo {
         } else {
             module(device, "photo_clear", &clear_parts)
         };
-        let thickness_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("photo_thickness"),
-            entries: &[texture_entry(0, wgpu::TextureViewDimension::D2, float)],
-        });
         let clear_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("photo_clear"),
-            bind_group_layouts: &[Some(&layout), Some(toolpath_layout), Some(&thickness_layout)],
+            bind_group_layouts: &[Some(&layout), Some(toolpath_layout), Some(&frame_layout)],
             ..Default::default()
         });
         struct Clear<'a> {
@@ -948,7 +1009,7 @@ impl Photo {
         let frame_target = |blend, write_mask| wgpu::ColorTargetState { format: COLOR_FORMAT, blend, write_mask };
         let thickness_pipeline = clear_pipeline_of(Clear {
             label: "photo_thickness",
-            layout: &bead_layout,
+            layout: &bead_plain_layout,
             vs: "vs_thick",
             fs: "fs_thick",
             target: wgpu::ColorTargetState {
@@ -959,16 +1020,8 @@ impl Photo {
             depth: None,
             samples: 1,
         });
-        let clear_depth_pipeline = clear_pipeline_of(Clear {
-            label: "photo_clear_depth",
-            layout: &clear_layout,
-            vs: "vs_bead_clear",
-            fs: "fs_bead_depth",
-            target: frame_target(None, wgpu::ColorWrites::empty()),
-            depth: Some((true, wgpu::CompareFunction::GreaterEqual)),
-            samples: SAMPLES,
-        });
-        // Лише найближча прозора поверхня: глибина рівна записаній попереднім проходом.
+        // Лише найближча прозора поверхня: попередній прохід відкидає дальні валики, а
+        // запис глибини — дальній, що лишився в межах допуску (канавка) й прийшов пізніше.
         let clear_blend = if dual_source {
             let over = wgpu::BlendComponent {
                 src_factor: wgpu::BlendFactor::One,
@@ -985,7 +1038,7 @@ impl Photo {
             vs: "vs_bead_clear",
             fs: if dual_source { "fs_clear" } else { "fs_clear_alpha" },
             target: frame_target(Some(clear_blend), wgpu::ColorWrites::ALL),
-            depth: Some((false, wgpu::CompareFunction::GreaterEqual)),
+            depth: Some((true, wgpu::CompareFunction::GreaterEqual)),
             samples: SAMPLES,
         });
 
@@ -1024,11 +1077,12 @@ impl Photo {
             line_pipeline,
             shadow_pipeline,
             bead_opaque_pipeline,
-            clear_depth_pipeline,
             clear_pipeline,
             thickness_pipeline,
-            thickness_layout,
-            thickness: None,
+            prepass_pipeline,
+            clear_prepass_pipeline,
+            frame_layout,
+            frame: None,
             transmit_pipeline,
             transmit_pass,
             transmit_bind,
@@ -1060,7 +1114,11 @@ impl Photo {
     /// Оцінка VRAM ресурсів режиму, байти (без цілей кадру — вони спільні з Preview).
     pub(super) fn bytes(&self) -> u64 {
         self.bytes
-            + self.thickness.as_ref().map_or(0, |t| u64::from(t.size.0) * u64::from(t.size.1) * 2)
+            + self.frame.as_ref().map_or(0, |f| {
+                let pixels = u64::from(f.size.0) * u64::from(f.size.1);
+                // Усі на півроздільності: глибини по 4 байти, товщина — f16.
+                pixels * 4 + if f.thickness.is_some() { pixels * 6 } else { 0 }
+            })
             + self.bed_mesh.as_ref().map_or(0, |m| m.0.size())
             + self.floor_mesh.as_ref().map_or(0, |m| m.0.size())
     }
@@ -1088,23 +1146,49 @@ impl Photo {
         self.transparent_mask() != 0
     }
 
-    /// Ціль товщини під розмір кадру (півроздільність); без прозорих — звільняється.
-    fn ensure_thickness(&mut self, device: &wgpu::Device, width: u32, height: u32) {
-        if !self.has_transparent() {
-            self.thickness = None;
-            return;
-        }
+    /// Цілі кадру під розмір (див. [`FrameTargets`]); товщина — лише з прозорими.
+    fn ensure_frame(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         let size = (width.div_ceil(2).max(1), height.div_ceil(2).max(1));
-        if self.thickness.as_ref().is_some_and(|t| t.size == size) {
+        let transparent = self.has_transparent();
+        if self.frame.as_ref().is_some_and(|f| f.size == size && f.thickness.is_some() == transparent) {
             return;
         }
-        let view = color_texture(device, "photo_thickness", size, THICKNESS_FORMAT);
+        let depth = |label: &str, (width, height): (u32, u32)| {
+            device
+                .create_texture(&wgpu::TextureDescriptor {
+                    label: Some(label),
+                    size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: DEPTH_FORMAT,
+                    usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+                    view_formats: &[],
+                })
+                .create_view(&Default::default())
+        };
+        let prepass = depth("photo_prepass", size);
+        let clear_prepass = transparent.then(|| depth("photo_clear_prepass", size));
+        // Товщина — теж на півроздільності, як і раніше.
+        let thickness = transparent.then(|| color_texture(device, "photo_thickness", size, THICKNESS_FORMAT));
+        let placeholder = color_texture(device, "photo_thickness_none", (1, 1), THICKNESS_FORMAT);
+        let placeholder_depth = depth("photo_clear_prepass_none", (1, 1));
         let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("photo_thickness"),
-            layout: &self.thickness_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) }],
+            label: Some("photo_frame"),
+            layout: &self.frame_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(thickness.as_ref().unwrap_or(&placeholder)),
+                },
+                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&prepass) },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(clear_prepass.as_ref().unwrap_or(&placeholder_depth)),
+                },
+            ],
         });
-        self.thickness = Some(Thickness { size, view, bind });
+        self.frame = Some(FrameTargets { size, prepass, clear_prepass, thickness, bind });
     }
 
     fn write_materials(&self, queue: &wgpu::Queue) {
@@ -1177,7 +1261,7 @@ impl Photo {
     /// застаріли й їх треба перемалювати в цьому кадрі.
     pub(super) fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, frame: &PhotoView<'_>) -> bool {
         let floor = self.ensure_floor(device, frame.bounds);
-        self.ensure_thickness(device, frame.width, frame.height);
+        self.ensure_frame(device, frame.width, frame.height);
         let mask = self.transparent_mask();
         let aspect = frame.width as f32 / frame.height.max(1) as f32;
         let view_proj = frame.camera.view_proj(aspect);
@@ -1297,15 +1381,48 @@ impl Photo {
         }
     }
 
+    /// Попередні проходи (щокадру, перед основним): трасована глибина найближчих непрозорих
+    /// і (з прозорими) найближчих прозорих валиків. Основний прохід за ними відкидає закриті
+    /// валики до затінення (`hidden_in`). Усі слоти прозорі — непрозорий порожній, лише
+    /// очищається.
+    pub(super) fn encode_prepass(&self, encoder: &mut wgpu::CommandEncoder, draws: &BeadDraws<'_>) {
+        let Some(frame) = &self.frame else {
+            return;
+        };
+        let passes = [(Some(&frame.prepass), &self.prepass_pipeline), (frame.clear_prepass.as_ref(), &self.clear_prepass_pipeline)];
+        for (view, pipeline) in passes {
+            let Some(view) = view else { continue };
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("photo_prepass"),
+                color_attachments: &[],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view,
+                    depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Store }),
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            });
+            if std::ptr::eq(pipeline, &self.prepass_pipeline) && self.transparent_mask() == u32::MAX {
+                continue;
+            }
+            pass.set_pipeline(pipeline);
+            pass.set_bind_group(0, &self.bind_group, &[]);
+            for (chunk, range) in draws {
+                pass.set_bind_group(1, *chunk, &[]);
+                pass.draw(range.clone(), 0..1);
+            }
+        }
+    }
+
     /// Товщина прозорого вздовж променів ока (перед основним проходом, щокадру).
     pub(super) fn encode_thickness(&self, encoder: &mut wgpu::CommandEncoder, draws: &BeadDraws<'_>) {
-        let Some(thickness) = &self.thickness else {
+        let Some(view) = self.frame.as_ref().and_then(|f| f.thickness.as_ref()) else {
             return;
         };
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("photo_thickness"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &thickness.view,
+                view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store },
@@ -1346,26 +1463,25 @@ impl Photo {
             }
         }
 
-        let clear = self.thickness.as_ref().filter(|_| self.has_transparent());
-        if !frame.draws.is_empty() {
+        let targets = self.frame.as_ref();
+        let clear = targets.filter(|f| f.thickness.is_some() && self.has_transparent());
+        if let Some(targets) = targets {
+            pass.set_bind_group(2, &targets.bind, &[]);
+        }
+        if !frame.draws.is_empty() && targets.is_some() {
             pass.set_pipeline(if clear.is_some() { &self.bead_opaque_pipeline } else { &self.bead_pipeline });
             for (chunk, range) in &frame.draws {
                 pass.set_bind_group(1, *chunk, &[]);
                 pass.draw(range.clone(), 0..1);
             }
         }
-        if let Some(thickness) = clear
-            && !frame.draws.is_empty()
-        {
-            // Спершу глибина найближчих прозорих валиків, потім колір лише для них: інакше
-            // дальній валик, намальований раніше за ближчий, змішався б двічі.
-            pass.set_bind_group(2, &thickness.bind, &[]);
-            for pipeline in [&self.clear_depth_pipeline, &self.clear_pipeline] {
-                pass.set_pipeline(pipeline);
-                for (chunk, range) in &frame.draws {
-                    pass.set_bind_group(1, *chunk, &[]);
-                    pass.draw(range.clone(), 0..1);
-                }
+        if clear.is_some() && !frame.draws.is_empty() {
+            // Колір лише найближчих прозорих (попередній прохід): інакше дальній валик,
+            // намальований раніше за ближчий, змішався б двічі.
+            pass.set_pipeline(&self.clear_pipeline);
+            for (chunk, range) in &frame.draws {
+                pass.set_bind_group(1, *chunk, &[]);
+                pass.draw(range.clone(), 0..1);
             }
         }
         if self.settings.travel

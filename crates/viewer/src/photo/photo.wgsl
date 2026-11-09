@@ -96,8 +96,9 @@ fn fbm(p: vec3<f32>) -> f32 {
 
 // Вкраплення: у кожній комірці з імовірністю `density` — куля радіуса r_lo…r_hi (частки
 // комірки), зміщена так, щоб не виходити за комірку (сусідів перевіряти не треба). Край
-// розмитий; `fw` — розмір пікселя в комірках: дрібні плями плавно стають середнім покриттям
-// (частка площі зрізу кулі, ∫π(r²−z²)dz = 4πr³/3 на комірку).
+// м’який (розмитий на 60 % радіуса — пляма «під поверхнею»); `fw` — розмір пікселя в комірках:
+// дрібні плями плавно стають середнім покриттям (частка площі зрізу кулі,
+// ∫π(r²−z²)dz = 4πr³/3 на комірку).
 fn speckle(q: vec3<f32>, density: f32, r_lo: f32, r_hi: f32, fw: f32) -> f32 {
     let cell = floor(q);
     let h = hash33(cell);
@@ -388,16 +389,18 @@ fn shade(n_in: vec3<f32>, v: vec3<f32>, s: Surface) -> vec3<f32> {
 
 struct BeadOut {
     @builtin(position) @invariant clip: vec4<f32>,
+    // Точка прямокутника перед валиком (промінь ока йде крізь неї).
     @location(0) world: vec3<f32>,
-    @location(1) @interpolate(perspective, centroid) coord: vec3<f32>,
-    @location(2) n_side: vec3<f32>,
-    @location(3) n_front: vec3<f32>,
-    @location(4) n_axis: vec3<f32>,
-    @location(5) n_far: vec3<f32>,
-    @location(6) @interpolate(flat) material: vec2<u32>,
-    @location(7) @interpolate(flat) half: vec2<f32>,
+    @location(1) @interpolate(flat) a: vec3<f32>,
+    @location(2) @interpolate(flat) b: vec3<f32>,
+    @location(3) @interpolate(flat) side: vec3<f32>,
+    @location(4) @interpolate(flat) up: vec3<f32>,
+    @location(5) @interpolate(flat) dims: vec3<f32>,
+    @location(8) @interpolate(flat) cut_a: vec4<f32>,
+    @location(9) @interpolate(flat) cut_b: vec4<f32>,
+    @location(6) @interpolate(flat) material: vec3<u32>,
     // Шлях променя крізь цей валик, мм (clear.wgsl).
-    @location(8) chord: f32,
+    @location(7) @interpolate(flat) chord: f32,
 }
 
 fn bead_out(vertex: u32, pick: u32) -> BeadOut {
@@ -405,15 +408,97 @@ fn bead_out(vertex: u32, pick: u32) -> BeadOut {
     var out: BeadOut;
     out.clip = b.clip;
     out.world = b.world;
-    out.coord = b.coord;
-    out.n_side = b.n_side;
-    out.n_front = b.n_front;
-    out.n_axis = b.n_axis;
-    out.n_far = b.n_far;
+    out.a = b.a;
+    out.b = b.b;
+    out.side = b.side;
+    out.up = b.up;
+    out.dims = b.dims;
+    out.cut_a = b.cut_a;
+    out.cut_b = b.cut_b;
     out.material = b.material;
-    out.half = b.half;
     out.chord = b.chord;
     return out;
+}
+
+// Глибина найближчих непрозорих валиків з попереднього проходу (`fs_bead_prepass`), на
+// півроздільності (один зразок на 2×2 пікселі кадру). Основний прохід за нею відкидає
+// закриті валики до затінення.
+@group(2) @binding(1) var prepass_depth: texture_depth_2d;
+// Те саме для найближчих прозорих валиків (з прозорими; інакше заглушка 1×1).
+@group(2) @binding(2) var clear_prepass_depth: texture_depth_2d;
+
+// Чи закритий валик з глибиною `own` у пікселі `px` (обернена глибина: більша — ближча).
+// Порівняння з найдальшою глибиною хреста 3×3 текселів: на краю переднього валика сусідні
+// текселі бачать задній, і він не відкидається — інакше в непокритих вибірках MSAA
+// проступив би фон. Промені двох проходів різні (центр текселя й пікселя), тож на похилій
+// поверхні глибини різняться в межах сусідніх текселів — хрест це покриває. `tol` —
+// відносний допуск (див. `bead_shading`).
+fn hidden_in(depth: texture_depth_2d, px: vec2<f32>, own: f32, tol: f32) -> bool {
+    let size = vec2<i32>(textureDimensions(depth)) - 1;
+    let c = clamp(vec2<i32>(px * 0.5), vec2<i32>(0), size);
+    var far = textureLoad(depth, c, 0);
+    // Видимий валик (майже всі затінені фрагменти) — один тексель.
+    if own >= far * (1.0 - tol) {
+        return false;
+    }
+    far = min(far, textureLoad(depth, clamp(c + vec2<i32>(1, 0), vec2<i32>(0), size), 0));
+    far = min(far, textureLoad(depth, clamp(c - vec2<i32>(1, 0), vec2<i32>(0), size), 0));
+    far = min(far, textureLoad(depth, clamp(c + vec2<i32>(0, 1), vec2<i32>(0), size), 0));
+    far = min(far, textureLoad(depth, clamp(c - vec2<i32>(0, 1), vec2<i32>(0), size), 0));
+    return own < far * (1.0 - tol);
+}
+
+// Попередні проходи: `pick` — непрозорі (`BEADS_OPAQUE`) чи прозорі (`BEADS_CLEAR`).
+// Приглушені підтримки напівпрозорі — за ними видно валики, тож у попередні проходи не
+// йдуть (режим «сховати» для них).
+fn prepass_out(vertex: u32, pick: u32) -> BeadOut {
+    var view = globals.view;
+    if view.x == 1u {
+        view.x = 2u;
+    }
+    let b = bead_vertex(vertex, globals.view_proj, vec4<f32>(globals.eye.xyz, 0.0), view, vec2<u32>(pick, globals.clear.x));
+    var out: BeadOut;
+    out.clip = b.clip;
+    out.world = b.world;
+    out.a = b.a;
+    out.b = b.b;
+    out.side = b.side;
+    out.up = b.up;
+    out.dims = b.dims;
+    out.cut_a = b.cut_a;
+    out.cut_b = b.cut_b;
+    out.material = b.material;
+    out.chord = b.chord;
+    return out;
+}
+
+@vertex
+fn vs_bead_prepass(@builtin(vertex_index) vertex: u32) -> BeadOut {
+    return prepass_out(vertex, BEADS_OPAQUE);
+}
+
+@vertex
+fn vs_bead_clear_prepass(@builtin(vertex_index) vertex: u32) -> BeadOut {
+    return prepass_out(vertex, BEADS_CLEAR);
+}
+
+// Попередній прохід: лише трасована глибина в центрі пікселя.
+//@early_depth_test(less_equal)
+@fragment
+fn fs_bead_prepass(in: BeadOut) -> @builtin(frag_depth) f32 {
+    let rd = normalize(in.world - globals.eye.xyz);
+    let hit = bead_trace(in.world, rd, in.a, in.b, in.side, in.up, in.dims, in.cut_a, in.cut_b, 1e-4);
+    if hit.coverage < 0.5 {
+        discard;
+    }
+    return bead_depth(globals.view_proj, hit.pos);
+}
+
+// Промінь ока крізь піксель і валик.
+fn bead_hit(in: BeadOut) -> BeadHit {
+    let px = 0.5 * length(fwidth(in.world));
+    let rd = normalize(in.world - globals.eye.xyz);
+    return bead_trace(in.world, rd, in.a, in.b, in.side, in.up, in.dims, in.cut_a, in.cut_b, px);
 }
 
 @vertex
@@ -466,47 +551,80 @@ struct BeadShading {
     v: vec3<f32>,
     s: Surface,
     sparkle: vec3<f32>,
+    // Покриття пікселя силуетом × напівпрозорість підтримок (alpha-to-coverage).
     alpha: f32,
+    // Точка поверхні й її глибина (`frag_depth`).
+    pos: vec3<f32>,
+    depth: f32,
 }
 
-fn bead_shading(in: BeadOut) -> BeadShading {
-    // Нормаль і похідні — до discard (похідні лише в рівномірному потоці керування).
-    let footprint = fwidth(in.coord.x);
+// `clear` — прохід прозорих: лише найближчий прозорий валик у пікселі.
+fn bead_shading(in: BeadOut, clear: bool) -> BeadShading {
+    // Прямокутник стоїть перед капсулою: якщо навіть він позаду ближчого валика, трасувати
+    // нема чого (на 4K це більшість перекритих фрагментів).
+    // Допуск — відстань, а не частка глибини: канавка між шарами ввігнута, і всі тексели
+    // попереднього проходу довкола її дна ближчі за нього (на ~⅓ ширини валика). Глибина
+    // зворотна (≈ near/z), тож відстань dz — це відносна поправка dz/z. Сусідня лінія того
+    // самого шару лежить далі (≈ 2 ширини) і так само відкидається.
+    let tol = (in.dims.x + 3.0 * length(fwidth(in.world))) / distance(globals.eye.xyz, in.world);
+    if hidden_in(prepass_depth, in.clip.xy, in.clip.z, tol) || (clear && hidden_in(clear_prepass_depth, in.clip.xy, in.clip.z, tol)) {
+        discard;
+    }
+    let hit = bead_hit(in);
+    let own_depth = bead_depth(globals.view_proj, hit.pos);
+    // Прозорі змішуються без тесту глибини між собою, тож тут допуск вужчий: на скільки
+    // власна глибина змінюється за 2–3 пікселі (тексель попереднього проходу й сусід).
+    // Великий лише на дні канавки, де поверхня різко йде вглиб, — інакше два валики
+    // змішались би в одному пікселі двічі. Не більший за глибину канавки (~0.45 ширини):
+    // верх еліпса, видний по дотичній на рівні ока, має величезний нахил, і без межі валик
+    // за сусіднім проступав би світлою рискою.
+    let tol_clear = min(3e-5 + 3.0 * fwidth(own_depth) / max(own_depth, 1e-9), tol * 0.45);
+    // Промах або валик за ближчим — одразу, до дорогого затінення.
+    if hit.coverage <= 0.0 || hidden_in(prepass_depth, in.clip.xy, own_depth, tol)
+        || (clear && hidden_in(clear_prepass_depth, in.clip.xy, own_depth, tol_clear)) {
+        discard;
+    }
+    // Розмір пікселя біля валика: прямокутник — площина, тож похідні гладкі й на краях.
     let world_fw = length(fwidth(in.world));
-    let v = normalize(globals.eye.xyz - in.world);
-    let s_coord = clamp(in.coord.x, -1.0, 1.0);
-    let c = clamp(in.coord.y - clamp(in.coord.y, 0.0, in.coord.z), -1.0, 1.0);
-    let k = sqrt(max(1.0 - s_coord * s_coord - c * c, 0.0));
-    let n_raw = in.n_side * s_coord + in.n_front * k + in.n_axis * c;
-    // Еліптичний переріз (як у «Шарах»): справжня форма вільного валика.
-    let n_ellipse = normalize(n_raw);
+    let v = normalize(globals.eye.xyz - hit.pos);
+    let wall = (in.material.y & FLAG_WALL) != 0u;
+    let hw = in.dims.x;
+    let hh_layer = in.dims.z;
+    // Еліптичний переріз: справжня форма вільного валика.
+    let n_ellipse = hit.normal;
 
     // Базис перерізу: o — нормаль поверхні, яку валики утворюють разом (стінка — убік,
     // заповнення — угору), across — поперек валика в площині перерізу, fwd — уздовж.
-    var o = normalize(in.n_far);
-    let wall = abs(o.z) < 0.5;
+    let fwd = normalize(in.b - in.a + vec3<f32>(1e-6, 0.0, 0.0));
+    var o = in.up * select(-1.0, 1.0, hit.local.z >= 0.0);
     if wall {
-        // Зблизька — бік за еліптичною нормаллю пікселя (зовнішня чи внутрішня половина
-        // валика; на сходинках похилої поверхні камера бачить і дальню половину). Здалеку
-        // вона мерехтить від пікселя до пікселя — тоді бік, який бачить камера, а коли
-        // камера майже над валиком, усе одно головне — верх (top_cap).
-        let side_view = dot(v, o);
-        let near_px = relief_lod(2.0 / max(footprint, 1e-4)) > 0.5 || abs(side_view) < 0.25;
-        let side_px = select(side_view, dot(n_ellipse, o), near_px);
-        o = o * select(-1.0, 1.0, side_px >= 0.0);
+        // Бік стінки — той, з якого піксель (зовнішня чи внутрішня половина валика).
+        o = in.side * select(-1.0, 1.0, hit.local.y >= 0.0);
     }
-    let fwd = normalize(in.n_axis);
     let across = normalize(cross(o, fwd));
-    // Положення поперек валика: −1…1 від стику до стику.
-    let extent = select(in.half.x, in.half.y, wall);
-    let u = clamp(dot(n_raw, across) * extent, -1.0, 1.0);
+    // Положення поперек валика: −1…1 від стику до стику (стінка — у півшарах від осі).
+    let extent = select(hw, hh_layer, wall);
+    let u = clamp(dot(hit.pos - hit.axis, across) / extent, -1.0, 1.0);
     let depth = select(TOP_GROOVE, WALL_GROOVE, wall);
-    // Шар чи лінія на екрані: стрічка-імпостор має ширину 2 у coord.x.
-    let lod = relief_lod(2.0 / max(footprint, 1e-4));
+    // Шар чи лінія на екрані, пікселів.
+    let lod = relief_lod(2.0 * extent / max(world_fw, 1e-5));
     let phi = profile_angle(u, depth) * lod;
-    // Торець валика (кінець лінії) — теж рельєф: здалеку його нормаль зливається з поверхнею.
+    // Заокруглений кінець валика (обрив лінії) — теж рельєф: здалеку зливається з поверхнею.
     let a_f = clamp(dot(n_ellipse, fwd), -1.0, 1.0) * lod;
     var n = normalize(fwd * a_f + (o * cos(phi) + across * sin(phi)) * sqrt(1.0 - a_f * a_f));
+    // Стінка поза смугою свого шару (верх чи низ еліпса, видно на сходинках похилої стінки й
+    // на силуеті): профіль злитих валиків тут не діє, бік `o` перекидається через верх
+    // валика. Тут — справжня нормаль еліпса, з плавним переходом.
+    // Так само на заокругленому кінці (обрив лінії, шов): бік `o` за знаком зміщення
+    // перекидався посередині півкулі — жорстка межа світлого й темного на кожному шарі.
+    let cap = smoothstep(0.0, 0.35, abs(hit.local.x) / hw);
+    var exact = cap;
+    if wall {
+        // Лише за межею шару: дно видимої канавки (≤ 1.0) лишається на профілі, інакше
+        // смуга еліпса, вужча за піксель, спалахувала б рискою на окремих шарах.
+        exact = max(exact, smoothstep(1.0, 1.3, abs(hit.local.z) / hh_layer));
+    }
+    n = normalize(mix(n, n_ellipse, exact));
     // Верх стінки без шару над нею (останній шар, сходинки похилої поверхні, межа повзунка)
     // видно лише згори — там справжній еліптичний верх; збоку цю зону закриває валик вище,
     // тож профіль не страждає. Здалеку (lod → 0) зона верху менша за піксель і мерехтіла б,
@@ -525,10 +643,6 @@ fn bead_shading(in: BeadOut) -> BeadShading {
     // Рельєф, який LOD прибрав, теж розсіює відблиск (як карта нормалей із mip-рівнями).
     let removed = profile_angle(0.6, depth) * (1.0 - lod);
     let relief_var = 0.5 * removed * removed;
-    if bead_outside(in.coord) {
-        discard;
-    }
-
     let m = materials[min(in.material.x, MAX_MATERIALS - 1u)];
     var s = default_surface(m.base.rgb, m.p0.x);
     s.metallic = m.p0.y;
@@ -539,33 +653,50 @@ fn bead_shading(in: BeadOut) -> BeadShading {
     s.anisotropy = m.p1.z;
     s.emission = m.p1.w;
     s.translucency = m.base.a;
-    s.tangent = normalize(in.n_axis);
+    s.tangent = fwd;
 
     s.roughness = sqrt(min(s.roughness * s.roughness + kernel + relief_var, 1.0));
     // Аналітичне затінення канавки: лише біля стику й пропорційно її глибині.
     let groove = 1.0 - 0.9 * depth * lod * smoothstep(0.55, 1.0, abs(u)) * (1.0 - top_cap);
-    let near_floor = mix(0.7, 1.0, clamp((in.world.z - globals.floor.z) / 4.0, 0.0, 1.0));
+    let near_floor = mix(0.7, 1.0, clamp((hit.pos.z - globals.floor.z) / 4.0, 0.0, 1.0));
     s.ao = groove * near_floor;
 
-    let shadow = shadow_at(in.world, n);
+    let shadow = shadow_at(hit.pos, n);
     s.shadow = shadow;
     var sparkle = vec3<f32>(0.0);
     let pattern = u32(m.p2.x + 0.5);
     let scale = m.p2.y;
     let strength = m.p2.z;
-    let p = in.world;
+    // Стінка: точка на огинальній поверхні шарів (бічне зміщення від осі — рівно ±hw), тож
+    // візерунки поверхні (блискітки, волокна, смуги) не розрізаються межами шарів — інакше
+    // біля борозенки поверхня глибша, і зріз там інший. Marble — навпаки, у нитці (нижче).
+    var p = hit.pos;
+    if wall {
+        p = hit.pos + in.side * (select(-1.0, 1.0, hit.local.y >= 0.0) * hw - hit.local.y);
+    }
     if pattern == PATTERN_MARBLE {
-        // Bambu PLA Marble — густі дрібні темні вкраплення (0.1–0.6 мм), круглі й розмиті, і
-        // м’які прожилки. Вкраплення — кулі в комірках 3D-сітки: зріз площиною дає круглу
-        // пляму; дрібніші за кілька пікселів зливаються в середній тон (без мерехтіння).
-        let warp = fbm(p * 0.09 * scale) * 7.0;
-        let vein = 1.0 - abs(sin(p.x * 0.21 * scale + p.y * 0.13 * scale + p.z * 0.17 * scale + warp));
-        let veins = pow(vein, 6.0) * 0.35;
-        let fine = speckle(p * 3.2 * scale, 0.7, 0.14, 0.3, world_fw * 3.2 * scale);
-        let coarse = speckle(p * 1.1 * scale + 7.3, 0.12, 0.12, 0.24, world_fw * 1.1 * scale);
-        let w = clamp(veins + fine * 0.55 + coarse * 0.75, 0.0, 1.0) * strength;
+        // Bambu PLA Marble — однотонний матовий пластик із густими дрібними вкрапленнями
+        // різного розміру; прожилок і плям немає. Вкраплення сидять у нитці, тож візерунок
+        // — у просторі валика: уздовж — довжина нитки (неперервна через стики сегментів),
+        // поперек — зміщення від осі вбік і вгору. Кожен шар і кожна лінія мають свій
+        // незалежний малюнок (зерно — висота шару, плюс різна довжина нитки), а пляма
+        // обрізається краєм свого валика, як частинка в нитці.
+        // Нитку видавлено: уздовж координата стиснута в ELONG раз — пляма злегка витягнута
+        // вздовж лінії. Плями — кулі в комірках 3D-сітки: зріз поверхнею валика дає пляму з
+        // м’яким краєм різного розміру. Два шари: густі дрібні (комірка 0.31 мм) і рідші
+        // більші (0.91 мм). Колір — `material::marble_speck`, змішаний з основою частково:
+        // сірий тон, не чорний.
+        let ELONG = 1.3;
+        let along = f32(in.material.z) * (ALONG_PERIOD / 65536.0) + dot(hit.pos - in.a, fwd);
+        let layer = hash33(vec3<f32>(floor(in.a.z * 37.0 + 0.5), 3.1, 7.7)) * 97.0;
+        let q = vec3<f32>(along / ELONG, hit.local.y, hit.local.z) + layer;
+        // На стінці густота вища: видима смуга валика — лише висота шару, і край обрізає
+        // частину плям; без поправки стінка рідша й світліша, ніж була. Верх — як раніше.
+        let dense = select(1.0, 1.3, wall);
+        let fine = speckle(q * 3.2 * scale, min(0.7 * dense, 1.0), 0.14, 0.3, world_fw * 3.2 * scale);
+        let coarse = speckle(q * 1.1 * scale + 7.3, 0.12 * dense, 0.12, 0.24, world_fw * 1.1 * scale);
+        let w = clamp(fine * 0.55 + coarse * 0.75, 0.0, 1.0) * strength;
         s.base = mix(s.base, m.p3.rgb, w);
-        s.roughness = mix(s.roughness, s.roughness * 0.85, w);
     } else if pattern == PATTERN_SPARKLE {
         // Пласкі лусочки ~0.15 мм з випадковим нахилом: спалахують, коли відбивають
         // світло або софтбокс. Дрібніші за піксель — гаснуть, інакше мерехтіли б.
@@ -617,19 +748,34 @@ fn bead_shading(in: BeadOut) -> BeadShading {
     out.v = v;
     out.s = s;
     out.sparkle = sparkle;
-    out.alpha = alpha;
+    out.alpha = alpha * hit.coverage;
+    out.pos = hit.pos;
+    out.depth = own_depth;
     return out;
 }
 
+// Непрозорі валики зі справжньою глибиною: близькі поверхні (канавки між шарами, стики)
+// упорядковує тест глибини, а не порядок малювання. Трасована поверхня не ближча за
+// прямокутник, тож з `SHADER_EARLY_DEPTH_TEST` ранній тест працює й тут; без нього
+// (DX12/Metal) закриті валики все одно відкидає попередній прохід до трасування.
+struct BeadFrag {
+    @location(0) color: vec4<f32>,
+    @builtin(frag_depth) depth: f32,
+}
+
+//@early_depth_test(less_equal)
 @fragment
-fn fs_bead(in: BeadOut) -> @location(0) vec4<f32> {
-    let b = bead_shading(in);
+fn fs_bead(in: BeadOut) -> BeadFrag {
+    let b = bead_shading(in, false);
     var s = b.s;
     if globals.clear.x != 0u {
-        s.tint = transmit_at(in.world);
+        s.tint = transmit_at(b.pos);
     }
     let color = shade(b.n, b.v, s) + b.sparkle;
-    return vec4<f32>(tonemap(color), b.alpha);
+    var out: BeadFrag;
+    out.color = vec4<f32>(tonemap(color), b.alpha);
+    out.depth = b.depth;
+    return out;
 }
 
 // ---- стіл і підлога ----

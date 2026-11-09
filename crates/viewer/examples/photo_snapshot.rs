@@ -3,10 +3,12 @@
 //! ```sh
 //! cargo run --release -p viewer --example photo_snapshot -- plate_1.gcode /tmp/photo.png \
 //!     [--preset silk] [--color #C0392B] [--floor] [--size 1600x1000] [--yaw -60 --pitch 25]
-//!     [--zoom 1.0] [--layers 0.5] [--supports shown|dimmed|hidden]
+//!     [--zoom 1.0] [--layers 0.5] [--supports shown|dimmed|hidden] [--slot 1]
+//!     [--shift 10,-5,0]
 //! ```
 //! Матеріал — з конфігу G-code (`filament_type`, `filament_settings_id`, `filament_colour`),
-//! `--preset`/`--color` замінюють його для всіх слотів.
+//! `--preset`/`--color` замінюють його для всіх слотів або лише для `--slot N` (з нуля, як
+//! правка слота в панелі «Матеріал»).
 
 use anyhow::{Context as _, Result};
 use viewer::{Camera, MaterialTable, PhotoSettings, Stage, SupportView, ToolpathGpuExt as _};
@@ -19,11 +21,20 @@ fn main() -> Result<()> {
     let (mut w, mut h) = (1600u32, 1000u32);
     let (mut yaw, mut pitch, mut zoom, mut layers) = (None, None, 1.0f32, 1.0f32);
     let mut supports = SupportView::Dimmed;
+    let mut only: Option<usize> = None;
+    let mut shift = glam::Vec3::ZERO;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--preset" => preset = args.next(),
             "--color" => color = args.next().and_then(|c| viewer::photo::material::parse_hex(&c)),
             "--floor" => stage = Stage::Floor,
+            "--shift" => {
+                let s = args.next().context("--shift x,y,z")?;
+                let v: Vec<f32> = s.split(',').map(str::parse).collect::<Result<_, _>>()?;
+                anyhow::ensure!(v.len() == 3, "--shift x,y,z (мм)");
+                shift = glam::Vec3::new(v[0], v[1], v[2]);
+            }
+            "--slot" => only = Some(args.next().context("--slot N")?.parse()?),
             "--size" => {
                 let s = args.next().context("--size WxH")?;
                 let (a, b) = s.split_once('x').context("--size WxH")?;
@@ -55,6 +66,8 @@ fn main() -> Result<()> {
     let materials = (0..slots.len().max(1))
         .map(|i| {
             let slot = slots.get(i).cloned().unwrap_or_default();
+            let edited = only.is_none_or(|n| n == i);
+            let (preset, color) = if edited { (preset.clone(), color) } else { (None, None) };
             let index = preset
                 .as_deref()
                 .and_then(|p| table.index_of(p))
@@ -86,6 +99,7 @@ fn main() -> Result<()> {
     let (lo, hi) = toolpath.bounds().context("траєкторія без екструзії")?;
     camera.frame_tight(lo, hi);
     camera.distance /= zoom;
+    camera.target += shift;
     let png = renderer.render_photo_png(w, h, &camera)?;
     std::fs::write(&out, png)?;
     eprintln!("{out}: {w}×{h}, кадр {:.1} мс", renderer.last_frame_time.as_secs_f64() * 1e3);

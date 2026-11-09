@@ -3,9 +3,11 @@
 //   1. `vs_thick`/`fs_thick` — товщина прозорого пластику вздовж кожного променя ока:
 //      сума шляхів крізь усі прозорі валики на промені (зовнішні й внутрішні стінки,
 //      заповнення), адитивно в R16F на півроздільності;
-//   2. непрозорі валики, стіл і фон — як завжди (`vs_bead_opaque`);
-//   3. `fs_bead_depth` — глибина найближчих прозорих валиків (без кольору);
-//   4. `fs_clear` — лише найближча поверхня (рівна глибина): відбиття + світло, розсіяне в
+//   2. попередні проходи (photo.wgsl, `fs_bead_prepass`): трасована глибина найближчих
+//      непрозорих і найближчих прозорих валиків на півроздільності;
+//   3. непрозорі валики, стіл і фон — як завжди (`vs_bead_opaque`, справжня глибина);
+//   4. `fs_clear` — лише найближча прозора поверхня (за глибиною попереднього проходу; що
+//      за непрозорим — відкидається так само): відбиття + світло, розсіяне в
 //      об’ємі, а те, що за деталлю, множиться на пропускання e^(−σ·товщина) змішуванням
 //      (dual-source: колір + множник на канал; без нього — сірий множник і поправка відтінку).
 //      Товщина — середнє 2×2 текселів (ціль на півроздільності), не менше власного валика.
@@ -19,39 +21,27 @@ fn vs_bead_clear(@builtin(vertex_index) vertex: u32) -> BeadOut {
     return bead_out(vertex, BEADS_CLEAR);
 }
 
-struct ThickOut {
-    @builtin(position) clip: vec4<f32>,
-    @location(0) @interpolate(perspective, centroid) coord: vec3<f32>,
-    @location(1) chord: f32,
-}
-
 @vertex
-fn vs_thick(@builtin(vertex_index) vertex: u32) -> ThickOut {
-    let b = bead_vertex(vertex, globals.view_proj, vec4<f32>(globals.eye.xyz, 0.0), globals.view, vec2<u32>(BEADS_CLEAR, globals.clear.x));
-    var out: ThickOut;
-    out.clip = b.clip;
-    out.coord = b.coord;
-    out.chord = b.chord;
-    return out;
+fn vs_thick(@builtin(vertex_index) vertex: u32) -> BeadOut {
+    return bead_out(vertex, BEADS_CLEAR);
 }
 
+// Прозорі валики сусідніх шарів раніше стояли стрічками на одній глибині й змішувались
+// кілька разів; трасовані — один раз. Товщина × 1.12 повертає той самий тон (звірено на
+// кубику PETG Translucent).
+const THICK_GAIN: f32 = 1.12;
+
 @fragment
-fn fs_thick(in: ThickOut) -> @location(0) vec4<f32> {
-    if bead_outside(in.coord) {
+fn fs_thick(in: BeadOut) -> @location(0) vec4<f32> {
+    // Та сама трасована капсула, що й у кольорі: лише пікселі, які вона закриває.
+    let hit = bead_hit(in);
+    if hit.coverage <= 0.0 {
         discard;
     }
-    // Гладкий профіль поперек стрічки (середнє 1, як у прямокутника): сусідні валики на
+    // Гладкий профіль поперек валика (середнє 1, як у прямокутника): сусідні валики на
     // екрані перекриваються, і «коробки» давали б на півроздільності смугасту решітку.
-    let c = in.coord.y - clamp(in.coord.y, 0.0, in.coord.z);
-    let k = sqrt(max(1.0 - in.coord.x * in.coord.x - c * c, 0.0));
-    return vec4<f32>(in.chord * mix(1.0, k * 1.2732395, 0.6), 0.0, 0.0, 0.0);
-}
-
-@fragment
-fn fs_bead_depth(in: BeadOut) {
-    if bead_outside(in.coord) {
-        discard;
-    }
+    // `facing` — частка хорди кругового перерізу на цій відстані від осі.
+    return vec4<f32>(in.chord * THICK_GAIN * mix(1.0, hit.facing * 1.2732395, 0.6) * hit.coverage, 0.0, 0.0, 0.0);
 }
 
 struct ClearShaded {
@@ -60,10 +50,12 @@ struct ClearShaded {
     // Частка того, що за деталлю, яка проходить крізь неї (на канал).
     transmit: vec3<f32>,
     v: vec3<f32>,
+    // Трасована глибина (`frag_depth`): між прозорими лишається найближчий.
+    depth: f32,
 }
 
 fn clear_shade(in: BeadOut) -> ClearShaded {
-    let b = bead_shading(in);
+    let b = bead_shading(in, true);
     let m = materials[min(in.material.x, MAX_MATERIALS - 1u)];
     let sigma_a = m.p4.rgb;
     let sigma_s = m.p3.w;
@@ -78,7 +70,7 @@ fn clear_shade(in: BeadOut) -> ClearShaded {
     let d = max(max(dot(quad, vec4<f32>(0.25)), in.chord), 0.05);
 
     var s = b.s;
-    s.tint = transmit_at(in.world);
+    s.tint = transmit_at(b.pos);
     // Відбиття (пряме й оточення, лак) — той самий BSDF без дифузу.
     var mirror = s;
     mirror.base = vec3<f32>(0.0);
@@ -116,14 +108,24 @@ fn clear_shade(in: BeadOut) -> ClearShaded {
         out.transmit = mix(vec3<f32>(1.0), out.transmit, b.alpha);
     }
     out.v = b.v;
+    out.depth = b.depth;
     return out;
 }
 
+struct ClearAlphaOut {
+    @location(0) color: vec4<f32>,
+    @builtin(frag_depth) depth: f32,
+}
+
 // Без dual-source blending: сірий множник (альфа) і поправка відтінку за фоном студії.
+//@early_depth_test(less_equal)
 @fragment
-fn fs_clear_alpha(in: BeadOut) -> @location(0) vec4<f32> {
+fn fs_clear_alpha(in: BeadOut) -> ClearAlphaOut {
     let c = clear_shade(in);
     let gray = (c.transmit.r + c.transmit.g + c.transmit.b) / 3.0;
     let behind = tonemap(backdrop(-c.v) * globals.light_color.w);
-    return vec4<f32>(tonemap(c.color) + (c.transmit - gray) * behind, 1.0 - gray);
+    var out: ClearAlphaOut;
+    out.color = vec4<f32>(tonemap(c.color) + (c.transmit - gray) * behind, 1.0 - gray);
+    out.depth = c.depth;
+    return out;
 }

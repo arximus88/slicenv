@@ -1638,5 +1638,6 @@
   "Klipper відхилив команду": "Klipper rejected the command",
   "Камера не віддає MJPEG-потік": "The camera does not provide an MJPEG stream",
   "Пакую .gcode.3mf": "Packing .gcode.3mf",
-  "[preview] ранній G-code: {err:#}": "[preview] early G-code: {err:#}"
+  "[preview] ранній G-code: {err:#}": "[preview] early G-code: {err:#}",
+  "{label} — не на цій пластині": "{label} — not on this plate"
 }
