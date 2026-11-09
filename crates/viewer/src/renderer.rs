@@ -1103,9 +1103,12 @@ impl Renderer {
                     keep.insert(label.clone());
                     // Як напис Bambu: вертикально вздовж лівого краю, згори вниз.
                     let [(min, max), _] = bed::bambu_decal_rects(hi2 - lo2);
-                    // Свій шрифт ширший за вузький шрифт Bambu: напис трохи вищий.
-                    let mut width = (max.x - min.x) * 1.3;
-                    let mut length = (width * aspect).min(max.y - min.y);
+                    // На всю довжину місця лівого SVG-напису Bambu, як «Bambu Textured PEI
+                    // Plate» у Bambu Studio й OrcaSlicer; короткий підпис не вищий за 1.8 ширини
+                    // того місця.
+                    let full = max.y - min.y;
+                    let mut width = (full / aspect.max(0.1)).min((max.x - min.x) * 1.8);
+                    let mut length = (width * aspect).min(full);
                     let mut top = lo2.y + max.y;
                     let x0 = lo2.x + min.x;
                     // Логотип профілю (`bbl-3dp-logo.svg`) має свій вертикальний «Bambu Lab»
