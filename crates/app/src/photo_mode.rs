@@ -85,6 +85,49 @@ pub fn slots_of(table: &MaterialTable, toolpath: &gcode::Toolpath) -> Vec<SlotMa
     slots.iter().map(|s| SlotMaterial::from_slot(table, s)).collect()
 }
 
+/// Слоти, якими друкується траєкторія (інструменти екструзії), за зростанням.
+pub fn used_slots(toolpath: &gcode::Toolpath) -> Vec<usize> {
+    let mut used = [false; 256];
+    for s in toolpath.segments.iter().filter(|s| s.is_extrusion) {
+        used[usize::from(s.tool)] = true;
+    }
+    (0..used.len()).filter(|&i| used[i]).collect()
+}
+
+/// Слот, який панель показує першим: перший, яким справді друкується пластина. Інакше
+/// правка кольору могла йти в слот, якого на пластині немає (проєкт з кількома філаментами,
+/// пластина друкується другим) — і модель не змінювалась.
+pub fn initial_slot(used: &[usize], slots: usize) -> usize {
+    used.iter().copied().find(|&i| i < slots).unwrap_or(0)
+}
+
+/// Що з «Фото» переживає заміну прев’ю (інша пластина, нова нарізка): правки матеріалів
+/// слотів, сцена, підтримки, переміщення.
+#[derive(Clone, Debug)]
+pub struct PhotoMemory {
+    pub slots: Vec<SlotMaterial>,
+    pub supports: SupportView,
+    pub stage: Stage,
+    pub travel: bool,
+    /// Увімкнути «Фото» знову, щойно з’явиться прев’ю (перемикання пластини).
+    pub resume: bool,
+}
+
+impl PhotoMemory {
+    /// Переносить правки на слоти нової траєкторії: лише той самий філамент у тому самому
+    /// слоті (тип, профіль і колір профілю).
+    pub fn apply(&self, slots: &mut [SlotMaterial]) {
+        for (slot, old) in slots.iter_mut().zip(&self.slots) {
+            if (&slot.kind, &slot.name, slot.profile_color) == (&old.kind, &old.name, old.profile_color) {
+                slot.preset = old.preset;
+                slot.color = old.color;
+                slot.roughness = old.roughness;
+                slot.gloss = old.gloss;
+            }
+        }
+    }
+}
+
 const SCENES: [&str; 2] = ["Стіл пластини", "Нейтральна підлога"];
 const SUPPORTS: [&str; 3] = ["Як модель", "Приглушено", "Сховати"];
 
@@ -124,6 +167,16 @@ impl PhotoState {
     fn current(&self) -> Option<&SlotMaterial> {
         self.slots.get(self.slot)
     }
+
+    pub fn memory(&self, resume: bool) -> PhotoMemory {
+        PhotoMemory {
+            slots: self.slots.clone(),
+            supports: self.supports,
+            stage: self.stage,
+            travel: self.travel,
+            resume: resume && self.on,
+        }
+    }
 }
 
 fn to_hsla([r, g, b]: [f32; 3]) -> Hsla {
@@ -135,7 +188,7 @@ fn from_hsla(c: Hsla) -> [f32; 3] {
     [rgb.r, rgb.g, rgb.b]
 }
 
-fn slot_label(i: usize, slot: &SlotMaterial) -> SharedString {
+fn slot_label(i: usize, slot: &SlotMaterial, used: bool) -> SharedString {
     let name = slot
         .name
         .split('@')
@@ -144,10 +197,15 @@ fn slot_label(i: usize, slot: &SlotMaterial) -> SharedString {
         .trim()
         .to_owned();
     let name = if name.is_empty() { slot.kind.clone() } else { name };
-    if name.is_empty() {
-        crate::tr_format!("Філамент {}", i + 1).into()
+    let label = if name.is_empty() {
+        crate::tr_format!("Філамент {}", i + 1)
     } else {
-        format!("{} · {name}", i + 1).into()
+        format!("{} · {name}", i + 1)
+    };
+    if used {
+        label.into()
+    } else {
+        crate::tr_format!("{label} — не на цій пластині").into()
     }
 }
 
@@ -174,13 +232,26 @@ impl Workspace {
             return;
         }
         if preview.photo.is_none() {
-            preview.photo = Some(new_state(&preview.toolpath, window, cx));
+            let memory = self.photo_memory.take();
+            let toolpath = preview.toolpath.clone();
+            let state = new_state(&toolpath, memory.as_ref(), window, cx);
+            if let Some(preview) = &mut self.preview {
+                preview.photo = Some(state);
+            }
         }
-        if let Some(photo) = &mut preview.photo {
+        if let Some(photo) = self.preview.as_mut().and_then(|p| p.photo.as_mut()) {
             photo.on = true;
         }
         self.build_photo_toolpath(cx);
         cx.notify();
+    }
+
+    /// Запам’ятовує «Фото» прев’ю, яке зараз зміниться; `resume` — увімкнути режим знову
+    /// на новому прев’ю (перемикання пластини).
+    pub fn remember_photo(&mut self, resume: bool) {
+        if let Some(photo) = self.preview.as_ref().and_then(|p| p.photo.as_ref()) {
+            self.photo_memory = Some(photo.memory(resume));
+        }
     }
 
     /// Буфер «Фото» будується у фоні; до готовності в’юпорт показує звичайні шари.
@@ -321,26 +392,48 @@ impl Workspace {
 }
 
 /// Стан режиму з віджетами панелі; матеріали — з конфігу G-code.
-fn new_state(toolpath: &gcode::Toolpath, window: &mut Window, cx: &mut Context<Workspace>) -> PhotoState {
+fn new_state(
+    toolpath: &gcode::Toolpath,
+    memory: Option<&PhotoMemory>,
+    window: &mut Window,
+    cx: &mut Context<Workspace>,
+) -> PhotoState {
     let table = MaterialTable::builtin();
-    let slots = slots_of(&table, toolpath);
-    let first = slots[0].resolve(&table);
+    let mut slots = slots_of(&table, toolpath);
+    if let Some(memory) = memory {
+        memory.apply(&mut slots);
+    }
+    let used = used_slots(toolpath);
+    let slot = initial_slot(&used, slots.len());
+    let first = slots[slot].resolve(&table);
     let slot_picker = cx.new(|cx| {
         Dropdown::new(
-            slots.iter().enumerate().map(|(i, s)| slot_label(i, s)).collect(),
-            Some(0),
+            slots
+                .iter()
+                .enumerate()
+                .map(|(i, s)| slot_label(i, s, used.is_empty() || used.contains(&i)))
+                .collect(),
+            Some(slot),
             cx,
         )
     });
     let preset_picker = cx.new(|cx| {
         Dropdown::new(
             table.presets.iter().map(|p| SharedString::from(p.label.clone())).collect(),
-            Some(slots[0].preset),
+            Some(slots[slot].preset),
             cx,
         )
     });
-    let scene_picker = cx.new(|cx| Dropdown::new(SCENES.map(SharedString::from).to_vec(), Some(0), cx));
-    let support_picker = cx.new(|cx| Dropdown::new(SUPPORTS.map(SharedString::from).to_vec(), Some(1), cx));
+    let stage = memory.map_or(Stage::Bed, |m| m.stage);
+    let supports = memory.map_or(SupportView::Dimmed, |m| m.supports);
+    let scene = usize::from(stage == Stage::Floor);
+    let support = match supports {
+        SupportView::Shown => 0,
+        SupportView::Dimmed => 1,
+        SupportView::Hidden => 2,
+    };
+    let scene_picker = cx.new(|cx| Dropdown::new(SCENES.map(SharedString::from).to_vec(), Some(scene), cx));
+    let support_picker = cx.new(|cx| Dropdown::new(SUPPORTS.map(SharedString::from).to_vec(), Some(support), cx));
     let color = cx.new(|cx| ColorPickerState::new(window, cx).default_value(to_hsla(first.color)));
     let slider = |value: f32| SliderState::new().min(0.0).max(1.0).step(0.01).default_value(value);
     let roughness = cx.new(|_| slider(first.roughness));
@@ -404,10 +497,10 @@ fn new_state(toolpath: &gcode::Toolpath, window: &mut Window, cx: &mut Context<W
         built: None,
         table,
         slots,
-        slot: 0,
-        supports: SupportView::Dimmed,
-        stage: Stage::Bed,
-        travel: false,
+        slot,
+        supports,
+        stage,
+        travel: memory.is_some_and(|m| m.travel),
         slot_picker,
         preset_picker,
         scene_picker,
@@ -602,7 +695,7 @@ mod tests {
         assert_eq!(table.presets[slots[0].preset].id, "silk");
         assert_eq!(table.presets[slots[1].preset].id, "petg");
         assert_eq!(slots[0].resolve(&table).color, [1.0, 0.0, 0.0]);
-        assert_eq!(slot_label(0, &slots[0]).as_ref(), "1 · Bambu PLA Silk+");
+        assert_eq!(slot_label(0, &slots[0], true).as_ref(), "1 · Bambu PLA Silk+");
 
         let slot = &mut slots[0];
         slot.preset = table.index_of("matte").unwrap();
@@ -619,5 +712,72 @@ mod tests {
         let plain = slots_of(&table, &gcode::parse("G1 X1 E1\n").unwrap());
         assert_eq!(plain.len(), 1);
         assert_eq!(plain[0].preset, table.default);
+    }
+
+    /// Регрес: проєкт із двома філаментами «Bambu PLA Marble» (білий і жовтий), пластина
+    /// друкується другим (`M620 S1A`). Панель відкривала слот 1 — правка кольору йшла в
+    /// матеріал, якого на пластині немає, і модель лишалась жовтою.
+    #[test]
+    fn panel_edits_the_slot_the_plate_prints_with() {
+        let table = MaterialTable::builtin();
+        let t = gcode::parse(concat!(
+            "; CONFIG_BLOCK_START\n",
+            "; filament_colour = #FFFFFF;#F6DA5A\n",
+            "; filament_settings_id = \"Bambu PLA Marble @BBL A1\";\"Bambu PLA Marble @BBL A1\"\n",
+            "; filament_type = PLA;PLA\n",
+            "; CONFIG_BLOCK_END\n",
+            "M83\nM620 S1A\nT1\nM621 S1A\nG1 X10 E1\nG1 X20 E1\n",
+        ))
+        .unwrap();
+        let mut slots = slots_of(&table, &t);
+        let used = used_slots(&t);
+        assert_eq!(used, [1]);
+        let slot = initial_slot(&used, slots.len());
+        assert_eq!(slot, 1);
+        assert_eq!(slot_label(0, &slots[0], false).as_ref(), "1 · Bambu PLA Marble — не на цій пластині");
+
+        // Те, що піде в GPU-буфер для інструмента сегментів, — тепер червоне.
+        let red = [0xdb as f32 / 255.0, 0x26 as f32 / 255.0, 0x26 as f32 / 255.0];
+        slots[slot].color = Some(red);
+        let materials: Vec<_> = slots.iter().map(|s| s.resolve(&table)).collect();
+        for seg in t.segments.iter().filter(|s| s.is_extrusion) {
+            assert_eq!(materials[usize::from(seg.tool)].color, red);
+        }
+
+        // Без екструзії (порожня траєкторія) — перший слот.
+        assert_eq!(initial_slot(&[], 2), 0);
+        assert_eq!(initial_slot(&[5], 2), 0);
+    }
+
+    /// Правки «Фото» переживають заміну прев’ю (інша пластина, нова нарізка) — лише для
+    /// того самого філаменту в тому самому слоті.
+    #[test]
+    fn photo_memory_carries_edits_to_matching_slots() {
+        let table = MaterialTable::builtin();
+        let config = |colours: &str| {
+            gcode::parse(&format!(
+                "; CONFIG_BLOCK_START\n; filament_colour = {colours}\n; filament_settings_id = \"Bambu PLA Marble @BBL A1\";\"Bambu PLA Basic @BBL A1\"\n; filament_type = PLA;PLA\n; CONFIG_BLOCK_END\nG1 X1 E1\n"
+            ))
+            .unwrap()
+        };
+        let mut old = slots_of(&table, &config("#FFFFFF;#000000"));
+        old[0].color = Some([0.8, 0.1, 0.1]);
+        old[0].roughness = Some(0.3);
+        old[1].preset = table.index_of("silk").unwrap();
+        let memory = PhotoMemory {
+            slots: old.clone(),
+            supports: SupportView::Hidden,
+            stage: Stage::Floor,
+            travel: false,
+            resume: true,
+        };
+        let mut same = slots_of(&table, &config("#FFFFFF;#000000"));
+        memory.apply(&mut same);
+        assert_eq!(same, old);
+        // Інший колір профілю в слоті 2 — це вже інший філамент: правка не переноситься.
+        let mut other = slots_of(&table, &config("#FFFFFF;#00FF00"));
+        memory.apply(&mut other);
+        assert_eq!(other[0], old[0]);
+        assert_eq!(other[1].preset, other[1].auto);
     }
 }

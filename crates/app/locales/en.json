@@ -1636,5 +1636,6 @@
   "знімок раз на секунду": "snapshot once a second",
   "Недопустима команда або значення поза межами": "Invalid command or value out of range",
   "Klipper відхилив команду": "Klipper rejected the command",
-  "Камера не віддає MJPEG-потік": "The camera does not provide an MJPEG stream"
+  "Камера не віддає MJPEG-потік": "The camera does not provide an MJPEG stream",
+  "{label} — не на цій пластині": "{label} — not on this plate"
 }

@@ -147,6 +147,8 @@ pub struct Workspace {
     pub(crate) plate_slicing: crate::plate_strip::PlateSlicing,
 
     pub preview: Option<Preview>,
+    /// Правки «Фото» попереднього прев’ю (інша пластина, нова нарізка), див. `PhotoMemory`.
+    pub photo_memory: Option<crate::photo_mode::PhotoMemory>,
     pub cloud: CloudState,
     /// Відкрита модалка (будується заново щокадру — бачить поточний стан).
     pub modal: Option<crate::widgets::ModalBuilder>,
@@ -378,6 +380,7 @@ impl Workspace {
             slice_revision: 0,
             plate_slicing: Default::default(),
             preview: None,
+            photo_memory: None,
             cloud: CloudState::default(),
             modal: None,
             wizard: None,
@@ -765,6 +768,7 @@ impl Workspace {
             // пластини (зокрема черга «Нарізати всі») триває.
             self.reset_geometry_caches();
             self.rebuild_instance_bounds();
+            self.remember_photo(true);
             self.preview = None;
             self.slice_revision = self.slice_revision.wrapping_add(1);
             self.jobs.cancel(JobKind::GcodePreview);

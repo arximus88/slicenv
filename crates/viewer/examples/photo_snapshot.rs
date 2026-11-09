@@ -3,10 +3,11 @@
 //! ```sh
 //! cargo run --release -p viewer --example photo_snapshot -- plate_1.gcode /tmp/photo.png \
 //!     [--preset silk] [--color #C0392B] [--floor] [--size 1600x1000] [--yaw -60 --pitch 25]
-//!     [--zoom 1.0] [--layers 0.5] [--supports shown|dimmed|hidden]
+//!     [--zoom 1.0] [--layers 0.5] [--supports shown|dimmed|hidden] [--slot 1]
 //! ```
 //! Матеріал — з конфігу G-code (`filament_type`, `filament_settings_id`, `filament_colour`),
-//! `--preset`/`--color` замінюють його для всіх слотів.
+//! `--preset`/`--color` замінюють його для всіх слотів або лише для `--slot N` (з нуля, як
+//! правка слота в панелі «Матеріал»).
 
 use anyhow::{Context as _, Result};
 use viewer::{Camera, MaterialTable, PhotoSettings, Stage, SupportView, ToolpathGpuExt as _};
@@ -19,11 +20,13 @@ fn main() -> Result<()> {
     let (mut w, mut h) = (1600u32, 1000u32);
     let (mut yaw, mut pitch, mut zoom, mut layers) = (None, None, 1.0f32, 1.0f32);
     let mut supports = SupportView::Dimmed;
+    let mut only: Option<usize> = None;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--preset" => preset = args.next(),
             "--color" => color = args.next().and_then(|c| viewer::photo::material::parse_hex(&c)),
             "--floor" => stage = Stage::Floor,
+            "--slot" => only = Some(args.next().context("--slot N")?.parse()?),
             "--size" => {
                 let s = args.next().context("--size WxH")?;
                 let (a, b) = s.split_once('x').context("--size WxH")?;
@@ -55,6 +58,8 @@ fn main() -> Result<()> {
     let materials = (0..slots.len().max(1))
         .map(|i| {
             let slot = slots.get(i).cloned().unwrap_or_default();
+            let edited = only.is_none_or(|n| n == i);
+            let (preset, color) = if edited { (preset.clone(), color) } else { (None, None) };
             let index = preset
                 .as_deref()
                 .and_then(|p| table.index_of(p))
