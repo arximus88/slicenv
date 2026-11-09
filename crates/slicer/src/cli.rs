@@ -467,7 +467,10 @@ pub fn slice_with_engine_cancellable(
     if store.engine_kind().is_some_and(|kind| kind != engine.kind) {
         bail!("каталог профілів належить іншому рушію");
     }
-    let info = engine.probe_cancellable(cancellation)?;
+    let info = {
+        let _s = paths::profile::Span::new("slice::probe");
+        engine.probe_cancellable(cancellation)?
+    };
     // Обов’язкові лише прапорці, без яких нарізати неможливо; решту передаємо, тільки якщо рушій
     // їх знає (старі збірки нарізають і без них), а без `--export-3mf` — одразу в сумісному режимі.
     for flag in ["--slice", "--outputdir", "--load-settings", "--load-filaments"] {
@@ -509,6 +512,7 @@ pub fn slice_with_engine_cancellable(
 
     let selection = &request.selection;
     let overrides = &request.overrides;
+    let flatten_span = paths::profile::Span::new("slice::flatten");
     let mut machine = store.flatten(Kind::Machine, &selection.machine)?;
     machine.extend(overrides.machine.clone());
     let mut process = store.flatten(Kind::Process, &selection.process)?;
@@ -523,11 +527,13 @@ pub fn slice_with_engine_cancellable(
     let mut project_settings = machine.clone();
     project_settings.extend(process.clone());
     project_settings.extend(filament.clone());
+    drop(flatten_span);
     // Конфіг проєкту в 3MF рушій бере за основу, а `--load-settings` лише перекриває ключі, що
     // є в наших JSON. Тому копію 3MF для нарізки виправляємо (файл користувача не змінюється):
     // OrcaSlicer ≤ 2.3 відкидає нулі «філамент для елемента» з Bambu Studio (код −18), а
     // проєкти, збережені Slicenv до виправлення розгортання `inherits`, несуть ключі від
     // батька чужого вендора, яких немає в пресетах (`use_relative_e_distances` = 0 → вага ×140).
+    let rewrite_span = paths::profile::Span::new("slice::rewrite_input");
     let request = if is_stl(&request.input) {
         request
     } else {
@@ -546,7 +552,9 @@ pub fn slice_with_engine_cancellable(
             }
         }
     };
+    drop(rewrite_span);
     let selection = &request.selection;
+    let write_span = paths::profile::Span::new("slice::write_configs");
     // Для `.gcode.3mf`, який у сумісному режимі збирає Slicenv: модель принтера й кольори.
     let package_meta = crate::safe_mode::PackageMeta {
         printer_model_id: store.machine_model_id(&selection.machine).unwrap_or_default(),
@@ -572,6 +580,7 @@ pub fn slice_with_engine_cancellable(
             "selection": { "machine": selection.machine, "process": selection.process, "filament": selection.filament, "bed_type": selection.bed_type },
         }))?,
     )?;
+    drop(write_span);
 
     // Сумісний режим (див. `safe_mode`): після аварії рушія — безпечніша стадія; досягнута
     // стадія запам’ятовується для цього рушія, щоб наступна нарізка не падала знову.
@@ -719,6 +728,7 @@ impl SliceAttempt<'_> {
             if no_check {
                 args.insert(0, "--no-check".into());
             }
+            let _s = paths::profile::Span::new("slice::engine_process");
             let status = cancellation
                 .run(
                     crate::engine::engine_command(&binary)
@@ -806,6 +816,7 @@ impl SliceAttempt<'_> {
             .into());
         }
 
+        let _read_span = paths::profile::Span::new("slice::read_result");
         let result_plate = result
             .as_ref()
             .and_then(|r| r.get("sliced_plates"))
