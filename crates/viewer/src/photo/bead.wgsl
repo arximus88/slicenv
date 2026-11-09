@@ -45,6 +45,8 @@ const MAX_MATERIALS: u32 = 32u;
 // у справжньому друці (більше k — ще мілкіше, але більше перемальовок). Верх лишається на
 // висоті сопла, низ заходить у шар нижче. CPU-дзеркало — `photo/bead.rs::BEAD_OVERLAP`.
 const BEAD_OVERLAP: f32 = 1.35;
+// Період довжини нитки в `Bead::material.z`, мм (`ALONG_PERIOD` у photo/bead.rs).
+const ALONG_PERIOD: f32 = 64.0;
 
 fn seg_f(base: u32, i: u32) -> f32 {
     return bitcast<f32>(segments[base + i]);
@@ -72,8 +74,9 @@ struct Bead {
     cut_b: vec4<f32>,
     // Середній шлях променя ока крізь злитий переріз валика, мм (товщина прозорого).
     chord: f32,
-    // x — слот філаменту, y — прапорці (`FLAG_*`, зокрема `FLAG_WALL`).
-    material: vec2<u32>,
+    // x — слот філаменту, y — прапорці (`FLAG_*`, зокрема `FLAG_WALL`), z — довжина нитки до
+    // початку сегмента, 16 біт за модулем `ALONG_PERIOD` (photo/bead.rs, `encode`).
+    material: vec3<u32>,
 }
 
 // `eye.w` = 0: перспективне око в точці eye.xyz; 1 — ортогональна камера, eye.xyz — напрямок
@@ -91,7 +94,7 @@ fn bead_vertex(vertex: u32, view_proj: mat4x4<f32>, eye: vec4<f32>, view: vec4<u
     let side_from = unpack2x16snorm(segments[base + 8u]) * 2.0;
     let side_to = unpack2x16snorm(segments[base + 9u]) * 2.0;
     let wall = select(0u, FLAG_WALL, (caps & 4u) != 0u);
-    out.material = vec2<u32>(packed & 0xffu, ((packed >> 8u) & 0xffu) | wall);
+    out.material = vec3<u32>(packed & 0xffu, ((packed >> 8u) & 0xffu) | wall, packed >> 16u);
 
     let clear = ((pick.y >> min(out.material.x, MAX_MATERIALS - 1u)) & 1u) == 1u;
     let skipped = (pick.x == BEADS_OPAQUE && clear) || (pick.x == BEADS_CLEAR && !clear);

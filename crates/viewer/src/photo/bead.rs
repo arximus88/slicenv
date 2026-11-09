@@ -3,7 +3,8 @@
 //!
 //! Інстанс той самий, що у звичайному Preview (`ToolpathInstance`, 44 байти на GPU), тож
 //! працюють той самий буфер шматками, LOD і повзунки. Відрізняється лише вміст кольору:
-//! байт R — номер слота філаменту, байт G — прапорці [`FLAG_SUPPORT`], [`FLAG_SEAM`].
+//! байт R — номер слота філаменту, байт G — прапорці [`FLAG_SUPPORT`], [`FLAG_SEAM`],
+//! байти B і A — довжина нитки до початку сегмента ([`ALONG_PERIOD`]).
 
 use glam::Vec3;
 
@@ -14,9 +15,22 @@ pub const FLAG_SUPPORT: u32 = 1;
 /// Шов зовнішньої стінки: короткий валик-«горбик» тим самим матеріалом.
 pub const FLAG_SEAM: u32 = 2;
 
-/// Колір інстансу «Фото»: слот і прапорці в байтах unorm8 (див. `GpuInstance::pack`).
-pub fn encode(slot: u8, flags: u32) -> [f32; 4] {
-    [f32::from(slot) / 255.0, flags as f32 / 255.0, 0.0, 1.0]
+/// Довжина нитки (сума довжин ліній екструзії від початку друку) зберігається за модулем
+/// цього періоду, мм, з кроком `ALONG_PERIOD / 65536` (≈ 0.001 мм): візерунок, що сидить у
+/// нитці (вкраплення Marble), неперервний уздовж лінії через стики сегментів. Розрив — раз
+/// на 64 мм нитки.
+pub const ALONG_PERIOD: f32 = 64.0;
+
+/// Колір інстансу «Фото»: слот і прапорці в байтах unorm8 (див. `GpuInstance::pack`), у
+/// байтах B і A — довжина нитки `along` до початку сегмента (16 біт, [`ALONG_PERIOD`]).
+pub fn encode(slot: u8, flags: u32, along: f32) -> [f32; 4] {
+    let q = ((along.rem_euclid(ALONG_PERIOD) / ALONG_PERIOD * 65536.0) as u32).min(65535);
+    [
+        f32::from(slot) / 255.0,
+        flags as f32 / 255.0,
+        (q & 0xff) as f32 / 255.0,
+        (q >> 8) as f32 / 255.0,
+    ]
 }
 
 /// Зворотне до [`encode`]: (слот, прапорці).
@@ -72,6 +86,8 @@ pub fn instances(toolpath: &gcode::Toolpath) -> PhotoInstances {
         .peekable();
     // Слот останньої лінії екструзії: шов належить філаменту стінки, яку він замикає.
     let mut last_slot = 0u8;
+    // Довжина нитки від початку друку (f64: на великих друках — кілометри).
+    let mut along = 0f64;
     for layer in &toolpath.layers {
         let start_inst = out.instances.len() as u32;
         let start_travel = out.travel_vertices.len() as u32;
@@ -82,11 +98,13 @@ pub fn instances(toolpath: &gcode::Toolpath) -> PhotoInstances {
             } else if seg.is_extrusion {
                 let flags = if is_support(seg.role) { FLAG_SUPPORT } else { 0 };
                 last_slot = seg.tool;
+                let start = (along % f64::from(ALONG_PERIOD)) as f32;
+                along += f64::from(seg.length());
                 out.instances.push(
                     ToolpathInstance::new(
                         seg.from,
                         seg.to,
-                        encode(seg.tool, flags),
+                        encode(seg.tool, flags, start),
                         seg.width,
                         seg.height,
                     )
@@ -112,7 +130,7 @@ pub fn instances(toolpath: &gcode::Toolpath) -> PhotoInstances {
                 let mut seam = ToolpathInstance::new(
                     center,
                     center,
-                    encode(last_slot, FLAG_SEAM),
+                    encode(last_slot, FLAG_SEAM, 0.0),
                     m.width.max(0.2) * 1.12,
                     m.height.max(0.08) * 1.08,
                 );
@@ -221,7 +239,7 @@ mod tests {
         let inst = ToolpathInstance::new(
             Vec3::new(10.0, 5.0, 0.4),
             Vec3::new(20.0, 5.0, 0.4),
-            encode(0, 0),
+            encode(0, 0, 0.0),
             0.42,
             0.2,
         );
@@ -324,11 +342,37 @@ mod tests {
     #[test]
     fn encode_roundtrips_through_gpu_packing() {
         for (slot, flags) in [(0u8, 0u32), (3, FLAG_SUPPORT), (31, FLAG_SEAM | FLAG_SUPPORT)] {
-            let i = ToolpathInstance::new(Vec3::ZERO, Vec3::X, encode(slot, flags), 0.4, 0.2);
+            let i = ToolpathInstance::new(Vec3::ZERO, Vec3::X, encode(slot, flags, 0.0), 0.4, 0.2);
             let packed = crate::toolpath::GpuInstance::pack(&i);
             assert_eq!(packed.color & 0xff, u32::from(slot));
             assert_eq!((packed.color >> 8) & 0xff, flags);
             assert_eq!(decode(i.color), (slot, flags));
+        }
+    }
+
+    #[test]
+    fn along_is_filament_length_continuous_across_segments() {
+        // Байти B і A — довжина нитки до початку сегмента (за модулем ALONG_PERIOD).
+        let along = |i: &ToolpathInstance| {
+            let p = crate::toolpath::GpuInstance::pack(i);
+            (p.color >> 16) as f32 * ALONG_PERIOD / 65536.0
+        };
+        let i = ToolpathInstance::new(Vec3::ZERO, Vec3::X, encode(2, FLAG_SUPPORT, 12.345), 0.4, 0.2);
+        assert!((along(&i) - 12.345).abs() < 2e-3, "{}", along(&i));
+        assert_eq!(decode(i.color), (2, FLAG_SUPPORT));
+        assert!((along(&ToolpathInstance::new(Vec3::ZERO, Vec3::X, encode(0, 0, ALONG_PERIOD + 1.5), 0.4, 0.2)) - 1.5).abs() < 2e-3);
+
+        let t = parse(concat!(
+            "; CHANGE_LAYER\n; Z_HEIGHT: 0.2\n; LAYER_HEIGHT: 0.2\nG1 Z0.2\n",
+            "; FEATURE: Outer wall\n; LINE_WIDTH: 0.42\n",
+            "G1 X10 E1\nG1 Y10 E2\nG1 X0 E3\n",
+        ));
+        let walls: Vec<_> = instances(&t).instances.into_iter().filter(|i| decode(i.color).1 == 0).collect();
+        assert_eq!(walls.len(), 3);
+        // Кожен наступний сегмент починається там, де закінчилась нитка попереднього.
+        for w in walls.windows(2) {
+            let len = (Vec3::from(w[0].to) - Vec3::from(w[0].from)).length();
+            assert!((along(&w[1]) - (along(&w[0]) + len).rem_euclid(ALONG_PERIOD)).abs() < 2e-3);
         }
     }
 }
