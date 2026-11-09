@@ -1104,17 +1104,43 @@ impl Renderer {
                     // Як напис Bambu: вертикально вздовж лівого краю, згори вниз.
                     let [(min, max), _] = bed::bambu_decal_rects(hi2 - lo2);
                     // Свій шрифт ширший за вузький шрифт Bambu: напис трохи вищий.
-                    let width = (max.x - min.x) * 1.3;
-                    let length = (width * aspect).min(max.y - min.y);
-                    let top = lo2.y + max.y;
-                    under.push(bed::Quad {
-                        key: bed::Key::Text(label.clone()),
-                        min: Vec2::new(lo2.x + min.x, top - length) + shift,
-                        max: Vec2::new(lo2.x + min.x + width, top) + shift,
-                        z: 0.02,
-                        color: bed::srgb([0.81, 0.82, 0.83]),
-                        rotate: true,
-                    });
+                    let mut width = (max.x - min.x) * 1.3;
+                    let mut length = (width * aspect).min(max.y - min.y);
+                    let mut top = lo2.y + max.y;
+                    let x0 = lo2.x + min.x;
+                    // Логотип профілю (`bbl-3dp-logo.svg`) має свій вертикальний «Bambu Lab»
+                    // у тому самому куті: підпис іде нижче нього, а забракне місця — менший.
+                    if images_ok(0)
+                        && let Some(mask) = self.decals.logo_mask()
+                    {
+                        match mask.free_span(
+                            (body_lo.truncate(), body_hi.truncate()),
+                            (x0, x0 + width),
+                            (lo2.y + min.y, top),
+                            length,
+                            2.,
+                        ) {
+                            Some((bottom, free_top)) => {
+                                let room = free_top - bottom;
+                                if room < length {
+                                    width *= room / length;
+                                    length = room;
+                                }
+                                top = free_top;
+                            }
+                            None => length = 0.,
+                        }
+                    }
+                    if length > 1. {
+                        under.push(bed::Quad {
+                            key: bed::Key::Text(label.clone()),
+                            min: Vec2::new(x0, top - length) + shift,
+                            max: Vec2::new(x0 + width, top) + shift,
+                            z: 0.02,
+                            color: bed::srgb([0.81, 0.82, 0.83]),
+                            rotate: true,
+                        });
+                    }
                 }
             } else {
                 plates.extend(plate_vertices(a.to_array(), b.to_array(), bed::srgb(palette.plate)));

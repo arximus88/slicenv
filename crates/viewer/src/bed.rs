@@ -182,6 +182,105 @@ pub fn bambu_decal_rects(bed: Vec2) -> [(Vec2, Vec2); 2] {
     [(left, left + left_size), (bottom, bottom + bottom_size)]
 }
 
+/// Груба маска непрозорих місць зображення: де на логотипі вже щось намальовано.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Mask {
+    width: usize,
+    height: usize,
+    cells: Vec<bool>,
+}
+
+impl Mask {
+    /// Клітинка зайнята, коли в ній є хоч один помітний піксель (альфа > 24).
+    fn from_rgba(width: u32, height: u32, pixels: &[u8], cells: usize) -> Self {
+        let (w, h) = (width as usize, height as usize);
+        let (cw, ch) = (cells.min(w).max(1), cells.min(h).max(1));
+        let mut out = vec![false; cw * ch];
+        for (i, px) in pixels.chunks_exact(4).enumerate() {
+            if px[3] > 24 {
+                let (x, y) = (i % w, i / w);
+                out[(y * ch / h) * cw + x * cw / w] = true;
+            }
+        }
+        Self {
+            width: cw,
+            height: ch,
+            cells: out,
+        }
+    }
+
+    /// Чи зайнята точка; `uv` — як у текстури (v = 0 — верхній край).
+    fn at(&self, u: f32, v: f32) -> bool {
+        if !(0.0..1.0).contains(&u) || !(0.0..1.0).contains(&v) {
+            return false;
+        }
+        let (x, y) = (
+            (u * self.width as f32) as usize,
+            (v * self.height as f32) as usize,
+        );
+        self.cells[y * self.width + x]
+    }
+
+    /// Найвищий вільний від логотипа відрізок `y` колонки `x0..x1` у межах `y0..y1`
+    /// довжиною щонайменше `want` мм; немає такого — найдовший. Логотип натягнуто на
+    /// рамку `body` (верх зображення — max y). Повертає (низ, верх) з відступом `gap`.
+    pub fn free_span(
+        &self,
+        body: (Vec2, Vec2),
+        (x0, x1): (f32, f32),
+        (y0, y1): (f32, f32),
+        want: f32,
+        gap: f32,
+    ) -> Option<(f32, f32)> {
+        const STEP: f32 = 0.5;
+        let size = body.1 - body.0;
+        if size.x <= 0. || size.y <= 0. || x1 <= x0 || y1 <= y0 {
+            return None;
+        }
+        // Колонку беремо з запасом `gap` з боків, щоб текст не торкався логотипа.
+        let busy = |y: f32| {
+            let v = (body.1.y - y) / size.y;
+            let mut x = x0 - gap;
+            while x <= x1 + gap {
+                if self.at((x - body.0.x) / size.x, v) {
+                    return true;
+                }
+                x += STEP;
+            }
+            false
+        };
+        let mut spans: Vec<(f32, f32)> = Vec::new();
+        let mut top: Option<f32> = None;
+        let mut y = y1;
+        loop {
+            let end = y < y0;
+            let y_c = y.max(y0);
+            if end || busy(y_c) {
+                if let Some(t) = top.take() {
+                    // Відступ від логотипа зверху (якщо відрізок не починається з краю
+                    // колонки) і знизу.
+                    let t = if t < y1 { t - gap } else { t };
+                    let b = if end { y0 } else { y_c + gap };
+                    if t > b {
+                        spans.push((b, t));
+                    }
+                }
+                if end {
+                    break;
+                }
+            } else if top.is_none() {
+                top = Some(y_c);
+            }
+            y -= STEP;
+        }
+        spans
+            .iter()
+            .copied()
+            .find(|(b, t)| t - b >= want)
+            .or_else(|| spans.iter().copied().max_by(|a, b| (a.1 - a.0).total_cmp(&(b.1 - b.0))))
+    }
+}
+
 // ---- текстури ----
 
 const FONT: &[u8] = include_bytes!("../../app/assets/fonts/IBMPlexSans-SemiBold.ttf");
@@ -315,6 +414,8 @@ pub(super) struct Decals {
     sampler: wgpu::Sampler,
     /// Текстури столу з профілю (логотип і написи) — за індексом у `BedAssets`.
     bed: Vec<Texture>,
+    /// Де на логотипі щось намальовано — щоб власний підпис не ліг поверх.
+    logo_mask: Option<Mask>,
     /// Текстури тексту за рядком; олівець — під ключем "\u{0}pencil".
     text: HashMap<String, Texture>,
     /// Що малювати: (текстура, вершини) — під сіткою (стіл) і над нею (підписи).
@@ -376,6 +477,7 @@ impl Decals {
             layout,
             sampler,
             bed: Vec::new(),
+            logo_mask: None,
             text: HashMap::new(),
             under_grid: Vec::new(),
             over_grid: Vec::new(),
@@ -516,12 +618,16 @@ impl Decals {
         images: &[&BedImage],
     ) -> Vec<bool> {
         self.bed.clear();
+        self.logo_mask = None;
         let mut ok = Vec::new();
         for (i, image) in images.iter().enumerate() {
             // Логотип (перший) накриває весь стіл — більша роздільність.
             let limit = if i == 0 { 1536 } else { 1024 };
             match rasterize(image, limit) {
                 Some(pixels) => {
+                    if i == 0 {
+                        self.logo_mask = Some(Mask::from_rgba(pixels.0, pixels.1, &pixels.2, 256));
+                    }
                     let texture = self.upload(device, queue, pixels);
                     self.bed.push(texture);
                     ok.push(true);
@@ -535,6 +641,11 @@ impl Decals {
             }
         }
         ok
+    }
+
+    /// Маска логотипа (`None` — логотипа немає або він не прочитався).
+    pub(super) fn logo_mask(&self) -> Option<&Mask> {
+        self.logo_mask.as_ref()
     }
 
     /// Пропорція тексту (ширина / висота), растеризує за потреби.
@@ -735,6 +846,32 @@ mod tests {
         assert_eq!(bottom.0, Vec2::new(74., -10.));
         let [mini, _] = bambu_decal_rects(Vec2::splat(180.));
         assert_eq!(mini.0, Vec2::new(10., 35.));
+    }
+
+    #[test]
+    fn free_span_skips_logo_in_label_column() {
+        // Логотип 100×100 на рамці 0..100: зайнято верхню чверть лівої колонки (як «Bambu
+        // Lab» у `bbl-3dp-logo.svg`) і нижню смугу.
+        let mut px = vec![0u8; 100 * 100 * 4];
+        for y in 0..100 {
+            for x in 0..100 {
+                if (x < 20 && (5..25).contains(&y)) || y > 95 {
+                    px[(y * 100 + x) * 4 + 3] = 255;
+                }
+            }
+        }
+        let mask = Mask::from_rgba(100, 100, &px, 100);
+        let body = (Vec2::ZERO, Vec2::splat(100.));
+        // Колонка x 5..10, підпис хоче 40 мм униз від y = 98.
+        let (b, t) = mask.free_span(body, (5., 10.), (10., 98.), 40., 2.).unwrap();
+        assert!(t <= 75. - 2. + 0.01 && t > 70., "верх {t}");
+        assert!(t - b >= 40., "{b}..{t}");
+        // Колонка правіше логотипа вільна від самого верху.
+        let (_, t) = mask.free_span(body, (40., 45.), (10., 90.), 40., 2.).unwrap();
+        assert_eq!(t, 90.);
+        // Порожня маска — уся колонка.
+        let empty = Mask::from_rgba(10, 10, &[0; 400], 10);
+        assert_eq!(empty.free_span(body, (5., 10.), (10., 90.), 40., 2.), Some((10., 90.)));
     }
 
     #[test]
