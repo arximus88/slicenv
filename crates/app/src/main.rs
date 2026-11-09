@@ -22,6 +22,7 @@ mod navigation;
 mod objects;
 mod orient;
 mod plate_controls;
+mod plate_strip;
 mod packages;
 mod panel_cache;
 mod pattern_icons;

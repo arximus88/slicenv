@@ -60,6 +60,7 @@ impl Page {
 }
 
 /// Результат останньої нарізки. «Іде нарізка» — це `jobs.is_running(JobKind::Slice)`.
+#[derive(Clone)]
 pub enum SliceState {
     Idle,
     Done(SliceOutput),
@@ -142,6 +143,8 @@ pub struct Workspace {
     /// Ревізія входу нарізки: зростає з кожною зміною, після якої G-code застарілий
     /// (значення редакторів, профілі, конфіг об’єктів, пластина, геометрія).
     pub slice_revision: u64,
+    /// Нарізки кожної пластини, черга «Нарізати всі», мініатюри (`plate_strip`).
+    pub(crate) plate_slicing: crate::plate_strip::PlateSlicing,
 
     pub preview: Option<Preview>,
     pub cloud: CloudState,
@@ -373,6 +376,7 @@ impl Workspace {
             machine_editor: None,
             slice_state: SliceState::Idle,
             slice_revision: 0,
+            plate_slicing: Default::default(),
             preview: None,
             cloud: CloudState::default(),
             modal: None,
@@ -470,7 +474,14 @@ impl Workspace {
         self.finish_scene_gesture();
         self.cancel_navigation();
         self.scene_menu = None;
+        let previous = self.page;
         self.page = page;
+        // «Перегляд» малює активну пластину в початку координат (див. `solo_plate`): камера
+        // переходить разом з нею, щоб на обох сторінках дивитися на ту саму пластину.
+        if previous == Page::Preview && page != Page::Preview {
+            let number = self.plates.get(self.active_plate).map_or(0, |p| p.number);
+            self.camera.target += self.plate_offset(number);
+        }
         self.drag_from = None;
         self.panning = None;
         self.moving = None;
@@ -511,7 +522,19 @@ impl Workspace {
         self.refresh_modifiers();
         self.update_highlight();
         if page == Page::Preview {
+            // Пластина вже нарізана (зокрема чергою «Нарізати всі»): показуємо її G-code.
+            if self.preview.is_none()
+                && !self.jobs.is_running(JobKind::GcodePreview)
+                && let Some(number) = self.plate_to_slice()
+                && self.plate_status(number) == crate::plate_strip::PlateStatus::Sliced
+                && let Some(gcode) = self.plate_gcode(number)
+            {
+                self.load_preview(gcode, false, cx);
+            }
             self.apply_preview_view(cx);
+            if previous != Page::Preview {
+                self.frame_active_plate();
+            }
         }
         self.dirty = true;
     }
@@ -628,7 +651,7 @@ impl Workspace {
         // Проєкт не замінюється, тож і питати про незбережені зміни не треба: confirm_discard
         // скинув би `edited`, а зміни лишились би в пам’яті без захисту.
         if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gcode")) {
-            self.load_preview(path, window, cx);
+            self.load_preview(path, true, cx);
             return;
         }
         let retry = path.clone();
@@ -734,12 +757,17 @@ impl Workspace {
             return;
         }
         if self.active_plate != index {
-            self.invalidate_geometry();
+            // Геометрія не змінилась: нарізки пластин лишаються чинними, а нарізка іншої
+            // пластини (зокрема черга «Нарізати всі») триває.
+            self.reset_geometry_caches();
+            self.rebuild_instance_bounds();
             self.preview = None;
-            self.cancel_slice();
+            self.slice_revision = self.slice_revision.wrapping_add(1);
+            self.jobs.cancel(JobKind::GcodePreview);
         }
         let initial = self.active_plate >= self.plates.len();
         self.active_plate = index;
+        self.restore_slice_state();
         self.sync_plate_scene();
         if initial {
             self.fit_all_plates();
@@ -932,19 +960,41 @@ impl Workspace {
         (number > 0).then_some(number)
     }
 
-    pub fn start_slice(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
-        let _span = paths::profile::Span::new("slice::ui_snapshot");
-        let (Some(store), Some(plate)) = (self.presets.clone(), self.plate_to_slice()) else {
+    /// Нарізати показану пластину (окрема нарізка зупиняє чергу «Нарізати всі»).
+    pub fn start_slice(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(plate) = self.plate_to_slice() else {
             return;
+        };
+        self.stop_slice();
+        self.start_plate_slice(plate, window, cx);
+    }
+
+    /// Нарізати пластину `plate` (не обов’язково показану); `false` — не запустилась.
+    pub(crate) fn start_plate_slice(&mut self, plate: u32, _window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let _span = paths::profile::Span::new("slice::ui_snapshot");
+        let Some(store) = self.presets.clone() else {
+            return false;
         };
         let Some(engine) = self.engine.clone().filter(|_| !self.engine_loading) else {
-            return;
+            return false;
         };
-        self.cancel_slice();
-        self.slice_exhausted = false;
-        self.slice_fallback = None;
-        // Знімок після скасування попередньої: ревізії документа, рушія й входу нарізки.
-        let target = self.job_target().geometry().settings().active_plate();
+        // Рушій спільний з MCP-сесіями: їхня нарізка поступається.
+        self.jobs.cancel(JobKind::McpSlice);
+        slicer::cancel_active_slice();
+        let active = self.plate_to_slice() == Some(plate);
+        if active {
+            self.slice_exhausted = false;
+            self.slice_fallback = None;
+            self.slice_state = SliceState::Idle;
+        }
+        // Від чого залежить результат: зміна будь-чого з цього зупиняє нарізку (`stop_slice`),
+        // а збережений результат порівнюється з поточним штампом.
+        let stamp = self.slice_stamp(plate);
+        let target = if self.project.is_some() {
+            self.job_target().plate_exists(plate)
+        } else {
+            self.job_target()
+        };
         let mut snapshot = crate::objects::SliceInput {
             // Стіл — поточного принтера: від нього Bambu рахує крок пластин у файлі.
             project: self.project.clone().map(|p| self.project_for_write(p)),
@@ -1009,7 +1059,11 @@ impl Workspace {
                 }
                 Ok::<_, anyhow::Error>(output)
             },
-            move |this, result, window, cx| match result {
+            move |this, result, window, cx| {
+                this.set_slicing_plate(None);
+                let active = this.plate_to_slice() == Some(plate);
+                let batch = this.slice_batch_running();
+                match result {
                 Ok(out) => {
                     if let Some(note) = out.compatibility_note {
                         this.toast(ToastKind::Info, crate::i18n::tr(note), cx);
@@ -1022,26 +1076,36 @@ impl Workspace {
                         );
                     }
                     let minutes = out.print_time.as_secs() / 60;
-                    this.toast(
-                        ToastKind::Success,
-                        crate::tr_format!(
-                            "Пластина {plate} нарізана: {} год {:02} хв, {:.1} г",
-                            minutes / 60,
-                            minutes % 60,
-                            out.filament_grams
-                        ),
-                        cx,
-                    );
+                    if !batch {
+                        this.toast(
+                            ToastKind::Success,
+                            crate::tr_format!(
+                                "Пластина {plate} нарізана: {} год {:02} хв, {:.1} г",
+                                minutes / 60,
+                                minutes % 60,
+                                out.filament_grams
+                            ),
+                            cx,
+                        );
+                    }
                     let gcode = out.gcode_3mf.with_file_name(format!("plate_{plate}.gcode"));
-                    this.slice_state = SliceState::Done(out);
-                    this.load_preview(gcode, window, cx);
+                    this.record_plate_slice(plate, SliceState::Done(out.clone()), false, stamp);
+                    if active {
+                        this.slice_state = SliceState::Done(out);
+                        // Окрема нарізка відкриває «Перегляд»; черга — лише якщо він уже відкритий.
+                        let open = !batch || this.page == Page::Preview;
+                        this.load_preview(gcode, open, cx);
+                    }
                 }
-                Err(err) if err.is::<slicer::Cancelled>() => this.slice_state = SliceState::Idle,
+                Err(err) if err.is::<slicer::Cancelled>() => {
+                    this.restore_slice_state();
+                    return;
+                }
                 Err(err) => {
                     let failure = err.downcast_ref::<slicer::SliceFailure>().cloned().map(std::sync::Arc::new);
                     // Аварія на всіх стадіях (зараз або вже запам’ятована для цього рушія):
                     // головна дія — інший рушій, а не повтор тим самим.
-                    this.slice_exhausted = failure.as_ref().is_some_and(|f| {
+                    let exhausted = failure.as_ref().is_some_and(|f| {
                         f.safe_mode_exhausted
                             || (f.crashed
                                 && this
@@ -1049,12 +1113,23 @@ impl Workspace {
                                     .as_deref()
                                     .is_some_and(|id| slicer::engine_compat(id).crashes_in_safe_mode))
                     });
-                    this.slice_fallback = if this.slice_exhausted { this.crash_fallback() } else { None };
-                    this.slice_state = SliceState::Failed(format!("{err:#}").into(), failure);
+                    let state = SliceState::Failed(format!("{err:#}").into(), failure);
+                    this.record_plate_slice(plate, state.clone(), exhausted, stamp);
+                    if active {
+                        this.slice_exhausted = exhausted;
+                        this.slice_fallback = if exhausted { this.crash_fallback() } else { None };
+                        this.slice_state = state;
+                    }
                 }
+                }
+                this.continue_slice_queue(window, cx);
             },
             cx,
         );
+        let started = job.is_some();
+        if started {
+            self.set_slicing_plate(Some(plate));
+        }
         if let Some(job) = job {
             self.jobs
                 .set_label(job, crate::tr_format!("Нарізаю пластину {}…", plate));
@@ -1065,6 +1140,7 @@ impl Workspace {
             // Скасування вбиває процес рушія й чекає на нього (kill + wait).
             self.jobs.on_cancel(job, move || token.cancel());
         }
+        started
     }
 
     /// Текст рядка стану для запущених задач (нарізка, орієнтація, плавці…).
@@ -1078,16 +1154,25 @@ impl Workspace {
         self.jobs.is_running(JobKind::Slice)
     }
 
-    /// Усе, що робить G-code застарілим: скасовує нарізку (GUI і MCP) та завантаження
-    /// прев’ю й підвищує ревізію входу нарізки, тож запізнілі результати відкидаються.
+    /// Змінився вхід нарізки, спільний для всіх пластин (профілі, значення редакторів,
+    /// рушій): нарізки всіх пластин застаріли, нарізка й черга зупиняються.
     pub(crate) fn cancel_slice(&mut self) {
+        self.bump_slice_settings();
+        self.stop_slice();
+    }
+
+    /// Зупиняє нарізку (GUI і MCP), чергу «Нарізати всі» й завантаження прев’ю та підвищує
+    /// ревізію входу нарізки, тож запізнілі результати відкидаються. Готові нарізки інших
+    /// пластин лишаються чинними.
+    pub(crate) fn stop_slice(&mut self) {
+        self.clear_slice_queue();
         self.slice_revision = self.slice_revision.wrapping_add(1);
         for kind in [JobKind::Slice, JobKind::McpSlice, JobKind::GcodePreview] {
             self.jobs.cancel(kind);
         }
         // Рушій спільний для GUI і MCP-сесій поза цим вікном.
         slicer::cancel_active_slice();
-        self.slice_state = SliceState::Idle;
+        self.restore_slice_state();
     }
 
     // ---- оболонка ----
@@ -1290,7 +1375,7 @@ impl Workspace {
                     .when(running || self.can_slice(), |d| {
                         d.on_click(cx.listener(|this, _, window, cx| {
                             if this.slicing() {
-                                this.cancel_slice();
+                                this.stop_slice();
                                 cx.notify();
                             } else {
                                 this.start_slice(window, cx);
@@ -1532,7 +1617,7 @@ impl Render for Workspace {
                 .capture_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, window, cx| {
                     if event.keystroke.key == "escape" {
                         if this.slicing() {
-                            this.cancel_slice();
+                            this.stop_slice();
                             cx.notify();
                             cx.stop_propagation();
                         } else if this.scrub.is_some() {
@@ -1598,7 +1683,7 @@ impl Render for Workspace {
                 )
                 .on_action(cx.listener(|this, _: &crate::UndoProject, window, cx| {
                     if this.slicing() {
-                        this.cancel_slice();
+                        this.stop_slice();
                         cx.notify();
                     } else if this.scrub.is_some() {
                         this.scrub_end(true, window, cx);

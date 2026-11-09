@@ -612,7 +612,14 @@ impl Workspace {
     /// Як `invalidate_geometry`, але без точних рамок: під час живого жесту (Move/Rotate/
     /// Scale) рамка вибраного береться з кутів стартової, точні — після відпускання.
     pub fn invalidate_geometry_live(&mut self) {
-        self.cancel_slice();
+        // Нарізки інших пластин чинні: їхній вміст звіряється відбитком (`plate_strip`).
+        self.note_plate_edit();
+        self.stop_slice();
+        self.reset_geometry_caches();
+    }
+
+    /// Кеші, що залежать від геометрії сцени, без зупинки нарізки (зміна показаної пластини).
+    pub(crate) fn reset_geometry_caches(&mut self) {
         self.geometry_revision = self.geometry_revision.wrapping_add(1);
         self.invalidate_plate_bounds();
         self.jobs.cancel(JobKind::BooleanPreview);

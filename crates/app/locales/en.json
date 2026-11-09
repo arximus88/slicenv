@@ -1582,5 +1582,19 @@
   "Файл на принтері: {name}": "File on the printer: {name}",
   "Надіслати на Klipper": "Send to Klipper",
   "Профіль «{machine}» — для принтера Bambu Lab. G-code з нього може не підійти для Klipper: виберіть профіль свого принтера.": "Profile “{machine}” is for a Bambu Lab printer. Its G-code may not suit Klipper: choose your printer's profile.",
-  "Klipper зараз не готовий ({state}): друк не почнеться, але файл можна завантажити.": "Klipper is not ready right now ({state}): printing won't start, but you can upload the file."
+  "Klipper зараз не готовий ({state}): друк не почнеться, але файл можна завантажити.": "Klipper is not ready right now ({state}): printing won't start, but you can upload the file.",
+  "Усі пластини вже нарізано": "All plates are already sliced",
+  "Нарізано пластин: {}": "Plates sliced: {}",
+  "Нарізано пластин: {} з {}": "Plates sliced: {} of {}",
+  "Не нарізано": "Not sliced",
+  "У черзі на нарізку": "Queued for slicing",
+  "Нарізається: {} %": "Slicing: {} %",
+  "Нарізається…": "Slicing…",
+  "Нарізано": "Sliced",
+  "Нарізка застаріла": "Slice is outdated",
+  "Скасувати нарізку всіх пластин": "Cancel slicing all plates",
+  "Нарізати всі пластини": "Slice all plates",
+  "Нарізати всі": "Slice all",
+  "Пластина {}: {}": "Plate {}: {}",
+  "Пластину або параметри змінено після нарізки — наріж її знову.": "The plate or settings changed after slicing — slice it again."
 }

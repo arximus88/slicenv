@@ -100,6 +100,22 @@ impl Workspace {
         )
     }
 
+    /// Пластина, яку сцена показує одну: «Перегляд» малює лише активну, у початку координат —
+    /// там само, де стіл і траєкторія після нарізки. `None` — усі пластини («Підготовка»).
+    pub fn solo_plate(&self) -> Option<u32> {
+        (self.page == crate::workspace::Page::Preview)
+            .then(|| self.plates.get(self.active_plate).map_or(0, |p| p.number))
+    }
+
+    /// Зсув пластини на сцені: на «Перегляді» єдина пластина стоїть у початку координат.
+    pub fn scene_offset(&self, number: u32) -> glam::Vec3 {
+        if self.solo_plate().is_some() {
+            glam::Vec3::ZERO
+        } else {
+            self.plate_offset(number)
+        }
+    }
+
     pub fn instance_offset(&self, key: project::InstanceRef) -> glam::Vec3 {
         self.project
             .as_ref()
@@ -215,6 +231,7 @@ impl Workspace {
             return;
         };
         let skip = self.boolean_plate();
+        let solo = self.solo_plate();
         let mut items = Vec::new();
         let mut used = std::collections::HashSet::new();
         let mut uploads = Vec::new();
@@ -223,10 +240,10 @@ impl Workspace {
         for object in &project.objects {
             for placement in &object.instances {
                 let number = placement.plate.unwrap_or(0);
-                if skip == Some(number) {
+                if skip == Some(number) || solo.is_some_and(|s| s != number) {
                     continue;
                 }
-                let offset = glam::DMat4::from_translation(self.plate_offset(number).as_dvec3());
+                let offset = glam::DMat4::from_translation(self.scene_offset(number).as_dvec3());
                 for volume in &object.volumes {
                     if volume.kind != project::VolumeKind::Part {
                         continue;
@@ -272,21 +289,27 @@ impl Workspace {
 
     pub fn sync_plate_scene(&mut self) {
         self.invalidate_plate_bounds();
-        let beds = self
+        // «Перегляд» — лише активна пластина: сусідні не малюються ні столом, ні силуетом.
+        let solo = self.solo_plate();
+        let shown: Vec<u32> = self
             .plates
             .iter()
-            .filter(|p| p.number > 0)
-            .map(|p| (p.number, self.plate_offset(p.number)))
+            .map(|p| p.number)
+            .filter(|n| solo.is_none_or(|s| s == *n))
+            .collect();
+        let beds = shown
+            .iter()
+            .filter(|n| **n > 0)
+            .map(|n| (*n, self.scene_offset(*n)))
             .collect();
         let active = self.plates.get(self.active_plate).map_or(1, |p| p.number);
-        self.renderer
-            .retain_scene_meshes(&self.plates.iter().map(|p| p.number).collect::<Vec<_>>());
+        self.renderer.retain_scene_meshes(&shown);
         self.renderer.set_scene_beds(Some(beds), active);
         // З проєктом сітки пластин порожні (частини — `sync_scene_items`); булеве прев’ю
         // й показ без проєкту лишаються однією сіткою на пластину.
         let boolean = self.boolean_plate();
-        for plate in &self.plates {
-            let offset = self.plate_offset(plate.number);
+        for plate in self.plates.iter().filter(|p| shown.contains(&p.number)) {
+            let offset = self.scene_offset(plate.number);
             let mesh = self
                 .boolean_mesh
                 .as_ref()
@@ -338,8 +361,12 @@ impl Workspace {
             }
             _ => {
                 let mut bounds: Option<(glam::Vec3, glam::Vec3)> = None;
+                let solo = self.solo_plate();
                 for (index, plate) in self.plates.iter().enumerate() {
-                    let offset = self.plate_offset(plate.number);
+                    if solo.is_some_and(|s| s != plate.number) {
+                        continue;
+                    }
+                    let offset = self.scene_offset(plate.number);
                     let bed = self.bed_bounds();
                     let mesh = self.plate_mesh_bounds(index);
                     let range = if plate.number > 0 {
@@ -374,18 +401,24 @@ impl Workspace {
     /// «Вписати»: активна пластина; готові ракурси охоплюють усі пластини.
     pub fn zoom_to_fit(&mut self) {
         if self.scene_shows_models() {
-            if let Some(plate) = self.plates.get(self.active_plate) {
-                let offset = self.plate_offset(plate.number);
-                let (a, b) = self.bed_bounds();
-                let lo = glam::Vec3::new(a[0] as f32, a[1] as f32, 0.);
-                let hi = glam::Vec3::new(b[0] as f32, b[1] as f32, 0.);
-                let (lo, hi) = self
-                    .plate_mesh_bounds(self.active_plate)
-                    .map_or((lo, hi), |(a, b)| (lo.min(a), hi.max(b)));
-                self.camera.frame_tight(lo + offset, hi + offset);
-            }
+            self.frame_active_plate();
         } else {
             self.camera.frame(self.scene_bounds());
+        }
+        self.dirty = true;
+    }
+
+    /// Кадр на стіл активної пластини разом з її моделями.
+    pub fn frame_active_plate(&mut self) {
+        if let Some(plate) = self.plates.get(self.active_plate) {
+            let offset = self.scene_offset(plate.number);
+            let (a, b) = self.bed_bounds();
+            let lo = glam::Vec3::new(a[0] as f32, a[1] as f32, 0.);
+            let hi = glam::Vec3::new(b[0] as f32, b[1] as f32, 0.);
+            let (lo, hi) = self
+                .plate_mesh_bounds(self.active_plate)
+                .map_or((lo, hi), |(a, b)| (lo.min(a), hi.max(b)));
+            self.camera.frame_tight(lo + offset, hi + offset);
         }
         self.dirty = true;
     }

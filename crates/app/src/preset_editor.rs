@@ -228,6 +228,13 @@ impl Workspace {
 
     /// Модель на «Підготовці» — кольору філаменту: з проєкту 3MF, інакше з пресету.
     pub fn sync_model_color(&mut self) {
+        let color = self.model_color();
+        self.renderer.set_model_color(color);
+        self.dirty = true;
+    }
+
+    /// Колір моделей: перший філамент проєкту, інакше активного пресета філаменту.
+    pub(crate) fn model_color(&self) -> [f32; 3] {
         fn first_hex(value: &serde_json::Value) -> Option<[f32; 3]> {
             let text = match value {
                 serde_json::Value::Array(items) => items.first()?.as_str()?,
@@ -254,9 +261,7 @@ impl Workspace {
                     .effective_value("filament_colour")
                     .and_then(first_hex)
             });
-        self.renderer
-            .set_model_color(color.unwrap_or([0.0, 0.682, 0.259]));
-        self.dirty = true;
+        color.unwrap_or([0.0, 0.682, 0.259])
     }
 
     pub(crate) fn commit_value(
