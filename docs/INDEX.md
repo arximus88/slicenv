@@ -44,6 +44,7 @@
 |---|---|
 | [LAN.md](LAN.md) | Bambu Lab у локальній мережі без плагіна: протоколи, TLS |
 | [CLOUD.md](CLOUD.md) | Bambu Cloud: плагін за згодою, сесії, вхід через браузер |
+| [KLIPPER.md](KLIPPER.md) | Принтери Klipper через Moonraker: додавання, стан, друк; перевірено лише проти емулятора |
 
 ## MCP
 

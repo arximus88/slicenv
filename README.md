@@ -40,6 +40,8 @@ Slicenv is an independent project. It is not affiliated with or endorsed by Bamb
   - **LAN mode:** discovery, status, camera and printing in pure Rust, without the Bambu plugin or an account ([docs/LAN.md](docs/LAN.md)).
   - **Bambu Connect:** one click hands the sliced file to the official Bambu Connect app.
   - **Bambu Cloud:** status, temperatures, print history and camera. You can sign in through the browser or reuse an existing Bambu Studio session. This works on Linux x86_64 and Windows x64 only, and needs Bambu Lab's closed-source network plugin. Slicenv does not ship the plugin; it downloads it only with your consent ([docs/CLOUD.md](docs/CLOUD.md)).
+- **Printer (Klipper)**
+  - **Moonraker:** add a Klipper printer by address (plus an API key if Moonraker requires one), see its status, temperatures and camera snapshots, pause, resume or cancel, and upload G-code with or without starting the print. So far this has been tested only against a Moonraker emulator, not on real hardware ([docs/KLIPPER.md](docs/KLIPPER.md)).
 - **Model library:** thumbnails for STL, 3MF, OBJ and G-code from folders you choose, with search and live updates.
 - **MCP for AI agents:** the `slicenv-mcp` stdio server, and an HTTP server built into the app that edits the open project live with shared undo ([docs/MCP.md](docs/MCP.md)).
 
