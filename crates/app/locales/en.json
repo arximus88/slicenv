@@ -1518,5 +1518,7 @@
   "Матовий (Matte)": "Matte",
   "Базовий PLA": "Basic PLA",
   "Нейлон (PA)": "Nylon (PA)",
-  "Тестовий A1 (фіктивний)": "Test A1 (demo)"
+  "Тестовий A1 (фіктивний)": "Test A1 (demo)",
+  "Параметри змінено — нарізка застаріла": "Settings changed — slice is outdated",
+  "Перерізати": "Re-slice"
 }

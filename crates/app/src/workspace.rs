@@ -283,8 +283,9 @@ impl Workspace {
                 this.selection.bed_type = value.to_string();
                 this.preview = None;
                 this.cancel_slice();
+                // Панель «Друк» є й на «Перегляді»: лишаємось там, сцена — знову моделі.
                 if this.page == Page::Preview {
-                    this.enter_page(Page::Prepare, cx);
+                    this.enter_page(Page::Preview, cx);
                 }
                 cx.notify();
             }),
@@ -876,7 +877,7 @@ impl Workspace {
             .set_bed_bounds(lo.map(|v| v as f32), hi.map(|v| v as f32));
         self.preview = None;
         if self.page == Page::Preview {
-            self.enter_page(Page::Prepare, cx);
+            self.enter_page(Page::Preview, cx);
         }
         self.sync_plate_scene();
         self.dirty = true;
@@ -1314,9 +1315,9 @@ impl Workspace {
     /// Рядок стану Zed: перемикачі доків зліва, поточна дія, справа — сцена й хмара.
     fn status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let z = zed();
-        let has_left = matches!(self.page, Page::Home | Page::Prepare | Page::Device);
-        let has_right = self.page == Page::Prepare
+        let has_left = matches!(self.page, Page::Home | Page::Prepare | Page::Device)
             || (self.page == Page::Preview && self.preview.is_some());
+        let has_right = matches!(self.page, Page::Prepare | Page::Preview);
         let (activity, color): (Option<gpui::AnyElement>, gpui::Hsla) =
             // Усі фонові задачі показуються однаково: спінер і текст із реєстру.
             if let Some(text) = self.jobs_activity() {

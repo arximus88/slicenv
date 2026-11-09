@@ -39,6 +39,8 @@ pub struct Preview {
     playing: Option<Task<()>>,
     /// Режим «Фото» (`photo_mode`): матеріали й GPU-траєкторія; `None` — ще не вмикався.
     pub photo: Option<crate::photo_mode::PhotoState>,
+    /// `Workspace::slice_revision` на момент нарізки: інша — параметри змінились, нарізка застаріла.
+    revision: u64,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -282,6 +284,7 @@ impl Workspace {
             render_scale: 1.0,
             playing: None,
             photo: None,
+            revision: self.slice_revision,
             _subscriptions: subscriptions,
         });
         // Нова нарізка — знову «Шари»: ресурси «Фото» попередньої звільняються.
@@ -579,14 +582,17 @@ pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoEleme
         // Ще не нарізано (або йде нарізка): та сама сцена, що й на «Підготовці», моделі —
         // силуетом, підказка компактна поверх сцени.
         let center = ws.viewport_view("preview-unsliced", |ws, _, cx| unsliced_center(ws, cx), cx);
-        return crate::prepare::docked("preview-unsliced-docks", ws, None, center, None).into_any_element();
+        let settings = ws.cached_panel(crate::prepare::SETTINGS_PANEL, crate::prepare::settings_panel, cx);
+        return crate::prepare::docked("preview-unsliced-docks", ws, None, center, Some(settings))
+            .into_any_element();
     }
     // Центр зі сценою — окремий вид: рух камери не перебудовує статистику праворуч.
     let center = ws.viewport_view("preview-center", |ws, _, cx| center(ws, cx), cx);
-    // Праворуч, як до злиття статистики: ліворуч у Preview нічого не прив’язано до
-    // дерева об’єктів, а перемикач правого доку той самий, що в Prepare.
-    let right = ws.cached_panel("preview-summary", |ws, _, cx| summary_panel(ws, cx), cx);
-    crate::prepare::docked("preview-docks", ws, None, center, Some(right)).into_any_element()
+    // Праворуч — та сама панель «Друк», що й на «Підготовці» (параметри можна міняти, не
+    // виходячи з Preview); статистика й легенда — ліворуч.
+    let left = ws.cached_panel("preview-summary", |ws, _, cx| summary_panel(ws, cx), cx);
+    let settings = ws.cached_panel(crate::prepare::SETTINGS_PANEL, crate::prepare::settings_panel, cx);
+    crate::prepare::docked("preview-docks", ws, Some(left), center, Some(settings)).into_any_element()
 }
 
 /// Хлібні крихти Preview: модель і пластина.
@@ -748,6 +754,7 @@ fn center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
     let layer = toolpath.layers.get(to.saturating_sub(1));
     let mono = |d: gpui::Div| d.font_family(crate::theme::MONO_FONT).text_xs();
 
+    let stale = stale_card(ws, cx);
     let mut crumbs = crumbs(ws);
     crumbs.push(
         if from + 1 == to {
@@ -901,9 +908,67 @@ fn center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
             ws.viewport(cx)
                 .child(crate::navigation::cube(ws, cx))
                 .child(layers_card)
-                .child(moves_bar),
+                .child(moves_bar)
+                .children(stale),
         )
         .into_any_element()
+}
+
+/// Нарізка застаріла (змінено параметри після неї) або вже йде нова: картка вгорі ліворуч,
+/// між лівим краєм і навігаційним кубом, щоб не налазити на повзунки.
+fn stale_card(ws: &Workspace, cx: &mut Context<Workspace>) -> Option<gpui::Div> {
+    let z = zed();
+    let preview = ws.preview.as_ref()?;
+    let content = match slice_progress(ws, cx) {
+        Some(progress) => progress,
+        None if preview.revision != ws.slice_revision => {
+            let can_slice = ws.can_slice();
+            div()
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .child(div().flex_none().size(px(8.)).rounded_full().bg(z.warning))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .text_sm()
+                        .whitespace_normal()
+                        .child(crate::i18n::tr("Параметри змінено — нарізка застаріла")),
+                )
+                .child(
+                    ui::accent_button("stale-reslice", IconName::Scissors, "Перерізати", can_slice)
+                        .flex_none()
+                        .when(can_slice, |d| {
+                            d.on_click(cx.listener(|this, _, window, cx| this.start_slice(window, cx)))
+                        }),
+                )
+        }
+        None => return None,
+    };
+    let cube = if ws.preferences.navigation_cube { 76. + 132. + 12. } else { 76. };
+    Some(
+        div()
+            .absolute()
+            .top(px(12.))
+            .left(px(12.))
+            .right(px(cube))
+            .flex()
+            .child(
+                ui::scene_control("preview-stale-card")
+                    .flex()
+                    .min_w_0()
+                    .max_w(px(520.))
+                    .px(px(10.))
+                    .py(px(6.))
+                    .rounded(px(6.))
+                    .bg(z.panel.opacity(0.94))
+                    .border_1()
+                    .border_color(z.border_variant)
+                    .shadow_sm()
+                    .child(content),
+            ),
+    )
 }
 
 /// Ширина колонки за найдовшим значенням, як `calculate_offsets` у Bambu: моноширинний

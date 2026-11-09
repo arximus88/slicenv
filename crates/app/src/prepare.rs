@@ -19,12 +19,17 @@ pub fn render(
     // Доки — з кешу кадру, центр зі сценою — окремий вид: орбіта й зум сповіщають лише
     // його, тож дерево об’єктів і редактор процесу не будуються заново (`panel_cache`).
     let left = ws.cached_panel("prepare-objects", crate::objects::panel, cx);
-    let right = ws.cached_panel("prepare-settings", settings_panel, cx);
+    let right = ws.cached_panel(SETTINGS_PANEL, settings_panel, cx);
     let center = ws.viewport_view("prepare-center", center, cx);
     docked("prepare-docks", ws, Some(left), center, Some(right))
 }
 
+/// Ключ кешу панелі «Друк»: «Перегляд» вбудовує той самий вид, що й «Підготовка».
+pub const SETTINGS_PANEL: &str = "prepare-settings";
+
 /// Три колонки Zed зі змінною шириною; доки ховаються з рядка стану або Ctrl+B / Ctrl+Alt+B.
+/// Правий док — панель «Друк» (однакова ширина на обох сторінках), лівий у Preview —
+/// статистика нарізки: таблиця на кілька колонок, їй треба ширше.
 pub fn docked(
     id: &'static str,
     ws: &Workspace,
@@ -34,10 +39,15 @@ pub fn docked(
 ) -> impl IntoElement {
     let mut group = h_resizable(id);
     if let Some(left) = left {
+        let (size, range) = if id == "preview-docks" {
+            (460., 380.0..640.)
+        } else {
+            (272., 200.0..480.)
+        };
         group = group.child(
             resizable_panel()
-                .size(px(272.))
-                .size_range(px(200.)..px(480.))
+                .size(px(size))
+                .size_range(px(range.start)..px(range.end))
                 .fixed()
                 .visible(ws.left_dock)
                 .child(left),
@@ -46,10 +56,9 @@ pub fn docked(
     group = group.child(resizable_panel().child(center));
     if let Some(right) = right {
         group = group.child(
-            // Статистика Preview — таблиця на кілька колонок, їй треба ширше.
             resizable_panel()
-                .size(px(if id == "preview-docks" { 460. } else { 380. }))
-                .size_range(px(if id == "preview-docks" { 380. } else { 300. })..px(640.))
+                .size(px(380.))
+                .size_range(px(300.)..px(640.))
                 .fixed()
                 .visible(ws.right_dock)
                 .child(right),
@@ -417,8 +426,9 @@ fn center(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>) 
         .into_any_element()
 }
 
-/// Правий док: профілі принтера, філаменту й процесу та редактор процесу.
-fn settings_panel(
+/// Правий док «Підготовки» й «Перегляду»: профілі принтера, філаменту й процесу та
+/// редактор процесу.
+pub(crate) fn settings_panel(
     ws: &mut Workspace,
     window: &mut Window,
     cx: &mut Context<Workspace>,
