@@ -1064,9 +1064,9 @@ fn safe_component(s: &str) -> String {
 /// Кількість слотів філаменту в проєкті 3MF (`filament_settings_id`); для STL — 1.
 fn project_filament_count(path: &std::path::Path) -> usize {
     let count = (|| -> Option<usize> {
-        let mut archive = zip::ZipArchive::new(fs::File::open(path).ok()?).ok()?;
+        let mut archive = zip::ZipArchive::new(std::io::BufReader::new(fs::File::open(path).ok()?)).ok()?;
         let file = archive.by_name("Metadata/project_settings.config").ok()?;
-        let config: Value = serde_json::from_reader(file).ok()?;
+        let config: Value = serde_json::from_reader(std::io::BufReader::new(file)).ok()?;
         ["filament_settings_id", "filament_colour", "filament_type"]
             .iter()
             .find_map(|key| config[key].as_array().map(Vec::len))

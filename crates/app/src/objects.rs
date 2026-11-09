@@ -1652,7 +1652,7 @@ impl SliceInput {
             .to_string_lossy()
             .replace(".gcode", "");
         let out = dir.join(format!("{stem}.3mf"));
-        project.save_3mf(&out)?;
+        project.save_3mf_for_engine(&out)?;
         Ok(out)
     }
 
@@ -1703,7 +1703,7 @@ impl SliceInput {
             .to_string_lossy()
             .replace(".gcode", "");
         let out = dir.join(format!("{stem}-compat.3mf"));
-        migrated.save_3mf(&out)?;
+        migrated.save_3mf_for_engine(&out)?;
         let mut changes: Vec<String> = selected
             .iter()
             .filter_map(|&i| report.entries.get(i))

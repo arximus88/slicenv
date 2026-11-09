@@ -438,7 +438,7 @@ impl Session {
             .tempfile_in(&dir)?
             .into_temp_path();
         let project = &self.loaded()?.project;
-        project.save_3mf(&input)?;
+        project.save_3mf_for_engine(&input)?;
         // Як у GUI (Workspace::start_slice): 3MF з Bambu Studio в Orca інакше падає з −24.
         let allow_newer_file =
             engine.kind == slicer::EngineKind::Orca && project.from_bambu_studio();
