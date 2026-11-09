@@ -659,3 +659,33 @@ fn new_meshes_of_different_objects_get_unique_ids() {
     assert_eq!(q.objects[1].volumes[0].mesh.positions[3][2], 25.);
     assert_eq!(q.objects[0].volumes[0].mesh.positions[3][2], 10.);
 }
+
+#[test]
+fn zip_bomb_entry_is_rejected_by_decompressed_size() {
+    use std::io::Read as _;
+    // 8 МБ нулів стискаються в кілька КБ: межу перевіряють розпаковані дані, а не заголовок.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("bomb.zip");
+    let mut zip = ZipWriter::new(std::fs::File::create(&path).unwrap());
+    zip.start_file(
+        "3D/3dmodel.model",
+        SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated),
+    )
+    .unwrap();
+    zip.write_all(&vec![0u8; 8 * 1024 * 1024]).unwrap();
+    zip.finish().unwrap();
+    assert!(std::fs::metadata(&path).unwrap().len() < 64 * 1024);
+
+    let mut archive = zip::ZipArchive::new(std::fs::File::open(&path).unwrap()).unwrap();
+    let mut entry = archive.by_index(0).unwrap();
+    let err = read_limited(&mut entry, 1024 * 1024).unwrap_err();
+    assert!(err.to_string().contains("zip-бомба"), "{err}");
+    drop(entry);
+
+    let mut entry = archive.by_index(0).unwrap();
+    let all = read_limited(&mut entry, 8 * 1024 * 1024).unwrap();
+    assert_eq!(all.len(), 8 * 1024 * 1024);
+    let mut rest = Vec::new();
+    entry.read_to_end(&mut rest).unwrap();
+    assert!(rest.is_empty());
+}

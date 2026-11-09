@@ -693,7 +693,6 @@ fn read_toolpath(path: &Path) -> Result<gcode::Toolpath> {
     {
         return gcode::parse_file(path);
     }
-    use std::io::Read as _;
     let mut zip = zip::ZipArchive::new(std::io::BufReader::new(std::fs::File::open(path)?))?;
     let name = (0..zip.len())
         .filter_map(|i| zip.name_for_index(i)?.ok())
@@ -701,8 +700,8 @@ fn read_toolpath(path: &Path) -> Result<gcode::Toolpath> {
         .min()
         .map(Cow::into_owned)
         .context("у 3MF немає Metadata/plate_N.gcode: файл не нарізаний")?;
-    let mut text = String::new();
-    zip.by_name(&name)?.read_to_string(&mut text)?;
+    let bytes = project::read_limited(&mut zip.by_name(&name)?, project::MAX_ARCHIVE_BYTES)?;
+    let text = String::from_utf8(bytes).context("G-code у 3MF не UTF-8")?;
     gcode::parse(&text)
 }
 

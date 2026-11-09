@@ -105,6 +105,24 @@ struct ModelFile {
     meshes: HashMap<u32, IndexedMesh>,
 }
 
+/// Межі розпакування 3MF: файл на кілька КБ може розпакуватися в гігабайти (zip-бомба),
+/// а весь архів тримається в пам’яті. Справжні проєкти на мільйони трикутників — сотні МБ.
+pub const MAX_ARCHIVE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+pub const MAX_ARCHIVE_ENTRIES: usize = 65_536;
+
+/// Читає запис ZIP, але не більше `limit` байт розпакованих даних. Розмір із заголовка не
+/// враховується: він під контролем автора файлу, тож межу перевіряє `take` на самих даних.
+pub fn read_limited(entry: &mut impl Read, limit: u64) -> Result<Vec<u8>> {
+    let mut bytes = Vec::new();
+    entry.take(limit.saturating_add(1)).read_to_end(&mut bytes)?;
+    ensure!(
+        bytes.len() as u64 <= limit,
+        "розпаковано понад {} МБ — файл пошкоджений або це zip-бомба",
+        limit / (1024 * 1024)
+    );
+    Ok(bytes)
+}
+
 impl Project {
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
@@ -159,7 +177,13 @@ impl Project {
     pub fn load_3mf(path: impl AsRef<Path>) -> Result<Self> {
         let path = path.as_ref();
         let mut zip = ZipArchive::new(BufReader::new(File::open(path)?))?;
+        ensure!(
+            zip.len() <= MAX_ARCHIVE_ENTRIES,
+            "3MF має {} записів — більше за межу {MAX_ARCHIVE_ENTRIES}",
+            zip.len()
+        );
         let mut project = Self::default();
+        let mut budget = MAX_ARCHIVE_BYTES;
         for i in 0..zip.len() {
             let mut entry = zip.by_index(i)?;
             let name = entry.name()?.into_owned();
@@ -167,8 +191,9 @@ impl Project {
                 !project.archive.contains_key(&name),
                 "повторений ZIP-файл {name}"
             );
-            let mut bytes = Vec::new();
-            entry.read_to_end(&mut bytes)?;
+            let bytes = read_limited(&mut entry, budget)
+                .with_context(|| format!("3MF: запис {name}"))?;
+            budget -= bytes.len() as u64;
             project.archive.insert(name, bytes.into());
         }
         if let Some(bytes) = project.archive.get(CONFIG) {

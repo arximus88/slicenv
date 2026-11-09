@@ -20,7 +20,7 @@ pub use add::{
 pub use hull::{HullPlane, convex_hull, hull_planes, pick_plane};
 pub use object_ops::{INCH, connected_components};
 pub use primitives::{Handy, Primitive};
-pub use threemf::MeshSource;
+pub use threemf::{MAX_ARCHIVE_BYTES, MAX_ARCHIVE_ENTRIES, MeshSource, read_limited};
 pub use xml::{XmlContent, XmlNode};
 
 use std::collections::BTreeMap;
