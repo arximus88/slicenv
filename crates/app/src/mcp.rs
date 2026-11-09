@@ -334,6 +334,10 @@ impl Workspace {
                     .to_string_lossy()
                     .into_owned()
                     .into();
+                // Агент зберіг в інше місце — людина цей шлях не підтверджувала.
+                if self.save_target.as_ref() != Some(&path) {
+                    self.save_target = None;
+                }
                 self.path = Some(path);
                 // Файл тепер на диску, навіть якщо проєкт був «Без назви».
                 self.untitled = false;

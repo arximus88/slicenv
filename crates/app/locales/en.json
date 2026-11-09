@@ -211,7 +211,7 @@
   "файл не відкрито": "File is not open",
   "проєкт не завантажено": "Project is not loaded",
   "Збережено {}": "Saved {}",
-  "Не збережено: {err:#}": "Could not save: {err:#}",
+  "Не вдалося зберегти {path}: {err:#}": "Could not save {path}: {err:#}",
   "Об’єкти": "Objects",
   "Видалити пластину": "Delete plate",
   "Цей файл відкрито лише для перегляду — редагування розміщення недоступне.": "This file is open in read-only mode; placement cannot be edited.",
@@ -1525,5 +1525,6 @@
   "Новий проєкт, ще не збережено — правий клік: зберегти чи закрити": "New project, not saved yet — right-click to save or close",
   "ще не збережено": "not saved yet",
   "Параметри змінено — нарізка застаріла": "Settings changed — slice is outdated",
-  "Перерізати": "Re-slice"
+  "Перерізати": "Re-slice",
+  "Зберегти проєкт": "Save project"
 }

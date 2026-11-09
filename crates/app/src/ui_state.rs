@@ -66,6 +66,7 @@ impl Workspace {
             "selection_count": self.selected_instances.len(),
             "volume_count": self.selected.and_then(|k| self.project.as_ref()?.object(k.object).ok()).map(|o| o.volumes.len()),
             "edited": self.edited,
+            "save_confirmed": self.save_target.is_some(),
             "boolean_ready": self.boolean_mesh.is_some(),
             "section": self.cut_enabled,
             "section_axis": self.cut_axis,

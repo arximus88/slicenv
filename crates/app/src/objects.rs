@@ -462,76 +462,110 @@ impl Workspace {
         self.project.as_ref().is_some_and(project::Project::from_bambu_studio)
     }
 
+    /// «Зберегти проєкт» (Ctrl+S): перший раз — діалог, після підтвердження — мовчки туди ж.
     pub fn prompt_save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.prompt_save_then(None, window, cx);
+        self.save_with(false, None, window, cx);
     }
 
-    /// Зберегти як… і, якщо збережено, виконати `then`.
+    /// «Зберегти як…» (Ctrl+Shift+S): завжди діалог; новий шлях стає підтвердженим.
+    pub fn prompt_save_as(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.save_with(true, None, window, cx);
+    }
+
+    /// Зберегти (діалог чи мовчки — `save_flow::save_action`) і, якщо збережено, виконати `then`.
     pub fn prompt_save_then(
         &mut self,
         then: Option<crate::file_menu::AfterSave>,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let Some(path) = &self.path else { return };
-        let dir = path
-            .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| self.library_dir.clone());
-        let stem = path
-            .file_stem()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned();
-        let name = format!("{stem}.3mf");
+        self.save_with(false, then, window, cx);
+    }
+
+    fn save_with(
+        &mut self,
+        force_dialog: bool,
+        then: Option<crate::file_menu::AfterSave>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.project.is_none() {
+            return;
+        }
+        let action = crate::save_flow::save_action(
+            self.path.as_deref(),
+            self.save_target.as_deref(),
+            &self.library_dir,
+            force_dialog,
+        );
+        let (dir, name) = match action {
+            None => return,
+            Some(crate::save_flow::SaveAction::Silent(target)) => {
+                self.write_project(target, then, window, cx);
+                return;
+            }
+            Some(crate::save_flow::SaveAction::Dialog { dir, name }) => (dir, name),
+        };
         let target = cx.prompt_for_new_path(&dir, Some(&name));
         cx.spawn_in(window, async move |this, cx| {
-            let Ok(Ok(Some(mut target))) = target.await else {
+            let Ok(Ok(Some(target))) = target.await else {
                 return;
             };
-            if target
-                .extension()
-                .is_none_or(|e| !e.eq_ignore_ascii_case("3mf"))
-            {
-                target.set_extension("3mf");
-            }
-            this.update_in(cx, |this, window, cx| {
-                let Some(mut project) = this.project.clone() else {
-                    return;
-                };
-                project.config = this.effective_project_config();
-                match project.save_3mf(&target) {
-                    Ok(()) => {
-                        this.model_name = target
-                            .file_name()
-                            .unwrap_or_default()
-                            .to_string_lossy()
-                            .into_owned()
-                            .into();
-                        this.project = Some(project);
-                        this.path = Some(target.clone());
-                        this.edited = false;
-                        this.untitled = false;
-                        this.toast(
-                            ToastKind::Success,
-                            crate::tr_format!("Збережено {}", crate::shorten_home(&target)),
-                            cx,
-                        );
-                        if let Some(then) = then {
-                            then(this, window, cx);
-                        }
-                    }
-                    Err(err) => this.toast(
-                        ToastKind::Error,
-                        crate::tr_format!("Не збережено: {err:#}"),
-                        cx,
-                    ),
-                }
-                cx.notify();
-            })
-            .ok();
+            let target = crate::save_flow::normalize_target(target);
+            this.update_in(cx, |this, window, cx| this.write_project(target, then, window, cx))
+                .ok();
         })
         .detach();
+    }
+
+    /// Записати проєкт у `target`. Успіх — шлях підтверджено, крапка змін знімається;
+    /// помилка — повідомлення, і наступний Ctrl+S знову спитає шлях.
+    fn write_project(
+        &mut self,
+        target: PathBuf,
+        then: Option<crate::file_menu::AfterSave>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(mut project) = self.project.clone() else {
+            return;
+        };
+        project.config = self.effective_project_config();
+        match project.save_3mf(&target) {
+            Ok(()) => {
+                self.model_name = target
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned()
+                    .into();
+                self.project = Some(project);
+                self.path = Some(target.clone());
+                self.save_target = Some(target.clone());
+                self.edited = false;
+                self.untitled = false;
+                self.toast(
+                    ToastKind::Success,
+                    crate::tr_format!("Збережено {}", crate::shorten_home(&target)),
+                    cx,
+                );
+                if let Some(then) = then {
+                    then(self, window, cx);
+                }
+            }
+            Err(err) => {
+                self.save_target = None;
+                self.toast(
+                    ToastKind::Error,
+                    crate::tr_format!(
+                        "Не вдалося зберегти {path}: {err:#}",
+                        path = crate::shorten_home(&target)
+                    ),
+                    cx,
+                );
+            }
+        }
+        cx.notify();
     }
 
     pub fn ray_at(&self, position: gpui::Point<gpui::Pixels>) -> Option<(glam::Vec3, glam::Vec3)> {
