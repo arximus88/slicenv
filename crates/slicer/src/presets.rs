@@ -110,6 +110,10 @@ pub struct PresetStore {
     /// проєктах значення, які туди потрапили від чужого батька ([`Self::stale_values`]).
     legacy_presets: HashMap<(Kind, String), PresetInfo>,
     engine_kind: Option<crate::EngineKind>,
+    /// Теки `resources` рушія, з яким відкрито каталог (`…/resources` з `profiles` та
+    /// `images`). Каталог може бути з бібліотеки Slicenv (лише JSON) чи з конфігу рушія —
+    /// тоді модель столу, логотип і написи типу пластини беремо звідси.
+    resources: Vec<PathBuf>,
 }
 
 /// Recoverable activation error: the UI can fetch JSON from the matching tag.
@@ -135,6 +139,40 @@ impl std::fmt::Display for ProfileCatalogMissing {
     }
 }
 impl std::error::Error for ProfileCatalogMissing {}
+
+/// Теки `resources` встановлених рушіїв поза каталогом профілів: керовані Slicenv,
+/// системні пакети й Flatpak. Звідси беруться STL, логотип і написи столу, коли каталог
+/// їх не має; файли однакові між версіями, тож годиться будь-який рушій.
+fn installed_resource_dirs() -> Vec<PathBuf> {
+    let mut out = Vec::new();
+    for family in ["bambu", "orca"] {
+        if let Ok(entries) = fs::read_dir(paths::data_dir().join("engines").join(family)) {
+            let mut dirs: Vec<PathBuf> = entries.flatten().map(|e| e.path().join("resources")).collect();
+            dirs.sort();
+            out.extend(dirs.into_iter().rev());
+        }
+    }
+    if cfg!(target_os = "linux") {
+        let flatpak = [
+            paths::data_home().join("flatpak"),
+            PathBuf::from("/var/lib/flatpak"),
+        ];
+        for (id, app) in [
+            ("com.bambulab.BambuStudio", "BambuStudio"),
+            ("com.orcaslicer.OrcaSlicer", "OrcaSlicer"),
+            ("io.github.softfever.OrcaSlicer", "OrcaSlicer"),
+        ] {
+            for root in &flatpak {
+                out.push(root.join("app").join(id).join("current/active/files/share").join(app));
+            }
+        }
+        for dir in ["/usr/share/BambuStudio", "/usr/share/bambustudio", "/usr/share/OrcaSlicer", "/usr/share/orca-slicer"] {
+            out.push(PathBuf::from(dir));
+        }
+    }
+    out.retain(|p| p.is_dir());
+    out
+}
 
 fn resolve_catalog(
     override_root: Option<PathBuf>,
@@ -299,6 +337,11 @@ impl PresetStore {
         })?;
         let mut store = Self::open_with_own_root(&root, &own)?;
         store.engine_kind = Some(kind);
+        store.resources = package_candidates
+            .iter()
+            .filter(|p| p.is_dir())
+            .filter_map(|p| p.parent().map(Path::to_path_buf))
+            .collect();
         Ok(store)
     }
 
@@ -318,6 +361,7 @@ impl PresetStore {
     pub fn reload(&self) -> Result<Self> {
         let mut store = Self::open_with_own_root(&self.root, &self.own_root)?;
         store.engine_kind = self.engine_kind;
+        store.resources = self.resources.clone();
         Ok(store)
     }
 
@@ -418,6 +462,7 @@ impl PresetStore {
             vendor_presets: HashMap::new(),
             legacy_presets: HashMap::new(),
             engine_kind: None,
+            resources: Vec::new(),
         };
         store.scan_root(root);
         for kind in Kind::ALL {
@@ -739,6 +784,11 @@ impl PresetStore {
     /// and the engine's `images` directory with plate-type SVGs. Paths are only
     /// returned when the files exist; nothing is copied.
     pub fn bed_resources(&self, machine: &str) -> Option<BedResources> {
+        self.bed_resources_in(machine, &installed_resource_dirs())
+    }
+
+    /// [`Self::bed_resources`] з явним списком запасних тек `resources` (для тестів).
+    fn bed_resources_in(&self, machine: &str, installed: &[PathBuf]) -> Option<BedResources> {
         let config = self.flatten(Kind::Machine, machine).ok()?;
         let model = config.get("printer_model")?.as_str()?;
         if model.contains(['/', '\\']) || model == "." || model == ".." {
@@ -752,16 +802,31 @@ impl PresetStore {
         let vendor = self.vendor_for_machine(machine)?;
         let dir = base.join(&vendor);
         let json = read_json(&dir.join("machine").join(format!("{model}.json"))).ok()?;
-        let file = |key: &str| {
-            json.get(key)
-                .and_then(Value::as_str)
-                .filter(|f| !f.is_empty() && !f.contains(['/', '\\']) && *f != "..")
-                .map(|f| dir.join(f))
-                .filter(|p| p.is_file())
-        };
-        let images = [self.root.parent(), base.parent()]
+        // Де шукати: каталог профілів, потім `resources` свого рушія, потім інші встановлені
+        // рушії. Каталог з бібліотеки Slicenv чи з `~/.config/<рушій>/system` не має ні
+        // `images`, ні (у бібліотеці) STL і SVG столу.
+        let resources: Vec<PathBuf> = [self.root.parent(), base.parent()]
             .into_iter()
             .flatten()
+            .map(Path::to_path_buf)
+            .chain(self.resources.iter().cloned())
+            .chain(installed.iter().cloned())
+            .collect();
+        let vendor_dirs: Vec<PathBuf> = std::iter::once(dir.clone())
+            .chain(resources.iter().map(|r| r.join("profiles").join(&vendor)))
+            .collect();
+        let file = |key: &str| {
+            let name = json
+                .get(key)
+                .and_then(Value::as_str)
+                .filter(|f| !f.is_empty() && !f.contains(['/', '\\']) && *f != "..")?;
+            vendor_dirs
+                .iter()
+                .map(|d| d.join(name))
+                .find(|p| p.is_file())
+        };
+        let images = resources
+            .iter()
             .map(|p| p.join("images"))
             .find(|p| p.join("bbl_bed_pte_left.svg").is_file());
         Some(BedResources {
@@ -1296,6 +1361,48 @@ mod tests {
             Some("N1")
         );
         assert!(store.get(Kind::Machine, "Printer model").is_none());
+    }
+
+    /// Каталог лише з JSON (бібліотека Slicenv для Orca 2.5, `~/.config/BambuStudio/system`):
+    /// модель столу, логотип і написи типу пластини беруться з `resources` рушія.
+    #[test]
+    fn bed_resources_fall_back_to_engine_resources() {
+        let f = Fixture::new();
+        f.put(
+            Kind::Machine,
+            "Printer model",
+            serde_json::json!({"type":"machine_model", "name":"Printer model",
+                "bed_model":"bbl-3dp-X1.stl", "bed_texture":"bbl-3dp-logo.svg"}),
+        );
+        f.put(
+            Kind::Machine,
+            "Printer nozzle",
+            serde_json::json!({"name":"Printer nozzle", "printer_model":"Printer model"}),
+        );
+        let mut store = f.open();
+        let bare = store.bed_resources_in("Printer nozzle", &[]).unwrap();
+        assert_eq!(bare.vendor, "BBL");
+        assert!(bare.model.is_none() && bare.texture.is_none() && bare.images.is_none());
+
+        let engine = f.0.join("engine/resources");
+        fs::create_dir_all(engine.join("profiles/BBL")).unwrap();
+        fs::create_dir_all(engine.join("images")).unwrap();
+        for file in ["profiles/BBL/bbl-3dp-X1.stl", "profiles/BBL/bbl-3dp-logo.svg", "images/bbl_bed_pte_left.svg"] {
+            fs::write(engine.join(file), b"x").unwrap();
+        }
+        // Свій рушій (`open_for_engine`) і будь-який інший встановлений дають те саме.
+        let other = store.bed_resources_in("Printer nozzle", std::slice::from_ref(&engine)).unwrap();
+        store.resources = vec![engine.clone()];
+        let own = store.bed_resources_in("Printer nozzle", &[]).unwrap();
+        assert_eq!(own, other);
+        assert_eq!(own.model, Some(engine.join("profiles/BBL/bbl-3dp-X1.stl")));
+        assert_eq!(own.texture, Some(engine.join("profiles/BBL/bbl-3dp-logo.svg")));
+        assert_eq!(own.images, Some(engine.join("images")));
+        // Файл у самому каталозі має перевагу.
+        fs::write(f.0.join("system/BBL/bbl-3dp-X1.stl"), b"y").unwrap();
+        let local = store.bed_resources_in("Printer nozzle", &[]).unwrap();
+        assert_eq!(local.model, Some(f.0.join("system/BBL/bbl-3dp-X1.stl")));
+        assert_eq!(store.reload().unwrap().resources, vec![engine]);
     }
 
     #[test]

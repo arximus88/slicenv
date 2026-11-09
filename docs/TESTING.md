@@ -13,6 +13,7 @@
 | GUI-бенч | `tools/bench/gui-bench.sh` | Xvfb, xdotool, release-збірка | ~1 хв |
 | Порівняння з Bambu Studio / OrcaSlicer | `tools/bench/compare.sh` ([BENCHMARK.md](BENCHMARK.md)) | mutter, xdotool, xprop, рушії в `~/.local/share/slicenv/engines` | ~30–40 хв |
 | Приймальні сценарії UI | `crates/app/verification/*.py` | Xvfb, xdotool, фікстури з docstring | різний |
+| G-code Slicenv проти Bambu Studio / OrcaSlicer | `python3 -I tools/gcode-diff.py A B` ([нижче](#порівняння-g-code-з-оригінальним-рушієм)) | python3 | секунди |
 
 ## Unit- і GPU-тести
 
@@ -186,6 +187,55 @@ PNG без вікна: `cargo run --release -p viewer --example gcode_preview --
 фікстури й розмір вікна описано в docstring кожного (`python3 -I <script> --help`).
 Вони не входять у CI: потрібні реальні моделі (`angel_medium.3mf`), пакети рушіїв,
 мережа (`packages.py` завантажує Orca ~204 МБ) і фіксовані піксельні координати.
+
+## Порівняння G-code з оригінальним рушієм
+
+`tools/gcode-diff.py` перевіряє, що Slicenv дає той самий G-code, що й GUI Bambu Studio чи
+OrcaSlicer. Вхід — `.gcode` або `.gcode.3mf` (з архіву береться `Metadata/plate_N.gcode`,
+кілька пластин — `--plate N`). Лише стандартна бібліотека Python.
+
+1. У Bambu Studio (OrcaSlicer) відкрити проєкт, нарізати пластину, «Файл → Експорт →
+   Export plate sliced file» → `orig.gcode.3mf`.
+2. Той самий проєкт з тим самим принтером, філаментом і процесом нарізати в Slicenv:
+   «Перегляд» → «Експортувати…» → `slicenv.gcode.3mf`.
+3. Порівняти:
+
+```bash
+python3 -I tools/gcode-diff.py orig.gcode.3mf slicenv.gcode.3mf          # звіт
+python3 -I tools/gcode-diff.py orig.gcode.3mf slicenv.gcode.3mf --json   # для скриптів
+python3 -I tools/gcode-diff.py A B --ignore-key 'filament_settings_id' --all
+```
+
+Що відкидається як шум: заголовок з версією й датою, мініатюри (`THUMBNAIL_BLOCK`,
+`thumbnail_* begin/end`), абсолютні шляхи Unix і Windows, дати й час у коментарях,
+службові коментарі поза блоками, маркери прогресу `M73` (`--keep-m73` — лишити).
+Порівнюються:
+
+- **CONFIG_BLOCK** — параметри, з якими різав рушій. Друкується першим: різні параметри —
+  головна причина різного G-code (інший пресет, перевизначення в 3MF, версія рушія).
+- **Підсумки** — шари, оцінка часу, довжина й вага філаменту (заголовок Bambu або
+  підсумки Orca наприкінці файлу), Z кожного шару.
+- **Траєкторії** — пошарово (`; CHANGE_LAYER`), перший різний шар і рядки в обох файлах,
+  кількість різних рядків і шарів.
+
+Вердикт (код виходу 0 / 1, помилка входу — 2): `identical` — ідентичні після
+нормалізації; `config_differs` — список різних параметрів; `trajectory_differs` —
+параметри однакові, траєкторії ні.
+
+**Рушії не однаково детерміновані.** Перевірено 2026-11-09 на тому самому 3MF (A1,
+0.20mm Standard, 200 шарів) з тимчасовим HOME:
+
+| Рушій | Два прогони CLI | Результат |
+|---|---|---|
+| OrcaSlicer 2.4.2 | `identical` | 49 241 рядок однаковий |
+| Bambu Studio 02.07.01.62 (3 прогони попарно) | `trajectory_differs` | 162–224 рядки з ~43 000 (0.4–0.5 %) у 14–23 верхніх шарах: інша точка старту шва чи дуги, `F` того самого руху; оцінка часу ±3 с; шари, Z і філамент однакові |
+
+Тож для Bambu Studio «ідентичні» недосяжне навіть проти самого себе. Збіг означає:
+CONFIG_BLOCK однаковий, шари, Z і філамент однакові, різних рядків менше 1 % — скрипт
+тоді додає примітку. Більша частка чи різні шари або філамент — справжня розбіжність.
+
+Тест на синтетичних файлах (`tools/fixtures/gcode-diff/`, у CI не входить):
+`python3 -I tools/test_gcode_diff.py`.
 
 ## CI
 

@@ -25,6 +25,15 @@ fn bed_prefix(bed_type: &str) -> Option<&'static str> {
     })
 }
 
+/// «Textured PEI Plate» → «Bambu Textured PEI Plate», як у написах Bambu.
+fn bambu_label(bed_type: &str) -> String {
+    if bed_type.to_ascii_lowercase().starts_with("bambu") {
+        bed_type.to_owned()
+    } else {
+        format!("Bambu {bed_type}")
+    }
+}
+
 fn image(path: &Path) -> Option<BedImage> {
     let bytes = std::fs::read(path).ok()?;
     let ext = path.extension()?.to_string_lossy().to_ascii_lowercase();
@@ -84,10 +93,15 @@ pub(crate) fn assets(
             }
         }
     }
-    // Логотип (`bed_texture`) — коли написів типу пластини немає: у Bambu Studio на
-    // столі видно або одне, або інше, і разом вони накладаються.
     if out.decals.is_empty() {
-        out.logo = res.texture.as_deref().and_then(image);
+        if res.vendor == "BBL" {
+            // SVG-написів не знайшлось: замість логотипа з вертикальним «Bambu Lab» — один
+            // рядок «Bambu <тип>» на місці лівого напису, як у Bambu Studio й OrcaSlicer.
+            out.type_label = out.type_label.take().map(|t| bambu_label(&t));
+        } else {
+            // Логотип інших виробників (`bed_texture`) — це весь вигляд їхнього столу.
+            out.logo = res.texture.as_deref().and_then(image);
+        }
     }
     out.key = format!(
         "{:?}|{:?}|{}|{bed_type}|{lo}|{hi}",
@@ -238,7 +252,30 @@ mod tests {
         );
         assert!(a.model.is_some() && a.logo.is_none());
         assert_eq!(a.decals.len(), 2);
+        // Невідомий тип: без логотипа з «Bambu Lab», один рядок «Bambu <тип>».
         let other = assets(Some(&res), "Unknown Plate", Vec2::ZERO, Vec2::splat(256.));
-        assert!(other.logo.is_some() && other.decals.is_empty());
+        assert!(other.logo.is_none() && other.decals.is_empty());
+        assert_eq!(other.type_label.as_deref(), Some("Bambu Unknown Plate"));
+    }
+
+    #[test]
+    fn bambu_bed_without_svg_gets_one_line_label_instead_of_logo() {
+        let dir = tempfile::tempdir().unwrap();
+        let logo = dir.path().join("bbl-3dp-logo.svg");
+        std::fs::write(&logo, br#"<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>"#).unwrap();
+        let res = |vendor: &str| slicer::BedResources {
+            vendor: vendor.into(),
+            model: None,
+            texture: Some(logo.clone()),
+            images: None,
+        };
+        let a = assets(Some(&res("BBL")), "Textured PEI Plate", Vec2::ZERO, Vec2::splat(256.));
+        assert!(a.logo.is_none() && a.decals.is_empty());
+        assert_eq!(a.type_label.as_deref(), Some("Bambu Textured PEI Plate"));
+        // Інший виробник: його логотип лишається, підпис — без «Bambu».
+        let v = assets(Some(&res("Voron")), "Textured PEI Plate", Vec2::ZERO, Vec2::splat(256.));
+        assert!(v.logo.is_some());
+        assert_eq!(v.type_label.as_deref(), Some("Textured PEI Plate"));
+        assert_eq!(bambu_label("Bambu Cool Plate"), "Bambu Cool Plate");
     }
 }
