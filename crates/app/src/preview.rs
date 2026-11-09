@@ -39,8 +39,6 @@ pub struct Preview {
     playing: Option<Task<()>>,
     /// Режим «Фото» (`photo_mode`): матеріали й GPU-траєкторія; `None` — ще не вмикався.
     pub photo: Option<crate::photo_mode::PhotoState>,
-    /// `Workspace::slice_revision` на момент нарізки: інша — параметри змінились, нарізка застаріла.
-    revision: u64,
     _subscriptions: Vec<Subscription>,
 }
 
@@ -137,8 +135,9 @@ fn srgb_hsla([r, g, b]: [f32; 3]) -> gpui::Hsla {
 }
 
 impl Workspace {
-    /// Розбирає G-code нарізаної пластини у фоні й показує вкладку «Перегляд».
-    pub fn load_preview(&mut self, gcode: PathBuf, _window: &mut Window, cx: &mut Context<Self>) {
+    /// Розбирає G-code нарізаної пластини у фоні; `open` — потім відкрити «Перегляд»
+    /// (інакше прев’ю лише готується, якщо ця сторінка не відкрита).
+    pub fn load_preview(&mut self, gcode: PathBuf, open: bool, cx: &mut Context<Self>) {
         let device = self.renderer.device().clone();
         // Прев’ю належить цій нарізці: тій самій пластині й тому самому входу нарізки.
         self.spawn_job(
@@ -166,10 +165,10 @@ impl Workspace {
                 };
                 Ok::<_, anyhow::Error>((toolpath, built, report))
             },
-            |this, parsed, window, cx| match parsed {
+            move |this, parsed, window, cx| match parsed {
                 Ok((toolpath, built, report)) => {
                     let _s = paths::profile::Span::new("preview::show");
-                    this.show_preview(toolpath, built, report, window, cx)
+                    this.show_preview(toolpath, built, report, open, window, cx)
                 }
                 Err(err) => this.error = Some(format!("G-code: {err:#}").into()),
             },
@@ -182,6 +181,7 @@ impl Workspace {
         toolpath: Toolpath,
         built: viewer::BuiltToolpath,
         report: gcode::Report,
+        open: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
@@ -284,7 +284,6 @@ impl Workspace {
             render_scale: 1.0,
             playing: None,
             photo: None,
-            revision: self.slice_revision,
             _subscriptions: subscriptions,
         });
         // Нова нарізка — знову «Шари»: ресурси «Фото» попередньої звільняються.
@@ -292,7 +291,9 @@ impl Workspace {
         self.renderer.set_show_travel(false);
         self.renderer.set_show_bed(true);
         self.renderer.set_flat_toolpath(false);
-        self.enter_page(crate::workspace::Page::Preview, cx);
+        if open || self.page == crate::workspace::Page::Preview {
+            self.enter_page(crate::workspace::Page::Preview, cx);
+        }
         if scheme_index != 0 {
             self.rebuild_toolpath(cx);
         }
@@ -567,11 +568,14 @@ pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoEleme
     if ws.preview.is_none() {
         // Невдала нарізка — картка: що сталось, хто виправляє, що зробити, деталі.
         if let crate::workspace::SliceState::Failed(err, failure) = &ws.slice_state {
+            let card = failure_card(err.clone(), failure.clone(), ws.can_slice(), ws.slice_exhausted, ws.slice_fallback.clone(), cx);
             return div()
+                .relative()
                 .flex()
                 .flex_1()
                 .bg(z.editor)
-                .child(failure_card(err.clone(), failure.clone(), ws.can_slice(), ws.slice_exhausted, ws.slice_fallback.clone(), cx))
+                .child(card)
+                .children(crate::plate_strip::strip(ws, cx))
                 .into_any_element();
         }
         // Прев’ю скинули, поки сторінка відкрита (зміна пластини, геометрії): сцена знову
@@ -646,6 +650,7 @@ fn slice_progress(ws: &Workspace, cx: &mut Context<Workspace>) -> Option<gpui::D
     Some(
         div()
             .flex()
+            .min_w_0()
             .items_center()
             .gap(px(12.))
             .child(ui::icon(IconName::Scissors).text_color(z.text_muted))
@@ -653,6 +658,8 @@ fn slice_progress(ws: &Workspace, cx: &mut Context<Workspace>) -> Option<gpui::D
                 div()
                     .flex()
                     .flex_col()
+                    .flex_shrink_1()
+                    .min_w_0()
                     .gap(px(4.))
                     .w(px(280.))
                     .child(
@@ -683,7 +690,7 @@ fn slice_progress(ws: &Workspace, cx: &mut Context<Workspace>) -> Option<gpui::D
             .child(
                 ui::ghost_button("empty-slice-cancel", Some(IconName::X), "Скасувати")
                     .on_click(cx.listener(|this, _, _, cx| {
-                        this.cancel_slice();
+                        this.stop_slice();
                         cx.notify();
                     })),
             ),
@@ -694,6 +701,7 @@ fn slice_progress(ws: &Workspace, cx: &mut Context<Workspace>) -> Option<gpui::D
 fn unsliced_center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
     let z = zed();
     let can_slice = ws.can_slice();
+    let stale = ws.active_slice_stale();
     let hint = match slice_progress(ws, cx) {
         Some(progress) => progress,
         None => div()
@@ -710,14 +718,18 @@ fn unsliced_center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::Any
                         div()
                             .text_sm()
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .child(crate::i18n::tr("Ще нічого не нарізано")),
+                            .child(crate::i18n::tr(if stale { "Нарізка застаріла" } else { "Ще нічого не нарізано" })),
                     )
                     .child(
                         div()
                             .text_xs()
                             .text_color(z.text_muted)
                             .whitespace_normal()
-                            .child(crate::i18n::tr("Нарізай пластину — тут з’являться траєкторії по шарах, час і витрата філаменту.")),
+                            .child(crate::i18n::tr(if stale {
+                                "Пластину або параметри змінено після нарізки — наріж її знову."
+                            } else {
+                                "Нарізай пластину — тут з’являться траєкторії по шарах, час і витрата філаменту."
+                            })),
                     ),
             )
             .child(
@@ -735,17 +747,21 @@ fn unsliced_center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::Any
         .min_w_0()
         .bg(z.editor)
         .child(ui::toolbar().child(ui::breadcrumbs(crumbs(ws))))
-        .child(
+        .child({
+            let strip = crate::plate_strip::strip(ws, cx);
             ws.viewport(cx)
                 .child(crate::navigation::cube(ws, cx))
-                .child(scene_card("preview-unsliced-card", hint)),
-        )
+                .child(scene_card("preview-unsliced-card", hint))
+                .children(strip)
+        })
         .into_any_element()
 }
 
 /// Центр Preview: панель шару, в’юпорт, повзунки шарів і рухів.
 fn center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
     let z = zed();
+    let stale = stale_card(ws, cx);
+    let strip = crate::plate_strip::strip(ws, cx);
     let Some(preview) = &ws.preview else {
         return div().into_any_element();
     };
@@ -754,7 +770,6 @@ fn center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
     let layer = toolpath.layers.get(to.saturating_sub(1));
     let mono = |d: gpui::Div| d.font_family(crate::theme::MONO_FONT).text_xs();
 
-    let stale = stale_card(ws, cx);
     let mut crumbs = crumbs(ws);
     crumbs.push(
         if from + 1 == to {
@@ -909,7 +924,8 @@ fn center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
                 .child(crate::navigation::cube(ws, cx))
                 .child(layers_card)
                 .child(moves_bar)
-                .children(stale),
+                .children(stale)
+                .children(strip),
         )
         .into_any_element()
 }
@@ -918,10 +934,12 @@ fn center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
 /// між лівим краєм і навігаційним кубом, щоб не налазити на повзунки.
 fn stale_card(ws: &Workspace, cx: &mut Context<Workspace>) -> Option<gpui::Div> {
     let z = zed();
-    let preview = ws.preview.as_ref()?;
-    let content = match slice_progress(ws, cx) {
+    ws.preview.as_ref()?;
+    // Нарізка іншої пластини (черга «Нарізати всі») видна в колонці пластин.
+    let own = ws.slicing_plate().is_none_or(|n| Some(n) == ws.plate_to_slice());
+    let content = match slice_progress(ws, cx).filter(|_| own) {
         Some(progress) => progress,
-        None if preview.revision != ws.slice_revision => {
+        None if ws.active_slice_stale() => {
             let can_slice = ws.can_slice();
             div()
                 .flex()
@@ -947,17 +965,20 @@ fn stale_card(ws: &Workspace, cx: &mut Context<Workspace>) -> Option<gpui::Div> 
         None => return None,
     };
     let cube = if ws.preferences.navigation_cube { 76. + 132. + 12. } else { 76. };
+    // Поруч із колонкою пластин, а не під нею.
+    let left = crate::plate_strip::strip_width(ws).map_or(12., |w| 12. + w + 8.);
     Some(
         div()
             .absolute()
             .top(px(12.))
-            .left(px(12.))
+            .left(px(left))
             .right(px(cube))
             .flex()
             .child(
                 ui::scene_control("preview-stale-card")
                     .flex()
                     .min_w_0()
+                    .overflow_hidden()
                     .max_w(px(520.))
                     .px(px(10.))
                     .py(px(6.))

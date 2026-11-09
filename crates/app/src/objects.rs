@@ -86,8 +86,8 @@ impl Workspace {
         let _profile = settings::profile::Span::new("project_changed");
         self.finish_checkpoint();
         self.edited = true;
+        // Зупиняє нарізку; застарілою стає лише пластина, чий вміст змінився (`plate_strip`).
         self.invalidate_geometry();
-        self.cancel_slice();
         self.preview = None;
         if let Some(project) = &self.project {
             match plates_of(project) {

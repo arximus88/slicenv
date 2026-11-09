@@ -282,6 +282,21 @@ pub fn plate_images(path: &Path, plate: u32, color: Option<[f32; 3]>) -> Option<
     images
 }
 
+/// PNG-мініатюра сітки `size`×`size` на прозорому тлі (колонка пластин «Перегляду»).
+/// Той самий фоновий рендерер, що й для мініатюр «Головної» та пакетів нарізки.
+pub fn mesh_image(mesh: &Mesh, size: u32, color: Option<[f32; 3]>) -> Option<Vec<u8>> {
+    mesh.bounds()?;
+    let mut lock = THUMBNAIL_RENDERER.lock().ok()?;
+    if lock.is_none() {
+        *lock = Some(crate::Renderer::new().ok()?);
+    }
+    let renderer = lock.as_mut()?;
+    renderer.set_model_color(color.unwrap_or([0.0, 0.682, 0.259]));
+    let png = renderer.render_mesh_view(mesh, size, None);
+    renderer.set_model_color([0.0, 0.682, 0.259]);
+    png
+}
+
 /// Проєкт → пластини для показу: по одній на пластину, плюс «Поза пластинами», якщо є такі
 /// об’єкти. Геометрію тут не будуємо: сцена малює кожну частину окремою GPU-сіткою
 /// (`app::Workspace::sync_scene_items`), тож пластина — лише номер і назва.

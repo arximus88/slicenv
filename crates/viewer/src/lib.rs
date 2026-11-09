@@ -24,7 +24,7 @@ pub use camera::Camera;
 pub use gizmo::{AXIS_COLORS, Gizmo, GizmoKind, Handle, Screen};
 pub use mesh::{
     Mesh, Plate, PlateImages, SUPPORTED_EXTENSIONS, load_model, load_stl, load_stl_raw, local_mesh,
-    plate_images, plates_of, thumbnail, thumbnail_cached,
+    mesh_image, plate_images, plates_of, thumbnail, thumbnail_cached,
 };
 pub use renderer::bed::{
     BedAssets, BedDecal, BedImage, LabelColors, LabelRects, PlateLabel, bambu_decal_rects,
