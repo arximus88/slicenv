@@ -44,9 +44,9 @@ impl Progress {
                     crate::tr_format!("Завантаження · {:.1} МБ", self.downloaded as f64 / 1048576.)
                 }
             },
-            "verify" => "Перевірка SHA256…".into(),
-            "extract" => "Розпакування…".into(),
-            "register" => "Реєстрація версії…".into(),
+            "verify" => crate::i18n::tr("Перевірка SHA256…"),
+            "extract" => crate::i18n::tr("Розпакування…"),
+            "register" => crate::i18n::tr("Реєстрація версії…"),
             // Orca 2.5 пакує профілі в .opc, тож каталог тягнеться з GitHub — хвилини.
             "profiles" => match self.total {
                 Some(total) => crate::tr_format!(
@@ -54,10 +54,10 @@ impl Progress {
                     self.downloaded,
                     total
                 ),
-                None => "Завантаження профілів…".into(),
+                None => crate::i18n::tr("Завантаження профілів…"),
             },
-            "done" => "Встановлення завершено".into(),
-            _ => "Підготовка завантаження…".into(),
+            "done" => crate::i18n::tr("Встановлення завершено"),
+            _ => crate::i18n::tr("Підготовка завантаження…"),
         }
     }
 }
@@ -547,7 +547,7 @@ impl Workspace {
                     let release=release.clone();let asset=asset.clone();
                     let mut row=div().flex().items_center().gap(px(8.)).min_h(px(28.)).child(div().flex_1().text_sm().child(asset_label(&asset)));
                     if loading {
-                        row=row.child(ui::spinner(SharedString::from(format!("package-row-loading-{ri}-{ai}")))).child(div().text_xs().child(ws.packages.progress.as_ref().map(|p|p.label()).unwrap_or_else(||"Підготовка…".into())));
+                        row=row.child(ui::spinner(SharedString::from(format!("package-row-loading-{ri}-{ai}")))).child(div().text_xs().child(ws.packages.progress.as_ref().map(|p|p.label()).unwrap_or_else(||crate::i18n::tr("Підготовка…"))));
                     } else if let Some(manifest)=manifest {
                         let manifest=manifest.clone();
                         row=row.child(ui::icon(IconName::CircleCheck).text_color(z.success))

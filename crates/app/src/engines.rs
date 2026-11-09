@@ -24,15 +24,7 @@ fn read_config() -> serde_json::Value {
         .unwrap_or_default()
 }
 fn decode(value: &serde_json::Value) -> Option<Engine> {
-    let kind = match value["kind"].as_str()? {
-        "bambu" => EngineKind::Bambu,
-        "orca" => EngineKind::Orca,
-        _ => return None,
-    };
-    Some(Engine {
-        kind,
-        path: value["path"].as_str()?.into(),
-    })
+    Engine::decode(value)
 }
 fn encode(engine: &Engine) -> serde_json::Value {
     serde_json::json!({"kind":engine.kind.name(), "path":engine.path})
@@ -94,11 +86,9 @@ pub(crate) fn is_manual(engine: &Engine) -> bool {
         .flatten()
         .any(|v| v["manual"] == true && decode(v).is_some_and(|e| e.kind == engine.kind && e.path == engine.path))
 }
+/// Той самий вибір, що й у `slicenv-mcp` (`Engine::startup`).
 pub fn startup_engine() -> anyhow::Result<Engine> {
-    if let Some(saved) = decode(&read_config()["active"]).filter(|e| e.path.is_file()) {
-        return Ok(saved);
-    }
-    Engine::discover(EngineKind::Bambu).or_else(|_| Engine::discover(EngineKind::Orca))
+    Engine::startup_in(&config_path(), &crate::engine_manager::engines_dir())
 }
 pub(crate) fn installed() -> Vec<Engine> {
     let mut result: Vec<_> = read_config()["installed"]

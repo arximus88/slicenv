@@ -357,8 +357,8 @@ Windows — варіанти:
       (або архів джерел поруч із кожним релізом).
 - [x] Homepage, bugtracker, vcs-browser, branding, скриншоти в metainfo (2026-11-09);
       URL запрацюють, коли репозиторій стане публічним і з’явиться тег `v0.1.0`.
-- [ ] Справжній `Maintainer` в `deb/control.in`, `rpm/slicenv.spec`, PKGBUILD (зараз
-      заглушка `packaging@example.invalid`).
+- [x] `Maintainer` у `deb/control.in`, `Packager` і `%changelog` у `rpm/slicenv.spec` —
+      `Borys Kharchenko <7512615+arximus88@users.noreply.github.com>` (2026-11-09).
 - [ ] Ключ підпису: GPG для AUR-тегів/релізів, підпис AppImage (`appimagetool --sign`),
       ключ репозиторію для apt/rpm, якщо буде власний.
 - [ ] Збірки для релізу — лише з CI (ubuntu-22.04), не з машини розробника (glibc 2.44).

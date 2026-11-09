@@ -109,6 +109,18 @@ enum TextKind {
     Multiline,
     /// Список імен, по одному на рядок.
     List,
+    /// Полігон (`printable_area`, `bed_exclude_area`): усі точки одним рядком через кому,
+    /// `0x0,256x0,256x256,0x256`. Перший елемент вектора тут — лише одна вершина.
+    Points,
+    /// Кілька полігонів (`extruder_printable_area`), розділених `#`.
+    PointGroups,
+}
+
+impl TextKind {
+    /// Багаторядкове поле на всю ширину.
+    fn is_wide(self) -> bool {
+        matches!(self, Self::Multiline | Self::List)
+    }
 }
 
 fn text_kind(schema: &Schema, key: &str) -> TextKind {
@@ -116,6 +128,18 @@ fn text_kind(schema: &Schema, key: &str) -> TextKind {
         TextKind::List
     } else if schema.options.get(key).is_some_and(|d| d.multiline) {
         TextKind::Multiline
+    } else if schema
+        .options
+        .get(key)
+        .is_some_and(|d| d.kind == OptionType::Points && !d.per_extruder)
+    {
+        TextKind::Points
+    } else if schema
+        .options
+        .get(key)
+        .is_some_and(|d| d.kind == OptionType::PointsGroups)
+    {
+        TextKind::PointGroups
     } else {
         TextKind::Line
     }
@@ -126,7 +150,35 @@ fn field_text(kind: TextKind, value: Option<&Value>) -> String {
     match kind {
         TextKind::List => settings::list_text(value),
         TextKind::Line | TextKind::Multiline => display_value(value),
+        TextKind::Points => joined_text(value, ","),
+        TextKind::PointGroups => joined_text(value, "#"),
     }
+}
+
+/// Усі елементи вектора одним рядком.
+fn joined_text(value: Option<&Value>, separator: &str) -> String {
+    match value {
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_owned))
+            .collect::<Vec<_>>()
+            .join(separator),
+        other => display_value(other),
+    }
+}
+
+/// Рядок через `separator` → вектор (або рядок, якщо значення було рядком).
+fn split_text(old: Option<&Value>, text: &str, separator: char) -> Value {
+    if matches!(old, Some(Value::String(_))) {
+        return Value::String(text.trim().to_owned());
+    }
+    Value::Array(
+        text.split(separator)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| Value::String(s.to_owned()))
+            .collect(),
+    )
 }
 
 /// Значення опції з тексту поля, у формі попереднього значення `old`.
@@ -135,6 +187,8 @@ fn value_from_text(kind: TextKind, old: Option<&Value>, text: &str) -> Value {
         TextKind::List => settings::parse_list(text),
         TextKind::Multiline => shaped_like(old, text),
         TextKind::Line => shaped_like(old, text.trim()),
+        TextKind::Points => split_text(old, text, ','),
+        TextKind::PointGroups => split_text(old, text, '#'),
     }
 }
 
@@ -407,7 +461,8 @@ impl Workspace {
         if let Some(input) = editor.inputs.get(key) {
             return Some(input.clone());
         }
-        let text = display_value(editor.preset.shown_value(key));
+        let text_kind = text_kind(self.settings_schema, key);
+        let text = field_text(text_kind, editor.preset.shown_value(key));
         let input = cx.new(|cx| InputState::new(window, cx).default_value(text.clone()));
         // Перетягування мишею (scrub) тут свідомо вимкнене: параметри друку потребують
         // точних значень, випадковий рух миші їх псує. Scrub лишається в панелях трансформацій.
@@ -420,7 +475,7 @@ impl Workspace {
                     let text = input.read(cx).value().to_string();
                     let current = this
                         .editor(kind)
-                        .map(|e| display_value(e.preset.shown_value(&owned_key)));
+                        .map(|e| field_text(text_kind, e.preset.shown_value(&owned_key)));
                     if current.as_deref() != Some(text.trim()) {
                         this.commit_value(kind, &owned_key, &text, window, cx);
                     }
@@ -600,7 +655,7 @@ impl Workspace {
                         dirty: editor.preset.is_dirty(key),
                         enabled: editor.preset.is_enabled(key),
                         heading,
-                        value: display_value(editor.preset.shown_value(key)),
+                        value: field_text(text_kind(schema, key), editor.preset.shown_value(key)),
                         overridden: (kind == PresetType::Filament
                             && schema.is_filament_override(key))
                         .then(|| editor.preset.is_overridden(key)),
@@ -656,7 +711,7 @@ impl Workspace {
                     .map(|d| d.sidetext(crate::i18n::locale()).to_owned())
                     .unwrap_or_default();
 
-                let wide = text_kind(schema, key) != TextKind::Line && row.overridden != Some(false);
+                let wide = text_kind(schema, key).is_wide() && row.overridden != Some(false);
                 let control = match row.def {
                     // Не перевизначено — приглушено показуємо, що прийде з принтера/процесу.
                     Some(_) if row.overridden == Some(false) => {
@@ -1301,6 +1356,53 @@ mod tests {
         assert_eq!(text_kind(&schema, "compatible_printers"), TextKind::List);
         assert_eq!(text_kind(&schema, "layer_height"), TextKind::Line);
         assert!(is_gcode("machine_start_gcode") && !is_gcode("filament_notes"));
+    }
+
+    /// Системний принтер Bambu бере `printable_area` з `fdm_bbl_3dp_001_common`; редактор
+    /// показував лише першу вершину («0x0»), а правка заміняла всі вершини одним значенням.
+    #[test]
+    fn printable_area_is_inherited_and_shown_as_whole_polygon() {
+        let dir = tempfile::tempdir().unwrap();
+        let machine = dir.path().join("system/BBL/machine");
+        std::fs::create_dir_all(&machine).unwrap();
+        let write = |name: &str, value: Value| {
+            std::fs::write(machine.join(format!("{name}.json")), value.to_string()).unwrap();
+        };
+        write(
+            "fdm_bbl_3dp_001_common",
+            json!({"name": "fdm_bbl_3dp_001_common", "type": "machine", "instantiation": "false",
+                   "printable_area": ["0x0", "256x0", "256x256", "0x256"]}),
+        );
+        write(
+            "Bambu Lab A1 0.4 nozzle",
+            json!({"name": "Bambu Lab A1 0.4 nozzle", "type": "machine", "instantiation": "true",
+                   "inherits": "fdm_bbl_3dp_001_common", "nozzle_diameter": ["0.4"]}),
+        );
+        let store = PresetStore::open_with_own_root(dir.path(), &dir.path().join("own")).unwrap();
+        let schema = Schema::load().unwrap();
+        let mut preset =
+            EditablePreset::from_system(&schema, &store, PresetType::Machine, "Bambu Lab A1 0.4 nozzle")
+                .unwrap();
+        let kind = text_kind(&schema, "printable_area");
+        assert_eq!(kind, TextKind::Points);
+        assert!(!kind.is_wide());
+        let shown = field_text(kind, preset.shown_value("printable_area"));
+        assert_eq!(shown, "0x0,256x0,256x256,0x256");
+
+        let edited = value_from_text(kind, preset.shown_value("printable_area"), " 0x0, 180x0,180x180 ,0x180");
+        assert_eq!(edited, json!(["0x0", "180x0", "180x180", "0x180"]));
+        preset.set("printable_area", edited).unwrap();
+        assert_eq!(field_text(kind, preset.shown_value("printable_area")), "0x0,180x0,180x180,0x180");
+
+        // Рядок замість вектора (так пишуть деякі профілі Orca) лишається рядком.
+        assert_eq!(value_from_text(kind, Some(&json!("0x0,1x0")), "0x0,2x0"), json!("0x0,2x0"));
+        // Зміщення екструдерів — по одній точці на екструдер, як і раніше.
+        assert_eq!(text_kind(&schema, "extruder_offset"), TextKind::Line);
+        let groups = json!(["0x0,256x0,256x256,0x256", "25x0,281x0,281x256,25x256"]);
+        let kind = text_kind(&schema, "extruder_printable_area");
+        assert_eq!(kind, TextKind::PointGroups);
+        let text = field_text(kind, Some(&groups));
+        assert_eq!(value_from_text(kind, Some(&groups), &text), groups);
     }
 
     #[test]

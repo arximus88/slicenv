@@ -373,6 +373,7 @@ impl Workspace {
                                 if let Err(e)=crate::i18n::set_language(&code) {this.toast(ToastKind::Error,e.to_string(),cx);return;}
                                 this.preferences.language=code.clone();
                                 this.library_search.update(cx,|input,cx|input.set_placeholder(crate::i18n::tr("Пошук моделей…"),window,cx));
+                                if let Some(input)=this.cloud.serial_input.clone() {input.update(cx,|input,cx|input.set_placeholder(crate::i18n::tr("Серійний номер, напр. 03919C…"),window,cx));}
                                 if let Some(e)=&mut this.process_editor {e.clear_controls();}
                                 if let Some(e)=&mut this.machine_editor {e.clear_controls();}
                                 if let Some(e)=&mut this.filament_editor {e.clear_controls();}

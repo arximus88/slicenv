@@ -341,7 +341,7 @@ impl Workspace {
             library_scanning: false,
             library_watch: None,
             path: None,
-            model_name: "кубик 20 мм".into(),
+            model_name: crate::i18n::tr("кубик 20 мм").into(),
             plate_bounds: Default::default(),
             plates: vec![Plate {
                 number: 1,
@@ -351,7 +351,7 @@ impl Workspace {
             active_plate: 0,
             error: None,
             engine: None,
-            engine_label: "Рушій…".into(),
+            engine_label: crate::i18n::tr("Рушій…").into(),
             engine_identity: None,
             packages: Default::default(),
             engine_loading: false,

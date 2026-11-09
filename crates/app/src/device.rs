@@ -124,6 +124,7 @@ pub struct ControlInputs {
 
 #[derive(Default)]
 pub struct CloudState {
+    /// Український текст-джерело; показується через `tr()`, щоб зміна мови діяла одразу.
     pub phase: SharedString,
     /// Іде підключення (плагін, вхід, сервер): замість крапки — анімований індикатор.
     pub connecting: bool,
@@ -1281,7 +1282,8 @@ impl Workspace {
         let klipper_rx = self.start_klipper(window, cx);
         let mut ui_rx = futures::stream::select(futures::stream::select(ui_rx, lan_rx), klipper_rx);
         self.cloud.commands = Some(cmd_tx);
-        self.cloud.phase = tr("Запуск…").into();
+        // Українське джерело: перекладається під час показу, тож зміна мови діє одразу.
+        self.cloud.phase = "Запуск…".into();
         self.cloud.jog_step = 1;
         let input = cx
             .new(|cx| InputState::new(window, cx).placeholder(tr("Серійний номер, напр. 03919C…")));
@@ -1339,7 +1341,7 @@ impl Workspace {
                         match msg {
                             CloudMsg::Phase(p) => {
                                 cloud.connecting = p.starts_with("Підключення");
-                                cloud.phase = tr(&p).into();
+                                cloud.phase = p.into();
                             }
                             CloudMsg::ListRetry { secs, cached } => {
                                 let mut text = crate::tr_format!(
@@ -1383,7 +1385,7 @@ impl Workspace {
                             }
                             CloudMsg::Error(e) => {
                                 cloud.connecting = false;
-                                cloud.phase = tr("Хмара недоступна").into();
+                                cloud.phase = "Хмара недоступна".into();
                                 cloud.error = Some(tr(&e).into());
                             }
                             CloudMsg::Blocked(text) => this.toast(ToastKind::Error, text, cx),

@@ -1,7 +1,7 @@
 Package: slicenv
 Version: @VERSION@
 Architecture: @ARCH@
-Maintainer: Slicenv maintainers <packaging@example.invalid>
+Maintainer: Borys Kharchenko <7512615+arximus88@users.noreply.github.com>
 Installed-Size: @SIZE@
 Depends: @DEPENDS@
 Recommends: squashfs-tools
