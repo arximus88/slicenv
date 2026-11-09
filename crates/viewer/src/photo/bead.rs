@@ -129,13 +129,17 @@ pub fn instances(toolpath: &gcode::Toolpath) -> PhotoInstances {
     out
 }
 
+/// У скільки разів переріз валика вищий за шар (`BEAD_OVERLAP` у bead.wgsl): сусідні шари
+/// перекриваються, і між ними лишається мілка борозенка замість щілини.
+pub const BEAD_OVERLAP: f32 = 1.35;
+
 /// Точка й одинична зовнішня нормаль поверхні валика: `t` — 0…1 уздовж осі, `phi` — кут
 /// у перерізі від бічного напрямку (0 — праворуч, π/2 — верх). Те саме, що в `bead.wgsl`:
-/// переріз — еліпс ширина × висота з віссю на півшару нижче сопла.
+/// переріз — еліпс ширина × (висота·[`BEAD_OVERLAP`]), верх на висоті сопла.
 pub fn surface(inst: &ToolpathInstance, t: f32, phi: f32) -> (Vec3, Vec3) {
     let (from, to) = (Vec3::from(inst.from), Vec3::from(inst.to));
     let (side, up) = frame(inst);
-    let (hw, hh) = (inst.width.max(0.02) * 0.5, inst.height.max(0.02) * 0.5);
+    let (hw, hh) = (inst.width.max(0.02) * 0.5, inst.height.max(0.02) * 0.5 * BEAD_OVERLAP);
     let axis = from.lerp(to, t) - Vec3::Z * hh;
     let (s, c) = phi.sin_cos();
     let pos = axis + side * (c * hw) + up * (s * hh);
@@ -194,7 +198,7 @@ fn frame(inst: &ToolpathInstance) -> (Vec3, Vec3) {
 /// Рамка валика з урахуванням заокруглених торців (півширини за кінцем).
 pub fn bounds(inst: &ToolpathInstance) -> (Vec3, Vec3) {
     let (from, to) = (Vec3::from(inst.from), Vec3::from(inst.to));
-    let (hw, h) = (inst.width.max(0.02) * 0.5, inst.height.max(0.02));
+    let (hw, h) = (inst.width.max(0.02) * 0.5, inst.height.max(0.02) * BEAD_OVERLAP);
     let reach = Vec3::new(hw, hw, 0.0);
     let (lo, hi) = (from.min(to) - reach, from.max(to) + reach);
     (Vec3::new(lo.x, lo.y, lo.z - h), Vec3::new(hi.x, hi.y, hi.z))
@@ -224,7 +228,7 @@ mod tests {
                 let (t, phi) = (ti as f32 / 8.0, pi as f32 / 64.0 * std::f32::consts::TAU);
                 let (p, n) = surface(&inst, t, phi);
                 assert!((n.length() - 1.0).abs() < 1e-5);
-                let axis = Vec3::new(10.0 + 10.0 * t, 5.0, 0.3);
+                let axis = Vec3::new(10.0 + 10.0 * t, 5.0, 0.4 - 0.1 * BEAD_OVERLAP);
                 assert!(n.dot(p - axis) > 0.0, "нормаль усередину при φ={phi}");
                 // Уздовж руху нормаль перпендикулярна осі.
                 assert!(n.x.abs() < 1e-5);
@@ -233,8 +237,8 @@ mod tests {
                 max = max.max(p);
             }
         }
-        // Переріз — еліпс 0.42 × 0.2 мм, верх на висоті сопла, низ на шар нижче.
-        assert!((max.z - 0.4).abs() < 1e-4 && (min.z - 0.2).abs() < 1e-4);
+        // Переріз — еліпс 0.42 × 0.2·k мм, верх на висоті сопла, низ заходить у шар нижче.
+        assert!((max.z - 0.4).abs() < 1e-4 && (min.z - (0.4 - 0.2 * BEAD_OVERLAP)).abs() < 1e-4);
         assert!((max.y - min.y - 0.42).abs() < 1e-3);
         // Верх валика дивиться вгору, бік — убік.
         let (_, top) = surface(&inst, 0.5, std::f32::consts::FRAC_PI_2);
@@ -306,7 +310,10 @@ mod tests {
             (Vec3::splat(f32::INFINITY), Vec3::splat(f32::NEG_INFINITY)),
             |(a, b), (l, h)| (a.min(l), b.max(h)),
         );
-        assert!(lo.z.abs() < 0.02 && (hi.z - 0.2).abs() < 0.03, "{lo} {hi}");
+        // Низ — шар нижче з перекриттям (горбик шва на 8 % вищий — ще трохи нижче).
+        let (bottom, seam_bottom) = (0.2 - 0.2 * BEAD_OVERLAP, 0.2 - 0.2 * 1.08 * BEAD_OVERLAP);
+        assert!(lo.z <= bottom + 1e-3 && lo.z >= seam_bottom - 1e-3, "{lo} {hi}");
+        assert!((hi.z - 0.2).abs() < 0.03, "{lo} {hi}");
         assert!(lo.x < 0.0 && hi.x > 20.0);
     }
 

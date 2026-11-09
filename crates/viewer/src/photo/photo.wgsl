@@ -398,6 +398,7 @@ struct BeadOut {
     @location(7) @interpolate(flat) half: vec2<f32>,
     // Шлях променя крізь цей валик, мм (clear.wgsl).
     @location(8) chord: f32,
+    @location(9) front: vec3<f32>,
 }
 
 fn bead_out(vertex: u32, pick: u32) -> BeadOut {
@@ -413,6 +414,7 @@ fn bead_out(vertex: u32, pick: u32) -> BeadOut {
     out.material = b.material;
     out.half = b.half;
     out.chord = b.chord;
+    out.front = b.front;
     return out;
 }
 
@@ -478,6 +480,10 @@ fn bead_shading(in: BeadOut) -> BeadShading {
     let c = clamp(in.coord.y - clamp(in.coord.y, 0.0, in.coord.z), -1.0, 1.0);
     let k = sqrt(max(1.0 - s_coord * s_coord - c * c, 0.0));
     let n_raw = in.n_side * s_coord + in.n_front * k + in.n_axis * c;
+    // Точка на поверхні валика (стрічка-імпостор стоїть перед нею на `front`): візерунки
+    // беруться звідси, інакше на крупному плані вкраплення «пливуть» з ракурсом і рвуться
+    // між шарами.
+    let surface = in.world - in.front * (1.0 - k);
     // Еліптичний переріз (як у «Шарах»): справжня форма вільного валика.
     let n_ellipse = normalize(n_raw);
 
@@ -553,7 +559,7 @@ fn bead_shading(in: BeadOut) -> BeadShading {
     let pattern = u32(m.p2.x + 0.5);
     let scale = m.p2.y;
     let strength = m.p2.z;
-    let p = in.world;
+    let p = surface;
     if pattern == PATTERN_MARBLE {
         // Bambu PLA Marble — однотонний матовий пластик із розкиданими рівномірно круглими
         // вкрапленнями 0.3–0.8 мм різного розміру (темні на світлому, світлі на темному —

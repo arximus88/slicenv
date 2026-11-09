@@ -33,6 +33,13 @@ struct Material {
 
 const MAX_MATERIALS: u32 = 32u;
 
+// Переріз валика вищий за шар: сусідні шари злипаються. Еліпс висотою рівно в шар торкався
+// сусіднього лише в точці — виріз між шарами на всю півширину (~0.2 мм) давав темні щілини.
+// З перекриттям k виріз — hw·(1 − √(1 − 1/k²)) ≈ 0.33·hw при k = 1.35: мілка борозенка, як
+// у справжньому друці (більше k — ще мілкіше, але більше перемальовок). Верх лишається на
+// висоті сопла, низ заходить у шар нижче. CPU-дзеркало — `photo/bead.rs::BEAD_OVERLAP`.
+const BEAD_OVERLAP: f32 = 1.35;
+
 fn seg_f(base: u32, i: u32) -> f32 {
     return bitcast<f32>(segments[base + i]);
 }
@@ -49,8 +56,11 @@ struct Bead {
     n_front: vec3<f32>,
     n_axis: vec3<f32>,
     n_far: vec3<f32>,
-    // Півширина й піввисота перерізу, мм (профіль валика в photo.wgsl).
+    // Півширина й «масштаб висоти» перерізу, мм (профіль валика в photo.wgsl): y = hh·k,
+    // тож dot(нормаль, вгору)·y = 1 на межі шару (півшару від середини).
     half: vec2<f32>,
+    // Зсув стрічки-імпостора до ока від осі: точка поверхні = world − front·(1 − k).
+    front: vec3<f32>,
     // Середній шлях променя ока крізь злитий переріз валика, мм (товщина прозорого).
     chord: f32,
     // x — слот філаменту, y — прапорці.
@@ -97,7 +107,8 @@ fn bead_vertex(vertex: u32, view_proj: mat4x4<f32>, eye: vec4<f32>, view: vec4<u
     let up = normalize(cross(side_n, fwd));
 
     let hw = max(size.x * 0.5, 0.01);
-    let hh = max(size.y * 0.5, 0.01);
+    let hh_layer = max(size.y * 0.5, 0.01);
+    let hh = hh_layer * BEAD_OVERLAP;
     let axis = select(pt_from, pt_to, at_end) - vec3<f32>(0.0, 0.0, hh);
     let boundary = chunk.y == 0u && select(instance == view.y, instance == view.z, at_end);
     let round = boundary || select(caps & 1u, (caps >> 1u) & 1u, at_end) == 1u;
@@ -124,14 +135,16 @@ fn bead_vertex(vertex: u32, view_proj: mat4x4<f32>, eye: vec4<f32>, view: vec4<u
     // (інтерпольований вектор вироджується в нуль).
     out.n_far = select(up * sign(v.y + 1e-6), side_n, wall);
 
-    out.half = vec2<f32>(hw, hh);
+    out.half = vec2<f32>(hw, hh * BEAD_OVERLAP);
+    out.front = front;
     // Паралельні промені крізь прямокутник 2hw × 2hh (злиті валики): середній шлях =
     // площа / ширина проєкції, у 3D — поділений ще на частку напрямку в площині перерізу,
     // тож компоненти беруться ненормованими. Уздовж осі — не довше за сам валик.
     let ray = normalize(to_eye);
     let across_side = abs(dot(ray, side_n));
     let across_up = abs(dot(ray, up));
-    out.chord = min(2.0 * hw * hh / max(hw * across_up + hh * across_side, 1e-4), len + 2.0 * hw);
+    // Товщина — від шару, не від перекритого перерізу (злиті валики не товщають).
+    out.chord = min(2.0 * hw * hh_layer / max(hw * across_up + hh_layer * across_side, 1e-4), len + 2.0 * hw);
     let length_hw = len / hw;
     out.clip = view_proj * vec4<f32>(pos, 1.0);
     out.world = pos;
