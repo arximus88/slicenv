@@ -157,9 +157,10 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
-    <release version="0.1.1" date="2026-11-10" type="stable">
+    <release version="0.1.1" date="2026-11-11" type="stable">
       <url type="details">https://github.com/arximus88/slicenv/releases/tag/v0.1.1</url>
       <description>
+        <p>Several projects can be open at once in tabs; project modes and actions moved to a floating bar above the scene.</p>
         <p>Improved printer connections, cloud printing, print routing and interface contrast.</p>
         <p>Added optional Open Bamboo Networking support on Linux and prevented sensitive plugin logging.</p>
         <p>Improved multi-plate previews, slicing performance and Klipper support.</p>

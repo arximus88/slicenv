@@ -54,8 +54,8 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 %doc %{_docdir}/%{name}
 
 %changelog
-* Tue Nov 10 2026 Borys Kharchenko <7512615+arximus88@users.noreply.github.com> - 0.1.1-1
-- Printer connections, plugin logging, print routing and interface contrast.
+* Wed Nov 11 2026 Borys Kharchenko <7512615+arximus88@users.noreply.github.com> - 0.1.1-1
+- Project tabs, floating project bar, printer connections, plugin logging, print routing and interface contrast.
 
 * Fri Nov 06 2026 Borys Kharchenko <7512615+arximus88@users.noreply.github.com> - 0.1.0-1
 - Перший пакет.
