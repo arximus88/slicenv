@@ -300,6 +300,19 @@ fn engine_title(kind: EngineKind) -> &'static str {
 }
 
 impl Workspace {
+    pub(crate) fn open_cloud_setup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.wizard.is_none() {
+            self.wizard = Some(Wizard::new(window, cx));
+        }
+        if let Some(w) = &mut self.wizard {
+            w.step = Step::Connection;
+            w.method = Method::Cloud;
+            w.cloud.stage = CloudStage::Checking;
+            w.cloud.signed_in = None;
+        }
+        self.open_wizard(window, cx);
+    }
+
     pub fn open_wizard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.wizard.is_none() {
             self.wizard = Some(Wizard::new(window, cx));
@@ -621,6 +634,7 @@ impl Workspace {
     pub(crate) fn wizard_check_cloud(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(w) = &mut self.wizard else { return };
         w.cloud.stage = CloudStage::Checking;
+        w.cloud.signed_in = None;
         w.cloud.error = None;
         cx.spawn_in(window, async move |this, cx| {
             let (setup, sessions) = cx
