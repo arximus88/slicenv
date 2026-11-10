@@ -1611,14 +1611,8 @@ impl Workspace {
                     .rounded(px(4.))
                     .cursor_pointer()
                     .hover(|s| s.bg(z.element_hover).text_color(z.text))
-                    .child(
-                        ui::icon(if self.cloud.error.is_some() {
-                            IconName::CloudOff
-                        } else {
-                            IconName::Cloud
-                        })
-                        .text_color(cloud_color),
-                    )
+                    // Стан вибраного принтера; стан хмари — лише в доку «Пристрою».
+                    .child(ui::icon(IconName::Printer).text_color(cloud_color))
                     .child(cloud_text)
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.enter_page(Page::Device, cx);

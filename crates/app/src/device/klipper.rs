@@ -1173,7 +1173,7 @@ impl Workspace {
     }
 
     /// Модалка «Принтер Klipper (Moonraker)»; `edit` заповнює назву й адресу збереженого.
-    pub(super) fn open_klipper_dialog(
+    pub(crate) fn open_klipper_dialog(
         &mut self,
         edit: Option<DeviceId>,
         window: &mut Window,
@@ -1188,7 +1188,7 @@ impl Workspace {
     }
 
     /// Модалка з підставленими назвою й адресою (знайдений у мережі принтер).
-    pub(super) fn open_klipper_dialog_with(
+    pub(crate) fn open_klipper_dialog_with(
         &mut self,
         name: String,
         address: String,
@@ -1458,99 +1458,84 @@ fn klipper_dialog(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Work
     )
 }
 
-/// Блок «Klipper (Moonraker)» у лівому доку: кнопка додавання, прогрес, проблема.
-pub fn panel_section(cloud: &CloudState, cx: &mut Context<Workspace>) -> gpui::Div {
+/// Знайдені mDNS, але не додані Moonraker — рядки згорнутої групи в списку доку.
+pub fn found_rows(cloud: &CloudState, filter: &str, cx: &mut Context<Workspace>) -> Vec<AnyElement> {
+    let z = zed();
+    cloud
+        .klipper
+        .found
+        .iter()
+        .enumerate()
+        .filter_map(|(i, f)| {
+            let (name, address) = (f.display_name(), f.address());
+            if !super::matches_filter(filter, &[&name, &address, "Klipper"]) {
+                return None;
+            }
+            let label = address.clone();
+            Some(
+                ui::list_item(("klipper-found", i), 0, false)
+                    .h(px(40.))
+                    .px(px(6.))
+                    .gap(px(8.))
+                    .child(ui::icon(IconName::Printer).flex_none().text_color(z.text_muted))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .child(div().min_w_0().truncate().text_sm().child(name.clone()))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_xs()
+                                    .text_color(z.text_muted)
+                                    .child(format!("Klipper · {label}")),
+                            ),
+                    )
+                    .child(ui::icon(IconName::Plus).flex_none().text_color(z.text_placeholder))
+                    .on_click(cx.listener(move |ws, _, window, cx| {
+                        ws.open_klipper_dialog_with(name.clone(), address.clone(), window, cx)
+                    }))
+                    .into_any_element(),
+            )
+        })
+        .collect()
+}
+
+/// Вивантаження й проблема вибраного принтера Klipper; порожньо — нічого.
+pub fn context_lines(cloud: &CloudState) -> Vec<AnyElement> {
     let z = zed();
     let mine = cloud.selected.as_ref().is_some_and(|d| cloud.klipper.has(d));
-    div()
-        .flex()
-        .flex_col()
-        .flex_none()
-        .gap(px(4.))
-        .p(px(10.))
-        .border_t_1()
-        .border_color(z.border_variant)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .child(
-                    div()
-                        .flex_1()
-                        .text_xs()
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(z.text_muted)
-                        .child(tr("Klipper (Moonraker)")),
-                )
-                .child(if cloud.klipper.searching {
-                    div().size(px(24.)).flex().items_center().justify_center().child(ui::spinner("klipper-search-spin")).into_any_element()
-                } else {
-                    ui::icon_button("klipper-search", IconName::Search, "Знайти принтери Klipper у мережі (mDNS)")
-                        .on_click(cx.listener(|ws, _, _, cx| {
-                            let k = &mut ws.cloud.klipper;
-                            k.searching = true;
-                            k.search_error = None;
-                            k.send(KlipperCmd::Discover);
-                            cx.notify();
-                        }))
-                        .into_any_element()
-                })
-                .child(
-                    ui::icon_button("klipper-open", IconName::Plus, "Додати принтер Klipper")
-                        .on_click(cx.listener(|ws, _, window, cx| ws.open_klipper_dialog(None, window, cx))),
-                ),
-        )
-        .children(cloud.klipper.found.iter().enumerate().map(|(i, f)| {
-            let (name, address) = (f.display_name(), f.address());
-            let label = address.clone();
-            ui::ghost_button_bare(("klipper-found", i), IconName::Wifi)
-                .w_full()
-                .h(px(40.))
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_w_0()
-                        .child(div().min_w_0().truncate().text_sm().child(name.clone()))
-                        .child(div().min_w_0().truncate().text_xs().text_color(z.text_placeholder).child(label)),
-                )
-                .child(ui::icon(IconName::Plus).text_color(z.text_muted))
-                .on_click(cx.listener(move |ws, _, window, cx| {
-                    ws.open_klipper_dialog_with(name.clone(), address.clone(), window, cx)
-                }))
-        }))
-        .when(
-            cloud.klipper.searched && !cloud.klipper.searching && cloud.klipper.found.is_empty(),
-            |d| {
-                d.child(
-                    div().text_xs().text_color(z.text_placeholder).whitespace_normal().child(
-                        cloud.klipper.search_error.clone().unwrap_or_else(|| {
-                            tr("У мережі не знайдено нових Moonraker. Потрібен [zeroconf] у moonraker.conf; інакше додайте за адресою.").into()
-                        }),
-                    ),
-                )
-            },
-        )
-        .when(cloud.klipper.entries.is_empty(), |d| {
-            d.child(div().text_xs().text_color(z.text_placeholder).whitespace_normal().child(tr(
-                "Creality, Voron, Prusa з Klipper та інші — за адресою Moonraker.",
-            )))
-        })
-        .children(cloud.klipper.upload.map(|p| {
+    let mut out = Vec::new();
+    if let Some(p) = cloud.klipper.upload {
+        out.push(
             div()
                 .text_xs()
                 .text_color(z.accent)
                 .child(crate::tr_format!("Завантаження на принтер: {pct:.0}%", pct = p * 100.0))
-        }))
-        .children(
-            cloud
-                .klipper
-                .problem
-                .clone()
-                .filter(|_| mine)
-                .map(|p| div().text_xs().text_color(z.warning).whitespace_normal().child(p)),
-        )
+                .into_any_element(),
+        );
+    }
+    if let Some(p) = cloud.klipper.problem.clone().filter(|_| mine) {
+        out.push(div().text_xs().text_color(z.warning).whitespace_normal().child(p).into_any_element());
+    }
+    out
+}
+
+/// Пошук Moonraker у мережі (mDNS) — з діалогу «Додати принтер».
+impl Workspace {
+    pub(crate) fn klipper_discover(&mut self, cx: &mut Context<Self>) {
+        let k = &mut self.cloud.klipper;
+        if k.searching {
+            return;
+        }
+        k.searching = true;
+        k.search_error = None;
+        k.send(KlipperCmd::Discover);
+        cx.notify();
+    }
 }
 
 /// Сторінка вибраного принтера Klipper (замість вкладок Bambu).

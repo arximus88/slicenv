@@ -76,11 +76,22 @@ impl Step {
     }
 }
 
+/// Спосіб підключення — властивість принтера, а не окремий розділ інтерфейсу.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Method {
     Lan,
     Cloud,
-    Later,
+    Klipper,
+}
+
+/// Для чого відкрито майстер: перший запуск (усі кроки) чи один діалог.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Scope {
+    Full,
+    /// «Додати принтер» з доку чи порожнього стану: лише з’єднання, перемикач способу.
+    AddPrinter,
+    /// «Bambu Cloud» з діалогу друку, модалки плагіна чи рядка хмари: лише хмара.
+    Cloud,
 }
 
 /// Профіль принтера для списку вибору.
@@ -102,6 +113,8 @@ struct LanForm {
     testing: bool,
     saved: Option<cloud::DeviceId>,
     error: Option<SharedString>,
+    /// Розгорнуто «Де знайти код?».
+    hint: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -149,8 +162,12 @@ struct CloudForm {
     error: Option<SharedString>,
     /// Нік, під яким увійшли (або чий вхід використано).
     signed_in: Option<String>,
-    /// Хмару налаштовано в цьому сеансі: робочий потік підхопить її після перезапуску.
-    changed: bool,
+    /// Номер перевірки: відповідь застарілої перевірки (новий клік, вхід) відкидається.
+    generation: u64,
+    /// Хмару відкритого плагіна ввімкнено після свіжого входу — показуємо це й «Вимкнути».
+    enabled_cloud: bool,
+    /// Розгорнуто «Додати за серійним номером».
+    serial_open: bool,
 }
 
 pub struct Wizard {
@@ -165,6 +182,7 @@ pub struct Wizard {
     machines_for: usize,
     machine: Option<String>,
     method: Method,
+    pub scope: Scope,
     lan: LanForm,
     cloud: CloudForm,
     _subs: Vec<Subscription>,
@@ -196,6 +214,7 @@ impl Wizard {
             testing: false,
             saved: None,
             error: None,
+            hint: false,
         };
         let cloud = CloudForm {
             stage: CloudStage::Checking,
@@ -214,7 +233,9 @@ impl Wizard {
             browser: None,
             error: None,
             signed_in: None,
-            changed: false,
+            generation: 0,
+            enabled_cloud: false,
+            serial_open: false,
         };
         subs.push(cx.subscribe(&search, |_, _, e: &InputEvent, cx| {
             if matches!(e, InputEvent::Change) {
@@ -253,6 +274,7 @@ impl Wizard {
             machines_for: 0,
             machine: None,
             method: Method::Lan,
+            scope: Scope::Full,
             lan,
             cloud,
             _subs: subs,
@@ -300,15 +322,31 @@ fn engine_title(kind: EngineKind) -> &'static str {
 }
 
 impl Workspace {
+    /// «Bambu Cloud» як окремий діалог (діалог друку, модалка плагіна, рядок хмари в доку):
+    /// без рейки першого запуску і без кроку вибору профілю (D15). Якщо вже відкрито
+    /// майстер першого запуску — просто перемикаємо його на хмару.
     pub(crate) fn open_cloud_setup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_scoped(Scope::Cloud, Method::Cloud, window, cx);
+    }
+
+    /// Один вхід «Додати принтер» — для «+» у доку, порожнього стану й кроку майстра.
+    pub(crate) fn open_add_printer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let method = self.wizard.as_ref().map_or(Method::Lan, |w| w.method);
+        self.open_scoped(Scope::AddPrinter, method, window, cx);
+    }
+
+    fn open_scoped(&mut self, scope: Scope, method: Method, window: &mut Window, cx: &mut Context<Self>) {
         if self.wizard.is_none() {
-            self.wizard = Some(Wizard::new(window, cx));
+            let mut w = Wizard::new(window, cx);
+            w.scope = scope;
+            self.wizard = Some(w);
         }
-        if let Some(w) = &mut self.wizard {
-            w.step = Step::Connection;
-            w.method = Method::Cloud;
+        let Some(w) = &mut self.wizard else { return };
+        w.step = Step::Connection;
+        let recheck = w.method != method || w.cloud.stage != CloudStage::Ready;
+        w.method = method;
+        if method == Method::Cloud && recheck && !w.cloud.busy {
             w.cloud.stage = CloudStage::Checking;
-            w.cloud.signed_in = None;
         }
         self.open_wizard(window, cx);
     }
@@ -327,7 +365,10 @@ impl Workspace {
 
     /// Esc і «Пропустити»: майстер більше не з’являється сам.
     pub fn close_wizard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let finished = self.wizard.as_ref().is_some_and(|w| w.step == Step::Done);
+        let finished = self
+            .wizard
+            .as_ref()
+            .is_some_and(|w| w.step == Step::Done || w.scope != Scope::Full);
         self.finish_wizard(window, cx);
         if !finished {
             self.toast(
@@ -341,6 +382,11 @@ impl Workspace {
     fn finish_wizard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(w) = self.wizard.take() {
             w.cloud.cancel.store(true, Ordering::Release);
+            // Очікування браузера теж скасовується: інакше пізній вхід записав би сесію мовчки,
+            // поки потік з локальним портом живе до кількох хвилин (D8).
+            if let Some((cancel, _)) = &w.cloud.browser {
+                cancel.store(true, Ordering::Release);
+            }
         }
         if !self.preferences.wizard_done {
             self.preferences.wizard_done = true;
@@ -354,6 +400,10 @@ impl Workspace {
         let Some(step) = self.wizard.as_ref().map(|w| w.step) else {
             return;
         };
+        // Окремий діалог має одну кнопку «Готово».
+        if self.wizard.as_ref().is_some_and(|w| w.scope != Scope::Full) {
+            return self.finish_wizard(window, cx);
+        }
         if step == Step::Printer {
             self.apply_wizard_machine(cx);
         }
@@ -364,7 +414,12 @@ impl Workspace {
     }
 
     pub fn wizard_back(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(prev) = self.wizard.as_ref().and_then(|w| w.step.prev()) {
+        if let Some(prev) = self
+            .wizard
+            .as_ref()
+            .filter(|w| w.scope == Scope::Full)
+            .and_then(|w| w.step.prev())
+        {
             self.wizard_go(prev, window, cx);
         }
     }
@@ -403,6 +458,11 @@ impl Workspace {
                     w.method == Method::Cloud && w.cloud.stage == CloudStage::Checking
                 }) {
                     self.wizard_check_cloud(window, cx);
+                }
+                if self.wizard.as_ref().is_some_and(|w| w.method == Method::Klipper)
+                    && !self.cloud.klipper.searched
+                {
+                    self.klipper_discover(cx);
                 }
                 self.wizard_preselect_lan();
             }
@@ -633,9 +693,16 @@ impl Workspace {
 
     pub(crate) fn wizard_check_cloud(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(w) = &mut self.wizard else { return };
+        // Вхід через браузер іще чекає: перевірка не має збити форму входу.
+        if w.cloud.browser.is_some() {
+            return;
+        }
         w.cloud.stage = CloudStage::Checking;
         w.cloud.signed_in = None;
         w.cloud.error = None;
+        w.cloud.enabled_cloud = false;
+        w.cloud.generation += 1;
+        let generation = w.cloud.generation;
         cx.spawn_in(window, async move |this, cx| {
             let (setup, sessions) = cx
                 .background_executor()
@@ -673,6 +740,10 @@ impl Workspace {
                 .await;
             this.update_in(cx, |this, window, cx| {
                 let Some(w) = &mut this.wizard else { return };
+                // Новіша перевірка чи вхід уже змінили стан: ця відповідь застаріла.
+                if w.cloud.generation != generation {
+                    return;
+                }
                 let demo_session = matches!(setup, CloudStage::Sessions) && sessions.is_empty();
                 w.cloud.sessions = sessions
                     .into_iter()
@@ -697,7 +768,7 @@ impl Workspace {
                 match setup {
                     CloudStage::NeedPlugin(_) => this.wizard_fetch_plugin(window, cx),
                     CloudStage::Sessions if !demo_session => this.wizard_nicknames(window, cx),
-                    CloudStage::Ready => this.wizard_own_nickname(window, cx),
+                    CloudStage::Ready => this.wizard_own_nickname(generation, window, cx),
                     _ => {}
                 }
                 cx.notify();
@@ -793,10 +864,7 @@ impl Workspace {
                 w.cloud.installing = false;
                 w.cloud.progress = None;
                 match result {
-                    Ok(()) => {
-                        w.cloud.changed = true;
-                        this.wizard_check_cloud(window, cx);
-                    }
+                    Ok(()) => this.wizard_check_cloud(window, cx),
                     Err(e) if w.cloud.cancel.load(Ordering::Acquire) => {
                         let _ = e;
                         w.cloud.plugin_error = Some(tr("Завантаження скасовано").into());
@@ -847,16 +915,21 @@ impl Workspace {
         }
     }
 
-    fn wizard_own_nickname(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Перевірка вже збереженої власної сесії. Лише записує нік: ні згоди на хмару, ні
+    /// перепідключення (`source::after_login(Existing)`), тож робоче з’єднання не рветься, а
+    /// вимкнена хмара лишається вимкненою.
+    fn wizard_own_nickname(&mut self, generation: u64, window: &mut Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { run_child(&[WHOAMI_ARG, "own"], None) })
                 .await;
             this.update_in(cx, |this, _, cx| {
-                if let Some(w) = &mut this.wizard {
+                if let Some(w) = &mut this.wizard
+                    && w.cloud.generation == generation
+                {
                     match result {
-                        Ok(nick) => w.cloud.signed_in = Some(nick),
+                        Ok(nick) => this.cloud_login(crate::device::source::Login::Existing, nick, cx),
                         // Власна сесія прострочена — просимо увійти знову.
                         Err(e) => {
                             w.cloud.stage = CloudStage::Login;
@@ -871,6 +944,79 @@ impl Workspace {
         .detach();
     }
 
+    /// Свіжий вхід (пароль, браузер, сесія Studio/Orca): користувач просить хмару. Працює й
+    /// без відкритого майстра — сесію вже записано, тож результат має бути видно.
+    fn cloud_login_done(&mut self, nickname: String, cx: &mut Context<Self>) {
+        self.cloud_login(crate::device::source::Login::Fresh, nickname, cx);
+    }
+
+    /// Застосувати вхід за рішенням `source::after_login`. Стара сесія лише показує нік.
+    fn cloud_login(&mut self, login: crate::device::source::Login, nickname: String, cx: &mut Context<Self>) {
+        let open_plugin = cloud::obn::active().is_some();
+        let after = crate::device::source::after_login(login, open_plugin, cloud::obn::cloud_enabled());
+        if login == crate::device::source::Login::Existing {
+            if let Some(w) = &mut self.wizard {
+                w.cloud.signed_in = Some(nickname);
+            }
+            debug_assert!(!after.enable_cloud && !after.reconnect);
+            return cx.notify();
+        }
+        let mut enabled = false;
+        let mut error = None;
+        if after.enable_cloud {
+            match cloud::obn::set_cloud(true) {
+                Ok(()) => enabled = true,
+                // Вхід відбувся: не повертаємо на форму, а кажемо, чого бракує.
+                Err(e) => error = Some(format!("{e:#}")),
+            }
+        }
+        if after.reconnect {
+            self.cloud.source = crate::device::source::Phase::Connecting;
+            self.cloud.send(crate::device::CloudCmd::Reconnect);
+        }
+        match &mut self.wizard {
+            Some(w) => {
+                w.cloud.generation += 1;
+                w.cloud.signed_in = Some(nickname);
+                w.cloud.stage = CloudStage::Ready;
+                w.cloud.error = error.map(Into::into);
+                w.cloud.enabled_cloud = enabled;
+            }
+            None => {
+                let text = if nickname.is_empty() {
+                    tr("Вхід у Bambu Cloud виконано")
+                } else {
+                    crate::tr_format!("Вхід у Bambu Cloud: {nickname}")
+                };
+                self.toast(ToastKind::Success, text, cx);
+                if let Some(e) = error {
+                    self.toast(ToastKind::Error, e, cx);
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// Вихід з акаунта — лише локально: видаляється сесія Slicenv (власна або відкритого
+    /// плагіна). Сесії Bambu Studio / OrcaSlicer не чіпаються, мережевих запитів немає.
+    fn cloud_logout(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let result = if cloud::obn::active().is_some() {
+            cloud::obn::forget_session()
+        } else {
+            cloud::account::forget_own_session()
+        };
+        match result {
+            Ok(()) => {
+                self.cloud.source = crate::device::source::Phase::Connecting;
+                self.cloud.send(crate::device::CloudCmd::Reconnect);
+                self.toast(ToastKind::Info, tr("Ви вийшли з акаунта Bambu на цьому комп’ютері"), cx);
+                self.wizard_check_cloud(window, cx);
+            }
+            Err(e) => self.toast(ToastKind::Error, format!("{e:#}"), cx),
+        }
+        cx.notify();
+    }
+
     fn wizard_adopt(&mut self, index: usize, cx: &mut Context<Self>) {
         let Some(w) = &mut self.wizard else { return };
         let Some(session) = w.cloud.sessions.get(index) else {
@@ -883,16 +1029,13 @@ impl Workspace {
             cloud::account::adopt_session(&session.found).map(|_| ())
         };
         match result {
-            Ok(()) => {
-                w.cloud.signed_in = Some(nickname.unwrap_or_default());
-                w.cloud.stage = CloudStage::Ready;
-                w.cloud.changed = true;
-                // Робочий потік хмари підхоплює нову сесію одразу — без перезапуску.
-                self.cloud.send(crate::device::CloudCmd::Reconnect);
+            // Робочий потік хмари підхоплює нову сесію одразу — без перезапуску.
+            Ok(()) => self.cloud_login_done(nickname.unwrap_or_default(), cx),
+            Err(e) => {
+                w.cloud.error = Some(format!("{e:#}").into());
+                cx.notify();
             }
-            Err(e) => w.cloud.error = Some(format!("{e:#}").into()),
         }
-        cx.notify();
     }
 
     fn wizard_login(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -928,6 +1071,15 @@ impl Workspace {
                 .spawn(async move { login_step(stage, &email, &password, &code, country) })
                 .await;
             this.update_in(cx, |this, window, cx| {
+                // Сесію записано навіть якщо майстер уже закрили: результат показуємо тостом.
+                if let LoginOutcome::Done(nickname) = result {
+                    if let Some(w) = &mut this.wizard {
+                        w.cloud.busy = false;
+                        // Пароль у пам’яті більше не потрібен.
+                        w.cloud.password.update(cx, |s, cx| s.set_value("", window, cx));
+                    }
+                    return this.cloud_login_done(nickname, cx);
+                }
                 let Some(w) = &mut this.wizard else { return };
                 w.cloud.busy = false;
                 match result {
@@ -935,16 +1087,8 @@ impl Workspace {
                         w.cloud.login = next;
                         w.cloud.code.update(cx, |s, cx| s.set_value("", window, cx));
                     }
-                    LoginOutcome::Done(nickname) => {
-                        w.cloud.signed_in = Some(nickname);
-                        w.cloud.stage = CloudStage::Ready;
-                        w.cloud.changed = true;
-                        this.cloud.send(crate::device::CloudCmd::Reconnect);
-                        // Пароль у пам’яті більше не потрібен.
-                        w.cloud.password.update(cx, |s, cx| s.set_value("", window, cx));
-                    }
                     LoginOutcome::Failed(text) => w.cloud.error = Some(text.into()),
-                    LoginOutcome::Cancelled => {}
+                    LoginOutcome::Done(_) | LoginOutcome::Cancelled => {}
                 }
                 cx.notify();
             })
@@ -976,25 +1120,30 @@ impl Workspace {
         w.cloud.error = None;
         w.cloud.browser = Some((cancel.clone(), url.clone()));
         cx.open_url(&url);
-        let title = tr("Вхід виконано");
-        let message = tr("Можна закрити цю вкладку й повернутися до Slicenv.");
+        // Сторінка не обіцяє «готово»: обмін квитка й вхід плагіна ще попереду (D11).
+        let title = tr("Поверніться до Slicenv");
+        let message = tr("Вхід отримано. Slicenv завершує його — результат буде у вікні програми; цю вкладку можна закрити.");
         cx.spawn_in(window, async move |this, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { browser_login(&server, &cancel, country, &title, &message) })
                 .await;
             this.update_in(cx, |this, _, cx| {
-                let Some(w) = &mut this.wizard else { return };
-                w.cloud.busy = false;
-                w.cloud.browser = None;
+                if let Some(w) = &mut this.wizard {
+                    w.cloud.busy = false;
+                    w.cloud.browser = None;
+                }
                 match result {
-                    LoginOutcome::Done(nickname) => {
-                        w.cloud.signed_in = Some(nickname);
-                        w.cloud.stage = CloudStage::Ready;
-                        w.cloud.changed = true;
-                        this.cloud.send(crate::device::CloudCmd::Reconnect);
+                    // Квиток міг прийти, поки вікно майстра вже закривалося: сесію записано,
+                    // тож результат застосовуємо й показуємо в будь-якому разі.
+                    LoginOutcome::Done(nickname) => this.cloud_login_done(nickname, cx),
+                    LoginOutcome::Failed(text) => {
+                        if let Some(w) = &mut this.wizard {
+                            w.cloud.error = Some(text.into());
+                        } else {
+                            this.toast(ToastKind::Error, text, cx);
+                        }
                     }
-                    LoginOutcome::Failed(text) => w.cloud.error = Some(text.into()),
                     LoginOutcome::Next(_) | LoginOutcome::Cancelled => {}
                 }
                 cx.notify();
@@ -1014,23 +1163,46 @@ impl Workspace {
         cx.notify();
     }
 
-    fn wizard_resend_code(&mut self, cx: &mut Context<Self>) {
+    /// «Надіслати код знову» — запит у фоні: вікно не завмирає (D10).
+    fn wizard_resend_code(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(w) = &mut self.wizard else { return };
+        if w.cloud.busy {
+            return;
+        }
         let email = w.cloud.email.read(cx).value().trim().to_string();
         let country = if w.cloud.china { "CN" } else { "US" };
-        let result = if demo().is_some() {
-            Ok(())
-        } else {
-            cloud::account::Login::new(&cloud::http::Curl, country).send_email_code(&email)
-        };
-        match result {
-            Ok(()) => self.toast(ToastKind::Info, tr("Новий код надіслано на пошту"), cx),
-            Err(e) => {
-                if let Some(w) = &mut self.wizard {
-                    w.cloud.error = Some(tr(&e.to_string()).into());
+        w.cloud.busy = true;
+        w.cloud.error = None;
+        cx.spawn_in(window, async move |this, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move {
+                    if demo().is_some() {
+                        Ok(())
+                    } else {
+                        cloud::account::Login::new(&cloud::http::Curl, country)
+                            .send_email_code(&email)
+                            .map_err(|e| e.to_string())
+                    }
+                })
+                .await;
+            this.update_in(cx, |this, _, cx| {
+                if let Some(w) = &mut this.wizard {
+                    w.cloud.busy = false;
                 }
-            }
-        }
+                match result {
+                    Ok(()) => this.toast(ToastKind::Info, tr("Новий код надіслано на пошту"), cx),
+                    Err(e) => {
+                        if let Some(w) = &mut this.wizard {
+                            w.cloud.error = Some(tr(&e).into());
+                        }
+                    }
+                }
+                cx.notify();
+            })
+            .ok();
+        })
+        .detach();
         cx.notify();
     }
 }
@@ -1334,8 +1506,9 @@ fn browser_login(
     message: &str,
 ) -> LoginOutcome {
     use cloud::browser_login::{Page, WaitError};
-    // 10 хвилин: вхід через Google з 2FA або реєстрація займають час.
-    let ticket = match server.wait_ticket(Duration::from_secs(600), cancel, &Page { title, message }) {
+    // 5 хвилин: вистачає на Google з 2FA, а локальний порт, що приймає будь-який квиток,
+    // відкритий коротше (D12). Закриття майстра скасовує очікування одразу.
+    let ticket = match server.wait_ticket(Duration::from_secs(300), cancel, &Page { title, message }) {
         Ok(ticket) => ticket,
         Err(WaitError::Cancelled) => return LoginOutcome::Cancelled,
         Err(e) => return LoginOutcome::Failed(tr(&e.to_string())),
@@ -1375,6 +1548,7 @@ pub fn render(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspac
         return div().into_any_element();
     };
     let step = w.step;
+    let scope = w.scope;
     let focus = w.focus.clone();
     // Поле з фокусом могло зникнути (успішний вхід, збережений принтер): тоді Enter і Esc
     // нікуди не йдуть. Повертаємо фокус майстру, якщо його не тримає ні він, ні модалка.
@@ -1384,7 +1558,9 @@ pub fn render(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspac
     }
     let viewport = window.viewport_size();
     let height = (f32::from(viewport.height) - 96.).clamp(460., 680.);
-    let width = (f32::from(viewport.width) - 64.).min(CARD_WIDTH);
+    let card_width = if scope == Scope::Full { CARD_WIDTH } else { CARD_WIDTH - RAIL_WIDTH };
+    let width = (f32::from(viewport.width) - 64.).min(card_width);
+    let connected = connection_summary(ws).0;
 
     let body = match step {
         Step::Welcome => welcome(),
@@ -1393,7 +1569,14 @@ pub fn render(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspac
         Step::Connection => connection_step(ws, window, cx),
         Step::Done => done_step(ws, cx),
     };
-    let (title, subtitle) = step_heading(step);
+    let (title, subtitle) = match scope {
+        Scope::Full => step_heading(step),
+        Scope::AddPrinter => (
+            "Додати принтер",
+            "У локальній мережі, через Bambu Cloud або Klipper.",
+        ),
+        Scope::Cloud => ("Bambu Cloud", "Акаунт Bambu і з’єднання з хмарою."),
+    };
 
     div()
         .id("wizard-layer")
@@ -1419,7 +1602,7 @@ pub fn render(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspac
                 .bg(z.panel)
                 .shadow_lg()
                 .overflow_hidden()
-                .child(rail(step, cx))
+                .when(scope == Scope::Full, |d| d.child(rail(step, connected, cx)))
                 .child(
                     div()
                         .flex()
@@ -1457,7 +1640,11 @@ pub fn render(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspac
                                     ui::icon_button(
                                         "wizard-close",
                                         IconName::X,
-                                        if step == Step::Done { "Завершити" } else { "Пропустити налаштування (Esc)" },
+                                        match (scope, step) {
+                                            (Scope::Full, Step::Done) => "Завершити",
+                                            (Scope::Full, _) => "Пропустити налаштування (Esc)",
+                                            _ => "Закрити (Esc)",
+                                        },
                                     )
                                     .flex_none()
                                     .on_click(cx.listener(|ws, _, window, cx| ws.close_wizard(window, cx))),
@@ -1504,10 +1691,12 @@ fn step_heading(step: Step) -> (&'static str, &'static str) {
     }
 }
 
-fn rail(current: Step, cx: &mut Context<Workspace>) -> AnyElement {
+/// Рейка кроків. Галочка «З’єднання» — за результатом (принтер справді на зв’язку), а не за
+/// тим, що крок пройдено (D19).
+fn rail(current: Step, connected: bool, cx: &mut Context<Workspace>) -> AnyElement {
     let z = zed();
     let items = Step::ALL.into_iter().enumerate().map(|(i, step)| {
-        let done = step < current;
+        let done = step < current && (step != Step::Connection || connected);
         let active = step == current;
         div()
             .id(("wizard-rail", i))
@@ -1592,11 +1781,31 @@ fn footer(ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
         return div().into_any_element();
     };
     let step = w.step;
+    // Окремий діалог («Додати принтер», «Bambu Cloud»): одна кнопка, без кроків.
+    if w.scope != Scope::Full {
+        return div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap(px(8.))
+            .px(px(24.))
+            .py(px(12.))
+            .border_t_1()
+            .border_color(z.border_variant)
+            .child(div().flex_1())
+            .child(
+                ui::accent_button("wizard-next", IconName::Check, "Готово", true)
+                    .on_click(cx.listener(|ws, _, window, cx| ws.finish_wizard(window, cx))),
+            )
+            .child(ui::kbd("Enter"))
+            .into_any_element();
+    }
     let next_label = match step {
         Step::Welcome => "Почати",
         Step::Done => "Завершити",
         Step::Engine if ws.engine.is_none() => "Пропустити крок",
         Step::Printer if w.machine.is_none() => "Пропустити крок",
+        Step::Connection if !connection_summary(ws).0 => "Пропустити крок",
         _ => "Далі",
     };
     div()
@@ -2313,154 +2522,157 @@ fn connection_step(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Wor
         return div().into_any_element();
     };
     let method = w.method;
-    let option = |id: &'static str, m: Method, icon: IconName, title: &str, tag: (&str, gpui::Hsla), text: &str, cx: &mut Context<Workspace>| {
-        let selected = method == m;
-        div()
-            .id(id)
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_w_0()
-            .gap(px(6.))
-            .p(px(12.))
-            .rounded(px(6.))
+    let scope = w.scope;
+    // Один рядок-перемикач замість трьох великих карток; під ним — одне речення про вибраний
+    // спосіб. «Пізніше» — це «Пропустити крок» у підвалі.
+    let segment = |id: &'static str, m: Method, icon: IconName, title: &'static str, cx: &mut Context<Workspace>| {
+        ui::ghost_button(id, Some(icon), title)
+            .toggled(method == m)
             .border_1()
-            .cursor_pointer()
-            .map(|d| {
-                if selected {
-                    d.border_color(z.accent).bg(z.accent_bg)
-                } else {
-                    d.border_color(z.border_variant).bg(z.panel).hover(|s| s.bg(z.element_hover))
-                }
-            })
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .child(widgets::radio((id, 0usize), selected, false))
-                    .child(ui::icon(icon).text_color(if selected { z.accent } else { z.text_muted }))
-                    .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(tr(title))),
-            )
-            .child(div().flex().child(badge(tag.0, tag.1)))
-            .child(div().text_xs().text_color(z.text_muted).child(tr(text)))
+            .border_color(if method == m { z.accent_border } else { z.border_variant })
             .on_click(cx.listener(move |ws, _, window, cx| {
                 if let Some(w) = &mut ws.wizard {
                     w.method = m;
-                    if m == Method::Cloud && w.cloud.stage == CloudStage::Checking {
-                        ws.wizard_check_cloud(window, cx);
-                    }
                 }
+                ws.wizard_enter(window, cx);
                 cx.notify();
             }))
     };
-    let options = div()
-        .flex()
-        .gap(px(10.))
-        .child(option(
-            "wizard-method-lan",
-            Method::Lan,
-            IconName::Wifi,
-            "Локальна мережа",
-            ("Рекомендовано · без акаунта", z.success),
-            "Напряму по Wi‑Fi/LAN: стан, камера, друк. Потрібен лише код доступу з екрана принтера.",
-            cx,
-        ))
-        .child(option(
-            "wizard-method-cloud",
-            Method::Cloud,
-            IconName::Cloud,
-            "Bambu Cloud",
-            ("Потрібен акаунт Bambu", z.warning),
-            "Друк і стан через сервери Bambu, також поза домом. Потрібен закритий плагін від Bambu Lab.",
-            cx,
-        ))
-        .child(option(
-            "wizard-method-later",
-            Method::Later,
-            IconName::Clock,
-            "Пізніше",
-            ("Без принтера", z.text_muted),
-            "Лише нарізка й експорт G-code. Під’єднати принтер можна будь-коли на сторінці «Пристрій».",
-            cx,
-        ));
+    let about = match method {
+        Method::Lan => "Bambu Lab напряму по Wi‑Fi/LAN: стан, камера, друк. Без акаунта — лише код доступу з екрана принтера.",
+        Method::Cloud => "Bambu Lab через сервери Bambu, також поза домом. Потрібні акаунт Bambu і мережевий плагін.",
+        Method::Klipper => "Creality, Voron, Prusa та інші з Klipper — за адресою Moonraker у мережі.",
+    };
     let form = match method {
         Method::Lan => lan_form(ws, window, cx),
         Method::Cloud => cloud_form(ws, window, cx),
-        Method::Later => note(
-            IconName::Info,
-            z.accent,
-            tr("Без принтера Slicenv повністю працює як слайсер: «Перегляд» → «Експортувати…» зберігає G-code (.gcode.3mf) для microSD. Під’єднати принтер можна будь-коли: сторінка «Пристрій» або цей майстер."),
-        )
-        .into_any_element(),
+        Method::Klipper => klipper_form(ws, cx),
     };
     div()
         .flex()
         .flex_col()
-        .gap(px(14.))
-        .child(options)
+        .gap(px(12.))
+        .when(scope != Scope::Cloud, |d| {
+            d.child(
+                div()
+                    .flex()
+                    .flex_wrap()
+                    .gap(px(6.))
+                    .child(segment("wizard-method-lan", Method::Lan, IconName::Wifi, "Bambu в мережі", cx))
+                    .child(segment("wizard-method-cloud", Method::Cloud, IconName::Cloud, "Bambu Cloud", cx))
+                    .child(segment("wizard-method-klipper", Method::Klipper, IconName::Printer, "Klipper", cx)),
+            )
+            .child(div().text_xs().text_color(z.text_muted).whitespace_normal().child(tr(about)))
+        })
         .child(form)
         .into_any_element()
 }
 
-/// Схема екрана принтера: де шукати IP і код доступу (текстом, без чужих зображень).
-fn screen_hint() -> gpui::Div {
+/// Де на екрані принтера код доступу — для моделі вибраного принтера, а не перелік усіх.
+pub(crate) fn code_hint(model: &str) -> &'static str {
+    match model.to_ascii_uppercase().as_str() {
+        "N2S" | "N1" => "A1 / A1 mini: значок налаштувань на екрані → вкладка WLAN → Access Code.",
+        "C11" | "C12" | "BL-P001" | "BL-P002" | "C13" | "N7" | "O1D" | "O1S" | "O1C" => {
+            "На екрані принтера: Налаштування → Мережа (Network) → Access Code."
+        }
+        _ => "A1, A1 mini: значок налаштувань → вкладка WLAN. P1, X1, P2S, H2D: Налаштування → Мережа (Network). Там рядок Access Code.",
+    }
+}
+
+/// Klipper: знайдені Moonraker і додавання за адресою (діалог Klipper уже вміє перевірку).
+fn klipper_form(ws: &mut Workspace, cx: &mut Context<Workspace>) -> AnyElement {
     let z = zed();
-    let row = |key: &str, value: &str, hot: bool| {
-        div()
-            .flex()
-            .items_center()
-            .gap(px(8.))
-            .px(px(8.))
-            .h(px(22.))
-            .rounded(px(3.))
-            .when(hot, |d| d.bg(z.accent_bg).border_1().border_color(z.accent))
-            .child(div().flex_1().text_xs().text_color(if hot { z.text } else { z.text_muted }).child(tr(key)))
-            .child(
-                div()
-                    .text_xs()
-                    .font_family(crate::theme::MONO_FONT)
-                    .text_color(if hot { z.accent } else { z.text_muted })
-                    .child(value.to_owned()),
-            )
-    };
-    div()
-        .flex()
-        .flex_col()
-        .flex_none()
-        .w(px(250.))
-        .gap(px(6.))
-        .child(
+    let k = &ws.cloud.klipper;
+    let mut list = div().id("wizard-klipper-list").flex().flex_col().gap(px(4.)).max_h(px(LIST_HEIGHT)).overflow_y_scroll();
+    for (i, f) in k.found.iter().enumerate() {
+        let (name, address) = (f.display_name(), f.address());
+        let label = address.clone();
+        list = list.child(
             div()
+                .id(("wizard-klipper-row", i))
                 .flex()
-                .flex_col()
-                .gap(px(3.))
-                .p(px(8.))
-                .rounded(px(8.))
-                .border_2()
-                .border_color(z.border)
-                .bg(gpui::black().opacity(0.35))
+                .items_center()
+                .gap(px(10.))
+                .px(px(10.))
+                .py(px(7.))
+                .rounded(px(6.))
+                .border_1()
+                .border_color(z.border_variant)
+                .bg(z.panel)
+                .cursor_pointer()
+                .hover(|s| s.bg(z.element_hover))
+                .child(ui::icon(IconName::Printer).text_color(z.text_muted))
                 .child(
                     div()
                         .flex()
-                        .items_center()
-                        .gap(px(6.))
-                        .pb(px(4.))
-                        .mb(px(2.))
-                        .border_b_1()
-                        .border_color(z.border_variant)
-                        .child(ui::icon(IconName::Settings).size(px(12.)).text_color(z.text_muted))
-                        .child(div().text_xs().font_weight(FontWeight::MEDIUM).child(tr("Налаштування → WLAN"))),
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .child(div().text_sm().truncate().child(name.clone()))
+                        .child(div().text_xs().text_color(z.text_muted).truncate().child(label)),
                 )
-                .child(row("Мережа", "Home-WiFi", false))
-                .child(row("IP", "192.168.0.23", false))
-                .child(row("Access Code", "1a2b3c4d", true))
-                .child(row("LAN Only", "○", false)),
+                .child(ui::icon(IconName::Plus).text_color(z.text_placeholder))
+                .on_click(cx.listener(move |ws, _, window, cx| {
+                    ws.open_klipper_dialog_with(name.clone(), address.clone(), window, cx)
+                })),
+        );
+    }
+    let saved = k.entries.len();
+    div()
+        .flex()
+        .flex_col()
+        .gap(px(8.))
+        .child(label("Знайдено в мережі"))
+        .map(|d| {
+            if k.searching {
+                d.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(ui::spinner("wizard-klipper-search"))
+                        .child(muted("Шукаю Moonraker у мережі (mDNS)…").flex_1().min_w_0().whitespace_normal()),
+                )
+            } else if k.found.is_empty() {
+                d.child(
+                    div().text_sm().text_color(z.text_muted).whitespace_normal().child(
+                        k.search_error.clone().unwrap_or_else(|| {
+                            tr("У мережі не знайдено нових Moonraker. Потрібен [zeroconf] у moonraker.conf; інакше додайте за адресою.").into()
+                        }),
+                    ),
+                )
+            } else {
+                d.child(list)
+            }
+        })
+        .child(
+            div()
+                .flex()
+                .flex_wrap()
+                .gap(px(8.))
+                .child(
+                    ui::accent_button("wizard-klipper-add", IconName::Plus, "Додати за адресою…", true)
+                        .on_click(cx.listener(|ws, _, window, cx| ws.open_klipper_dialog(None, window, cx))),
+                )
+                .child(
+                    ui::ghost_button("wizard-klipper-search-again", Some(IconName::Search), "Шукати знову")
+                        .border_1()
+                        .border_color(z.border_variant)
+                        .on_click(cx.listener(|ws, _, _, cx| ws.klipper_discover(cx))),
+                ),
         )
-        .child(small(
-            "A1, A1 mini: значок налаштувань → вкладка WLAN. P1, X1, P2S, H2D: Налаштування → Мережа (Network). Код змінюється, якщо скинути мережу на принтері.",
-        ))
+        .when(saved > 0, |d| {
+            d.child(note(
+                IconName::CircleCheck,
+                z.success,
+                crate::tr_format!("Принтерів Klipper додано: {saved}"),
+            ))
+        })
+        .into_any_element()
 }
+
+/// Висота списків у майстрі: десять принтерів прокручуються, а не виштовхують форму.
+const LIST_HEIGHT: f32 = 196.;
 
 fn lan_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>) -> AnyElement {
     let z = zed();
@@ -2475,6 +2687,7 @@ fn lan_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>
         detail: String,
         saved: bool,
         lan_only: bool,
+        model: String,
     }
     let mut rows: Vec<Row> = lan
         .printers
@@ -2485,6 +2698,7 @@ fn lan_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>
             detail: format!("{} · {}", lan::model_name(&p.model), lan::store::redact(p.dev_id.as_str())),
             saved: true,
             lan_only: false,
+            model: p.model.clone(),
         })
         .collect();
     rows.extend(lan.found.iter().map(|f| Row {
@@ -2493,6 +2707,7 @@ fn lan_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>
         detail: format!("{} · {} · {}", lan::model_name(&f.model), f.ip, lan::store::redact(&f.serial)),
         saved: false,
         lan_only: f.lan_only,
+        model: f.model.clone(),
     }));
     let selected_saved = w
         .lan
@@ -2501,8 +2716,19 @@ fn lan_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>
         .filter(|_| !w.lan.manual)
         .is_some_and(|s| lan.printers.iter().any(|p| p.dev_id.as_str() == s));
     let manual = w.lan.manual || rows.is_empty();
+    let selected_model = rows
+        .iter()
+        .find(|r| !manual && w.lan.selected.as_deref() == Some(r.serial.as_str()))
+        .map(|r| r.model.clone())
+        .unwrap_or_default();
 
-    let mut list = div().flex().flex_col().gap(px(4.));
+    let mut list = div()
+        .id("wizard-lan-list")
+        .flex()
+        .flex_col()
+        .gap(px(4.))
+        .max_h(px(LIST_HEIGHT))
+        .overflow_y_scroll();
     for (i, row) in rows.into_iter().enumerate() {
         let selected = !w.lan.manual && w.lan.selected.as_deref() == Some(row.serial.as_str());
         let serial = row.serial.clone();
@@ -2548,6 +2774,38 @@ fn lan_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>
         );
     }
     let has_rows = !lan.found.is_empty() || !lan.printers.is_empty();
+    // Останній рядок списку — «Інший принтер»: ручний ввід замість окремої кнопки й блоку.
+    if has_rows {
+        list = list.child(
+            div()
+                .id("wizard-lan-manual")
+                .flex()
+                .items_center()
+                .gap(px(10.))
+                .px(px(10.))
+                .py(px(7.))
+                .rounded(px(6.))
+                .border_1()
+                .cursor_pointer()
+                .map(|d| {
+                    if w.lan.manual {
+                        d.border_color(z.accent_border).bg(z.accent_bg)
+                    } else {
+                        d.border_color(z.border_variant).bg(z.panel).hover(|s| s.bg(z.element_hover))
+                    }
+                })
+                .child(widgets::radio("wizard-lan-manual-radio", w.lan.manual, false))
+                .child(ui::icon(IconName::Pencil).text_color(z.text_muted))
+                .child(div().flex_1().min_w_0().text_sm().truncate().child(tr("Інший принтер (IP і серійний номер)…")))
+                .on_click(cx.listener(|ws, _, _, cx| {
+                    if let Some(w) = &mut ws.wizard {
+                        w.lan.manual = true;
+                        w.lan.error = None;
+                    }
+                    cx.notify();
+                })),
+        );
+    }
     let searching = div()
         .flex()
         .items_center()
@@ -2558,34 +2816,22 @@ fn lan_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>
         .border_color(z.border_variant)
         .bg(z.panel)
         .child(ui::spinner("wizard-lan-search"))
-        .child(muted("Шукаю принтери в мережі… Принтер має бути увімкнений і в тій самій мережі, що й комп’ютер."));
+        // Переноситься в межах колонки, а не налазить на сусідів (D20).
+        .child(
+            muted("Шукаю принтери в мережі… Принтер має бути увімкнений і в тій самій мережі, що й комп’ютер.")
+                .flex_1()
+                .min_w_0()
+                .whitespace_normal(),
+        );
 
-    let mut left = div()
+    let mut body = div()
         .flex()
         .flex_col()
-        .flex_1()
-        .min_w_0()
         .gap(px(8.))
         .child(label("Принтери в мережі"))
-        .child(if has_rows { list.into_any_element() } else { searching.into_any_element() })
-        .child(
-            div().flex().child(
-                ui::ghost_button(
-                    "wizard-lan-manual",
-                    Some(if manual { IconName::ChevronDown } else { IconName::ChevronRight }),
-                    "Ввести IP і серійний номер вручну",
-                )
-                .on_click(cx.listener(|ws, _, _, cx| {
-                    if let Some(w) = &mut ws.wizard {
-                        w.lan.manual = !w.lan.manual;
-                        w.lan.error = None;
-                    }
-                    cx.notify();
-                })),
-            ),
-        );
+        .child(if has_rows { list.into_any_element() } else { searching.into_any_element() });
     if manual {
-        left = left
+        body = body
             .child(label("IP-адреса"))
             .child(field(&w.lan.ip, false, window, cx))
             .child(label("Серійний номер"))
@@ -2594,14 +2840,49 @@ fn lan_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>
     }
     let testing = w.lan.testing || lan.adding;
     if selected_saved && !manual {
-        left = left.child(note(
+        body = body.child(note(
             IconName::CircleCheck,
             z.success,
-            tr("Цей принтер уже збережено — з’єднання налаштоване. Можна переходити далі."),
+            tr("Цей принтер уже збережено — з’єднання налаштоване."),
         ));
     } else {
-        left = left
-            .child(label("Код доступу"))
+        let hint_open = w.lan.hint;
+        body = body
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .child(label("Код доступу"))
+                    .child(div().flex_1())
+                    .child(
+                        ui::ghost_button(
+                            "wizard-lan-hint",
+                            Some(if hint_open { IconName::ChevronDown } else { IconName::ChevronRight }),
+                            "Де знайти код?",
+                        )
+                        .text_xs()
+                        .on_click(cx.listener(|ws, _, _, cx| {
+                            if let Some(w) = &mut ws.wizard {
+                                w.lan.hint = !w.lan.hint;
+                            }
+                            cx.notify();
+                        })),
+                    ),
+            )
+            .when(hint_open, |d| {
+                d.child(
+                    div()
+                        .text_xs()
+                        .text_color(z.text_muted)
+                        .whitespace_normal()
+                        .child(format!(
+                            "{} {}",
+                            tr(code_hint(&selected_model)),
+                            tr("Код змінюється, якщо скинути мережу на принтері.")
+                        )),
+                )
+            })
             .child(field(&w.lan.code, true, window, cx))
             .child(
                 div()
@@ -2618,9 +2899,8 @@ fn lan_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>
                     }),
             );
         let error = w.lan.error.clone().or_else(|| lan.add_error.clone().filter(|_| !testing));
-        if let Some(saved) = &w.lan.saved {
-            let _ = saved;
-            left = left.child(note(
+        if w.lan.saved.is_some() {
+            body = body.child(note(
                 IconName::CircleCheck,
                 z.success,
                 tr("З’єднання є: принтер відповів і збережений. Стан і камера вже доступні на сторінці «Пристрій»."),
@@ -2628,22 +2908,12 @@ fn lan_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>
         } else if let Some(error) = error {
             // Невірний код: принтер після кількох спроб поспіль може тимчасово блокувати вхід.
             let bad_code = error.contains(&tr(lan::LanError::BadAccessCode.key()));
-            left = left.child(note(IconName::CircleX, z.error, error)).when(bad_code, |d| {
+            body = body.child(note(IconName::CircleX, z.error, error)).when(bad_code, |d| {
                 d.child(small("Кілька невдалих спроб поспіль принтер може тимчасово блокувати — звірте код з екраном, перш ніж пробувати знову."))
             });
         }
     }
-    div()
-        .flex()
-        .flex_col()
-        .gap(px(12.))
-        .child(div().flex().gap(px(16.)).child(left).child(screen_hint()))
-        .child(note(
-            IconName::Info,
-            z.accent,
-            tr("Стан, температури й камера працюють одразу. Щоб друкувати й керувати без хмари на прошивках 2025 року й новіших, увімкніть на екрані принтера LAN Only Mode і Developer Mode (Налаштування → Мережа). У режимі LAN Only принтер не з’єднується з Bambu Cloud і застосунком Bambu Handy."),
-        ))
-        .into_any_element()
+    body.into_any_element()
 }
 
 fn cloud_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspace>) -> AnyElement {
@@ -2931,7 +3201,7 @@ fn cloud_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspac
                         .child(
                             div().flex().child(
                                 ui::ghost_button("wizard-resend", Some(IconName::RefreshCw), "Надіслати код знову")
-                                    .on_click(cx.listener(|ws, _, _, cx| ws.wizard_resend_code(cx))),
+                                    .on_click(cx.listener(|ws, _, window, cx| ws.wizard_resend_code(window, cx))),
                             ),
                         );
                 }
@@ -2991,46 +3261,199 @@ fn cloud_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspac
             }
         }
         CloudStage::Ready => {
+            // Акаунт ✓ — це ще не «принтери видно»: рядок з’єднання читає робочий потік.
             let who = match &c.signed_in {
                 None => tr("Перевіряю вхід…"),
-                Some(nick) if !nick.is_empty() => crate::tr_format!("Вхід у Bambu Cloud: {nick}"),
+                Some(nick) if !nick.is_empty() => crate::tr_format!("Акаунт Bambu: {nick}"),
                 Some(_) => tr("Вхід у Bambu Cloud виконано"),
             };
-            body = body.child(note(IconName::CircleCheck, z.success, who));
-        }
-    }
-    // Linux: другий шлях — відкритий плагін, лише за явним вибором (окрема модалка з
-    // попередженням).
-    if cloud::obn::SUPPORTED && c.stage != CloudStage::Checking {
-        let chosen = cloud::obn::active().is_some();
-        body = body.child(
-            card()
+            let source = &ws.cloud.source;
+            let linked = ws.cloud.connected && source.connected();
+            let count = ws
+                .cloud
+                .printers
+                .iter()
+                .filter(|p| !ws.cloud.lan.has(&p.dev_id) && !ws.cloud.klipper.has(&p.dev_id))
+                .count();
+            let link_text = if linked {
+                crate::tr_format!("З’єднання: підключено · принтерів в акаунті: {count}")
+            } else {
+                crate::tr_format!("З’єднання: {state}", state = source.text())
+            };
+            let link_icon = if source.busy() {
+                ui::spinner("wizard-cloud-link")
+            } else {
+                ui::icon(if linked {
+                    IconName::CircleCheck
+                } else if source.problem() {
+                    IconName::TriangleAlert
+                } else {
+                    IconName::Cloud
+                })
+                .text_color(if linked {
+                    z.success
+                } else if source.problem() {
+                    z.warning
+                } else {
+                    z.text_muted
+                })
+                .into_any_element()
+            };
+            let action = source.action().filter(|a| *a != crate::device::source::Action::SignIn);
+            let mut card_body = card()
                 .child(
                     div()
                         .flex()
                         .items_center()
                         .gap(px(8.))
-                        .child(ui::icon(IconName::Plug).text_color(if chosen { z.success } else { z.text_muted }))
-                        .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(tr("Відкритий плагін (Open Bamboo Networking)")))
-                        .child(div().flex_1())
-                        .child(badge(if chosen { "Вибрано" } else { "Сторонній" }, if chosen { z.success } else { z.warning })),
+                        .child(ui::icon(IconName::User).text_color(if c.signed_in.is_some() { z.success } else { z.text_muted }))
+                        .child(div().flex_1().min_w_0().text_sm().truncate().child(who))
+                        .when(c.signed_in.is_some(), |d| {
+                            d.child(
+                                ui::ghost_button("wizard-logout", Some(IconName::LogOut), "Вийти")
+                                    .border_1()
+                                    .border_color(z.border_variant)
+                                    .on_click(cx.listener(|ws, _, window, cx| ws.cloud_logout(window, cx))),
+                            )
+                        }),
                 )
-                .child(small(if chosen {
-                    "Друк по локальній мережі без Developer Mode; хмара — за перемикачем у налаштуваннях плагіна. Вхід в акаунт — тут, через браузер."
-                } else {
-                    "Замість закритого плагіна Bambu: друк з Linux без Developer Mode. Сторонній код із вшитим ключем Bambu — на ваш розсуд, можливе блокування."
-                }))
                 .child(
-                    div().flex().child(
-                        ui::ghost_button("wizard-open-plugin", Some(IconName::Settings), if chosen { "Налаштувати…" } else { "Детальніше й вибрати…" })
-                            .border_1()
-                            .border_color(z.border_variant)
-                            .on_click(cx.listener(|ws, _, window, cx| ws.open_open_plugin(window, cx))),
-                    ),
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(link_icon)
+                        .child(div().flex_1().min_w_0().text_sm().whitespace_normal().child(link_text))
+                        .children(action.map(|a| {
+                            ui::accent_button("wizard-cloud-action", IconName::Cloud, a.label(), true)
+                                .on_click(cx.listener(|ws, _, window, cx| ws.cloud_source_action(window, cx)))
+                        })),
+                );
+            if c.enabled_cloud {
+                card_body = card_body.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(div().flex_1().min_w_0().text_xs().text_color(z.text_muted).whitespace_normal().child(tr(
+                            "Хмару відкритого плагіна ввімкнено: моделі для хмарного друку вивантажуються в Bambu Cloud.",
+                        )))
+                        .child(
+                            ui::ghost_button("wizard-cloud-disable", None, "Вимкнути")
+                                .text_xs()
+                                .on_click(cx.listener(|ws, _, window, cx| ws.obn_set_cloud(false, window, cx))),
+                        ),
+                );
+            }
+            if let Some(error) = &c.error {
+                card_body = card_body.child(note(IconName::CircleX, z.error, error.clone()));
+            }
+            // Ручне додавання за серійником — лише коли хмара справді працює.
+            if linked && let Some(input) = ws.cloud.serial_input.clone() {
+                let open = c.serial_open;
+                card_body = card_body
+                    .child(
+                        div().flex().child(
+                            ui::ghost_button(
+                                "wizard-serial-toggle",
+                                Some(if open { IconName::ChevronDown } else { IconName::ChevronRight }),
+                                "Принтера немає в списку? Додати за серійним номером",
+                            )
+                            .text_xs()
+                            .on_click(cx.listener(|ws, _, _, cx| {
+                                if let Some(w) = &mut ws.wizard {
+                                    w.cloud.serial_open = !w.cloud.serial_open;
+                                }
+                                cx.notify();
+                            })),
+                        ),
+                    )
+                    .when(open, |d| {
+                        d.child(
+                            div()
+                                .flex()
+                                .gap(px(4.))
+                                .child(widgets::field(&input, Input::new(&input), window, cx))
+                                .child(
+                                    ui::icon_button("wizard-serial-add", IconName::Plus, "Додати")
+                                        .on_click(cx.listener(|ws, _, window, cx| ws.add_manual_printer(window, cx))),
+                                ),
+                        )
+                        .child(small("Серійний номер — на екрані принтера (Налаштування → Пристрій) або в Bambu Studio."))
+                    });
+            }
+            body = body.child(card_body);
+        }
+    }
+    // Linux: який плагін — один рядок з «Змінити…», а не окрема картка. Відкритий плагін —
+    // лише за явним вибором у модалці з попередженням.
+    if cloud::obn::SUPPORTED && c.stage != CloudStage::Checking {
+        let chosen = cloud::obn::active().is_some();
+        body = body.child(
+            div()
+                .flex()
+                .items_center()
+                .gap(px(8.))
+                .text_xs()
+                .text_color(z.text_muted)
+                .child(ui::icon(IconName::Plug).size(px(14.)))
+                .child(div().flex_1().min_w_0().whitespace_normal().child(tr(if chosen {
+                    "Плагін: відкритий (Open Bamboo Networking, сторонній)"
+                } else {
+                    "Плагін: закритий Bambu Lab"
+                })))
+                .child(
+                    ui::ghost_button("wizard-open-plugin", None, "Змінити…")
+                        .text_xs()
+                        .on_click(cx.listener(|ws, _, window, cx| ws.open_open_plugin(window, cx))),
                 ),
         );
     }
     body.into_any_element()
+}
+
+/// Підсумок з’єднання за фактичним станом, а не за вибраною вкладкою чи файлом сесії: галочка
+/// лише коли принтер справді доданий (LAN, Klipper) або хмара підключилася (D1, D19).
+fn connection_summary(ws: &Workspace) -> (bool, String) {
+    let printer_name = |p: &cloud::Printer| {
+        if p.name.is_empty() {
+            lan::model_name(&p.model).to_owned()
+        } else {
+            p.name.clone()
+        }
+    };
+    if let Some(p) = ws.cloud.lan.printers.first() {
+        return (true, crate::tr_format!("Локальна мережа · {name}", name = printer_name(p)));
+    }
+    if let Some(p) = ws.cloud.klipper.printers().next() {
+        return (true, crate::tr_format!("Klipper · {name}", name = p.name.clone()));
+    }
+    let source = &ws.cloud.source;
+    let signed_in = ws
+        .wizard
+        .as_ref()
+        .and_then(|w| w.cloud.signed_in.clone())
+        .filter(|n| !n.is_empty());
+    if ws.cloud.connected && source.connected() {
+        let count = ws.cloud.printers.len();
+        return (
+            true,
+            match signed_in {
+                Some(nick) => crate::tr_format!("Bambu Cloud · {nick} · принтерів: {count}"),
+                None => crate::tr_format!("Bambu Cloud · принтерів: {count}"),
+            },
+        );
+    }
+    let cloud_chosen = ws.wizard.as_ref().is_some_and(|w| w.method == Method::Cloud);
+    match source {
+        crate::device::source::Phase::NeedPlugin(None) | crate::device::source::Phase::Disabled
+            if !cloud_chosen =>
+        {
+            (false, tr("без принтера: нарізка й експорт G-code"))
+        }
+        _ if !cloud_chosen && signed_in.is_none() => (false, tr("без принтера: нарізка й експорт G-code")),
+        _ => (false, crate::tr_format!("Bambu Cloud — {state}", state = source.text())),
+    }
 }
 
 fn done_step(ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
@@ -3063,26 +3486,8 @@ fn done_step(ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
         None => (false, tr("не вибрано — нарізка недоступна, поки не встановите рушій")),
     };
     let printer = (ws.presets.is_some(), ws.selection.machine.clone());
-    let connection = match w.method {
-        Method::Lan => match ws.cloud.lan.printers.first() {
-            Some(p) => (
-                true,
-                crate::tr_format!(
-                    "Локальна мережа · {name}",
-                    name = if p.name.is_empty() { lan::model_name(&p.model).to_owned() } else { p.name.clone() }
-                ),
-            ),
-            None => (false, tr("локальна мережа — принтер ще не додано")),
-        },
-        Method::Cloud => match (&w.cloud.stage, &w.cloud.signed_in) {
-            (CloudStage::Ready, Some(nick)) if !nick.is_empty() => (true, crate::tr_format!("Bambu Cloud · {nick}")),
-            (CloudStage::Ready, _) => (true, tr("Bambu Cloud")),
-            _ => (false, tr("Bambu Cloud — вхід не завершено")),
-        },
-        Method::Later => (false, tr("без принтера: нарізка й експорт G-code")),
-    };
-    // Хмару щойно налаштовано: вона вже підключається, кнопка веде на «Пристрій».
-    let cloud_ready = w.cloud.changed && w.cloud.stage == CloudStage::Ready;
+    let connection = connection_summary(ws);
+    let _ = w;
     div()
         .flex()
         .flex_col()
@@ -3110,7 +3515,7 @@ fn done_step(ws: &Workspace, cx: &mut Context<Workspace>) -> AnyElement {
                             ws.prompt_open(window, cx);
                         })),
                 )
-                .when(!ws.cloud.lan.printers.is_empty() || cloud_ready, |d| {
+                .when(!ws.cloud.printers.is_empty() || ws.cloud.source.busy() || ws.cloud.connected, |d| {
                     d.child(
                         ui::ghost_button("wizard-open-device", Some(IconName::Printer), "Сторінка «Пристрій»")
                             .border_1()
