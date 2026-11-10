@@ -14,7 +14,7 @@
 # Classic вимагає ручного схвалення в Snap Store (запит на forum.snapcraft.io).
 name: slicenv
 base: core24
-version: '0.1.0'
+version: '0.1.1'
 summary: 3D printing slicer front-end for OrcaSlicer / Bambu Studio engines
 description: |
   Slicenv arranges and orients models on build plates, edits print, filament and

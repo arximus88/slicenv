@@ -2,7 +2,7 @@
 # Готовий реліз (tar.gz з tools/package.sh tar). Локально: tools/package.sh aur-bin
 # підставляє локальний tarball замість URL і лише збирає пакет.
 pkgname=slicenv-bin
-pkgver=0.1.0
+pkgver=0.1.1
 pkgrel=1
 pkgdesc='Fast native 3D printing slicer front-end for OrcaSlicer and Bambu Studio engines'
 arch=('x86_64')
@@ -16,7 +16,7 @@ provides=('slicenv')
 conflicts=('slicenv' 'slicenv-git')
 options=('!strip' '!debug')
 source_x86_64=("https://github.com/arximus88/slicenv/releases/download/v${pkgver}/slicenv-${pkgver}-${CARCH}-linux.tar.gz")
-sha256sums_x86_64=('56653f645c66ed7032ab418454d08abeaad0a28547a7e16202f18db291949cd8')
+sha256sums_x86_64=('SKIP')
 
 package() {
   cd "slicenv-${pkgver}-${CARCH}-linux"

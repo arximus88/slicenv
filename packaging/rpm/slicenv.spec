@@ -3,7 +3,7 @@
 %global debug_package %{nil}
 %global __brp_strip %{nil}
 %global __brp_check_rpaths %{nil}
-%{!?pkgversion: %global pkgversion 0.1.0}
+%{!?pkgversion: %global pkgversion 0.1.1}
 %global _docdir_fmt %{name}
 
 Name:           slicenv
@@ -54,5 +54,8 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 %doc %{_docdir}/%{name}
 
 %changelog
+* Tue Nov 10 2026 Borys Kharchenko <7512615+arximus88@users.noreply.github.com> - 0.1.1-1
+- Printer connections, plugin logging, print routing and interface contrast.
+
 * Fri Nov 06 2026 Borys Kharchenko <7512615+arximus88@users.noreply.github.com> - 0.1.0-1
 - Перший пакет.

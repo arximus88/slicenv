@@ -2,7 +2,7 @@
 # Збірка з джерел. Локально: tools/package.sh aur-git підставляє git+file:// робочого
 # дерева й спільний CARGO_TARGET_DIR, лише збирає пакет.
 pkgname=slicenv-git
-pkgver=0.1.0.r0.g0000000
+pkgver=0.1.1.r0.g0000000
 pkgrel=1
 pkgdesc='Fast native 3D printing slicer front-end for OrcaSlicer and Bambu Studio engines (git)'
 arch=('x86_64')
