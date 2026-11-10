@@ -10,6 +10,7 @@ mod klipper_controls;
 mod lan;
 mod pages;
 pub mod print_paths;
+pub mod source;
 
 pub use lan::{LanCmd, error_text as lan_error_text};
 
@@ -63,20 +64,14 @@ pub struct TaskRow {
 }
 
 enum CloudMsg {
-    /// Українська «ключова» фраза; перекладається в інтерфейсі.
-    Phase(String),
-    /// Список принтерів недоступний: повтор через `secs` с.
-    ListRetry {
-        secs: u64,
-        cached: bool,
-    },
+    /// Стан джерела «Bambu Cloud» (`source::Phase`).
+    Phase(source::Phase),
     /// З’єднання робочого потоку з сервером змінилося.
     Link(bool),
     Printers(Vec<cloud::Printer>),
     Status(DeviceId, Box<PrinterStatus>),
     Versions(DeviceId, Vec<ModuleVersion>),
     Thumbnail(job::JobKey, Result<image::RgbaImage, String>),
-    Error(String),
     /// Робочий потік відхилив команду охоронцем (текст уже готовий до показу).
     Blocked(String),
     PrintSent(Result<String, String>),
@@ -124,15 +119,12 @@ pub struct ControlInputs {
 
 #[derive(Default)]
 pub struct CloudState {
-    /// Український текст-джерело; показується через `tr()`, щоб зміна мови діяла одразу.
-    pub phase: SharedString,
-    /// Іде підключення (плагін, вхід, сервер): замість крапки — анімований індикатор.
-    pub connecting: bool,
+    /// Стан хмари, як його бачить робочий потік — єдине джерело для всіх місць інтерфейсу.
+    pub source: source::Phase,
     pub printers: Vec<cloud::Printer>,
     pub selected: Option<DeviceId>,
     pub status: Option<PrinterStatus>,
     pub updated: Option<Instant>,
-    pub error: Option<SharedString>,
     pub print: PrintOptions,
     pub sending: bool,
     /// Хмарний друк плагіном хоч раз пройшов у цьому сеансі. За замовчуванням false:
@@ -157,6 +149,10 @@ pub struct CloudState {
     pub lan: lan::LanUi,
     /// Принтери Klipper (Moonraker); `printers` містить і їх.
     pub klipper: klipper::KlipperUi,
+    /// Лівий док: згорнута група «Знайдено в мережі» (`None` — за замовчуванням).
+    pub found_open: Option<bool>,
+    /// Пошук у доку (з’являється, коли рядків більше за [`FILTER_FROM`]).
+    pub filter_input: Option<gpui::Entity<InputState>>,
     commands: Option<mpsc::Sender<CloudCmd>>,
 }
 
@@ -197,6 +193,34 @@ impl CloudState {
         if let Some(tx) = &self.commands {
             tx.send(cmd).ok();
         }
+    }
+
+    /// Завдання друку: LAN і Klipper забирають своє, решта йде в робочий потік хмари.
+    /// `via_cloud` — явний вибір «Через хмару»: повз LAN-маршрут збереженого принтера.
+    /// Канал хмари закрито (`SLICENV_CLOUD_OFF`, потік завершився) — помилка, а не вічне
+    /// «надсилається».
+    pub fn send_print(&self, request: cloud::PrintRequest, via_cloud: bool) -> Result<(), String> {
+        let cmd = CloudCmd::Print(Box::new(request));
+        let cmd = if via_cloud {
+            Some(cmd)
+        } else {
+            self.klipper
+                .route(self.selected.as_ref(), cmd)
+                .and_then(|cmd| self.lan.route(self.selected.as_ref(), cmd))
+        };
+        let Some(cmd) = cmd else { return Ok(()) };
+        self.commands
+            .as_ref()
+            .ok_or(())
+            .and_then(|tx| tx.send(cmd).map_err(|_| ()))
+            .map_err(|_| tr("Bambu Cloud не підключено — завдання не надіслано"))
+    }
+
+    /// Вибраний принтер іде через хмару (не LAN і не Klipper).
+    pub fn selected_is_cloud(&self) -> bool {
+        self.selected
+            .as_ref()
+            .is_some_and(|d| !self.lan.has(d) && !self.klipper.has(d))
     }
 
     /// Знімок для охоронця команд.
@@ -289,29 +313,37 @@ impl CloudState {
     /// Короткий стан вибраного принтера для заголовка й рядка стану: текст, колір, «живий».
     /// Позначка стану: анімований індикатор під час підключення, інакше кольорова крапка.
     pub fn indicator(&self, id: &'static str, color: gpui::Hsla, live: bool) -> gpui::AnyElement {
-        let klipper_problem = self
-            .selected
-            .as_ref()
-            .is_some_and(|d| self.klipper.has(d) && self.klipper.problem.is_some());
-        let waiting_status = self.selected.is_some()
-            && self.status.is_none()
-            && self.error.is_none()
-            && !klipper_problem;
-        if self.connecting || waiting_status {
+        if self.waiting_status() {
             ui::spinner(id)
         } else {
             ui::status_dot(color, live)
         }
     }
 
+    /// Вибраний принтер ще не надіслав стану, і стан справді очікується: спінер. Хмарний
+    /// принтер при непрацюючій хмарі нічого не чекає — там текст стану хмари.
+    fn waiting_status(&self) -> bool {
+        let Some(dev) = &self.selected else {
+            return false;
+        };
+        if self.status.is_some() || !self.printers.iter().any(|p| &p.dev_id == dev && p.online) {
+            return false;
+        }
+        if self.klipper.has(dev) {
+            return self.klipper.problem.is_none();
+        }
+        if self.lan.has(dev) {
+            return self.lan.problem.is_none();
+        }
+        self.connected || self.source.busy()
+    }
+
+    /// Стан вибраного принтера для заголовка вікна, тулбара й рядка стану. Без вибраного
+    /// принтера — нейтральний текст: стан хмари живе в одному місці (рядок у доку).
     pub fn summary(&self) -> (String, gpui::Hsla, bool) {
         let z = crate::theme::zed();
         let Some(dev) = &self.selected else {
-            return (
-                tr(&self.phase),
-                z.text_placeholder,
-                self.printers.is_empty() && self.error.is_none(),
-            );
+            return (tr("Немає принтера"), z.text_placeholder, false);
         };
         let printer = self.printers.iter().find(|p| &p.dev_id == dev);
         let name = printer.map_or_else(
@@ -335,6 +367,14 @@ impl CloudState {
             return (format!("{name} · {}", tr("Klipper не готовий")), z.warning, false);
         }
         let Some(s) = &self.status else {
+            // Хмарний принтер без робочої хмари: чесна причина замість «підключення…».
+            if self.selected_is_cloud() && !self.connected && !self.source.busy() {
+                return (
+                    format!("{name} · {}", self.source.text()),
+                    if self.source.problem() { z.warning } else { z.text_placeholder },
+                    false,
+                );
+            }
             return (
                 format!("{name} · {}", tr("підключення…")),
                 z.text_muted,
@@ -398,15 +438,23 @@ fn cache_path() -> std::path::PathBuf {
     slicer::cache_dir().with_file_name("printers.json")
 }
 
-/// Останній успішний список принтерів акаунта (лише для цього користувача).
-fn load_cache() -> Vec<cloud::Printer> {
+/// Останній успішний список принтерів цього акаунта: після входу іншим акаунтом чужий
+/// список не показується й на чужий серійник потік не підписується.
+fn load_cache(account: Option<&str>) -> Vec<cloud::Printer> {
+    let Some(account) = account else {
+        return Vec::new();
+    };
     std::fs::read(cache_path())
         .ok()
-        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
+        .and_then(|json| source::cache_for(&json, account))
         .unwrap_or_default()
 }
 
-fn save_cache(list: &[cloud::Printer]) {
+fn save_cache(account: Option<&str>, list: &[cloud::Printer]) {
+    let Some(account) = account else {
+        return;
+    };
     use paths::fs_mode::ModeExt as _;
     let json: Vec<_> = list
         .iter()
@@ -419,6 +467,7 @@ fn save_cache(list: &[cloud::Printer]) {
             })
         })
         .collect();
+    let json = serde_json::json!({ "account": account, "printers": json });
     let path = cache_path();
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).ok();
@@ -474,6 +523,8 @@ fn worker(
     loop {
         let stamp = setup_stamp();
         let restart = session(&commands, &ui, &stopping);
+        // Сесія закінчилася (обрив, Reconnect, хмару вимкнено): «з’єднано» більше не правда.
+        ui.unbounded_send(CloudMsg::Link(false)).ok();
         if stopping.load(Ordering::Acquire) || ui.is_closed() {
             return;
         }
@@ -482,10 +533,15 @@ fn worker(
         }
         loop {
             match commands.recv_timeout(Duration::from_secs(2)) {
-                Ok(CloudCmd::Reconnect) => break,
-                Ok(CloudCmd::Shutdown) | Err(mpsc::RecvTimeoutError::Disconnected) => return,
-                // Без сесії команди нікуди не йдуть; інтерфейс уже показує помилку.
-                Ok(_) => {}
+                Ok(cmd) => match idle_command(cmd) {
+                    Idle::Resume => break,
+                    Idle::Stop => return,
+                    Idle::Reply(msg) => {
+                        ui.unbounded_send(msg).ok();
+                    }
+                    Idle::Ignore => {}
+                },
+                Err(mpsc::RecvTimeoutError::Disconnected) => return,
                 Err(mpsc::RecvTimeoutError::Timeout) => {
                     if stopping.load(Ordering::Acquire) || ui.is_closed() {
                         return;
@@ -496,6 +552,59 @@ fn worker(
                 }
             }
         }
+    }
+}
+
+/// Що робить робочий потік з командою, поки сесії немає (хмару вимкнено, немає входу,
+/// помилка). Друк і керування не губляться мовчки: інтерфейс отримує відповідь, тож
+/// «Друкувати» не лишається заблокованою «попереднім завданням».
+enum Idle {
+    Resume,
+    Stop,
+    Reply(CloudMsg),
+    Ignore,
+}
+
+fn idle_command(cmd: CloudCmd) -> Idle {
+    match cmd {
+        CloudCmd::Reconnect => Idle::Resume,
+        CloudCmd::Shutdown => Idle::Stop,
+        CloudCmd::Print(_) => Idle::Reply(CloudMsg::PrintSent(Err(tr(
+            "Друк не надіслано: Bambu Cloud не підключено",
+        )))),
+        CloudCmd::Control(..) => Idle::Reply(CloudMsg::Blocked(tr(
+            "Команда не пройшла: Bambu Cloud не підключено",
+        ))),
+        CloudCmd::Camera(true) => Idle::Reply(CloudMsg::CameraStopped(Some(tr(
+            "Bambu Cloud не підключено",
+        )))),
+        CloudCmd::Select(_)
+        | CloudCmd::Refresh
+        | CloudCmd::AddManual(_)
+        | CloudCmd::Tasks
+        | CloudCmd::Camera(false)
+        | CloudCmd::Versions
+        | CloudCmd::Thumbnail(_) => Idle::Ignore,
+    }
+}
+
+/// Що бракує для сесії, ще до завантаження плагіна.
+fn setup_phase() -> Result<Options, source::Phase> {
+    if !cloud::OS_SUPPORTED {
+        return Err(source::Phase::Failed(cloud::UNSUPPORTED_OS.into()));
+    }
+    // Відкритий плагін без хмари (block_cloud = 1): з’єднуватися нема з чим — стан і друк
+    // ідуть по LAN. Чекаємо Reconnect (увімкнули хмару) або зміну налаштування.
+    if cloud::obn::active().is_some() && !cloud::obn::cloud_enabled() {
+        return Err(source::Phase::CloudOff);
+    }
+    match cloud::setup() {
+        cloud::CloudSetup::Ready { plugin, session } => Ok(Options::for_session(&plugin, &session)),
+        cloud::CloudSetup::NoPlugin => Err(source::Phase::NeedPlugin(None)),
+        cloud::CloudSetup::UnsupportedPlugin { version, .. } => {
+            Err(source::Phase::NeedPlugin(Some(version)))
+        }
+        cloud::CloudSetup::NoSession { .. } => Err(source::Phase::NeedLogin { expired: false }),
     }
 }
 
@@ -513,19 +622,19 @@ fn session(
         if stopping.load(std::sync::atomic::Ordering::Acquire) {
             return Ok(());
         }
-        // Відкритий плагін без хмари (block_cloud = 1): з’єднуватися нема з чим — стан і друк
-        // ідуть по LAN. Чекаємо Reconnect (увімкнули хмару) або зміну налаштування.
-        if cloud::obn::active().is_some() && !cloud::obn::cloud_enabled() {
-            send(CloudMsg::Phase(
-                "Відкритий плагін: хмару вимкнено, друк — по локальній мережі".into(),
-            ));
-            return Ok(());
-        }
-        let mut options = cloud_options()?;
+        // Новий вхід, інший акаунт, вимкнена хмара: список попередньої сесії не дійсний.
+        send(CloudMsg::Printers(Vec::new()));
+        let mut options = match setup_phase() {
+            Ok(options) => options,
+            Err(phase) => {
+                send(CloudMsg::Phase(phase));
+                return Ok(());
+            }
+        };
         // Команди надсилає лише користувач кнопками; зупинка — з підтвердженням.
         options.allow_control = true;
         // Плагін уже завантажено (його ставить майстер); для користувача все це — підключення.
-        send(CloudMsg::Phase("Підключення до Bambu Cloud…".into()));
+        send(CloudMsg::Phase(source::Phase::Connecting));
         probe_plugin(stopping)?;
         if stopping.load(std::sync::atomic::Ordering::Acquire) {
             return Ok(());
@@ -543,8 +652,15 @@ fn session(
             return client.shutdown();
         }
         if !client.is_user_login()? {
-            anyhow::bail!("Сесія Bambu недійсна або прострочена — увійдіть в акаунт Bambu знову.");
+            send(CloudMsg::Phase(source::Phase::NeedLogin { expired: true }));
+            return client.shutdown();
         }
+        let account = client
+            .user_id()
+            .ok()
+            .filter(|id| !id.is_empty())
+            .map(|id| source::account_key(&id));
+        let account = account.as_deref();
         client.connect_server()?;
         let deadline = Instant::now() + Duration::from_secs(15);
         while !stopping.load(std::sync::atomic::Ordering::Acquire)
@@ -559,12 +675,8 @@ fn session(
         // Список принтерів іде HTTP-запитом із жорстким лімітом частоти: часті спроби (і
         // кожен запуск) продовжують відмову -11. Тому повтори рідкі, а список кешується —
         // статус іде MQTT, тож із кешем моніторинг працює й під час відмов.
-        let mut printers = load_cache();
-        let mut selected = printers
-            .iter()
-            .find(|p| p.online)
-            .or(printers.first())
-            .map(|p| p.dev_id.clone());
+        let mut printers = load_cache(account);
+        let mut selected = source::default_printer(&printers);
         if !printers.is_empty() {
             send(CloudMsg::Printers(printers.clone()));
         }
@@ -574,7 +686,15 @@ fn session(
         }
         let mut list_due = Some(Instant::now());
         let mut backoff = Duration::from_secs(60);
-        send(CloudMsg::Phase("Підключено".into()));
+        // «Підключено» — лише коли сервер справді відповів. Ні — чесно кажемо й чекаємо далі:
+        // перехід з’єднання нижче сам повідомить, коли сервер з’явиться.
+        let mut linked = client.is_server_connected().unwrap_or(false);
+        send(CloudMsg::Link(linked));
+        send(CloudMsg::Phase(if linked {
+            source::Phase::Connected
+        } else {
+            source::Phase::NoServer
+        }));
         send_tasks(&client, &send);
         // OTA-версія потрібна для камери; її повідомляє сам принтер у відповідь на get_version.
         let mut firmware: std::collections::HashMap<String, String> = Default::default();
@@ -590,8 +710,7 @@ fn session(
         // Останній знімок вибраного принтера: охоронець у робочому потоці перевіряє команду
         // за ним, а не за тим, що бачив інтерфейс у момент натискання.
         let mut seen: Option<(DeviceId, PrinterStatus, Instant)> = None;
-        let mut linked = false;
-        let mut link_checked = Instant::now() - Duration::from_secs(10);
+        let mut link_checked = Instant::now();
         let mut heartbeat = Instant::now();
         loop {
             if stopping.load(std::sync::atomic::Ordering::Acquire) || ui.is_closed() {
@@ -604,6 +723,14 @@ fn session(
                 if now != linked {
                     linked = now;
                     send(CloudMsg::Link(now));
+                    send(CloudMsg::Phase(if now {
+                        source::Phase::Connected
+                    } else {
+                        source::Phase::NoServer
+                    }));
+                    if now && list_due.is_none() && printers.is_empty() {
+                        list_due = Some(Instant::now());
+                    }
                 }
             }
             // Пасивний принтер шле стан лише за змінами; без пульсу «свіжість» руху не перевірити.
@@ -616,9 +743,9 @@ fn session(
             if list_due.is_some_and(|due| Instant::now() >= due) {
                 match client.printers() {
                     Ok(list) => {
-                        save_cache(&list);
-                        if selected.is_none() {
-                            selected = list.iter().find(|p| p.online).map(|p| p.dev_id.clone());
+                        save_cache(account, &list);
+                        if selected.as_ref().is_none_or(|d| !list.iter().any(|p| &p.dev_id == d)) {
+                            selected = source::default_printer(&list);
                             if let Some(dev) = &selected {
                                 client.subscribe(dev)?;
                                 client.request_status(dev).ok();
@@ -626,7 +753,9 @@ fn session(
                         }
                         printers = list;
                         send(CloudMsg::Printers(printers.clone()));
-                        send(CloudMsg::Phase("Підключено".into()));
+                        if linked {
+                            send(CloudMsg::Phase(source::Phase::Connected));
+                        }
                         list_due = None;
                         backoff = Duration::from_secs(60);
                     }
@@ -638,7 +767,7 @@ fn session(
                         if printers.is_empty()
                             && let Some(list) = printers_from_tasks(&client)
                         {
-                            save_cache(&list);
+                            save_cache(account, &list);
                             printers = list;
                             send(CloudMsg::Printers(printers.clone()));
                             if selected.is_none()
@@ -649,10 +778,10 @@ fn session(
                                 selected = Some(dev);
                             }
                         }
-                        send(CloudMsg::ListRetry {
+                        send(CloudMsg::Phase(source::Phase::ListRetry {
                             secs: backoff.as_secs(),
                             cached: !printers.is_empty(),
-                        });
+                        }));
                         list_due = Some(Instant::now() + backoff);
                         backoff = (backoff * 2).min(Duration::from_secs(900));
                     }
@@ -753,7 +882,7 @@ fn session(
                                 model: "N2S".into(),
                                 online: true,
                             });
-                            save_cache(&printers);
+                            save_cache(account, &printers);
                             send(CloudMsg::Printers(printers.clone()));
                         }
                         client.subscribe(&dev)?;
@@ -900,7 +1029,7 @@ fn session(
         }
     })();
     if let Err(err) = result {
-        send(CloudMsg::Error(format!("{err:#}")));
+        send(CloudMsg::Phase(source::Phase::Failed(format!("{err:#}"))));
     }
     restart
 }
@@ -1037,10 +1166,7 @@ fn printers_from_tasks(client: &Client) -> Option<Vec<cloud::Printer>> {
 /// `SLICENV_DEBUG=1`: що отримує інтерфейс, без ідентифікаторів і довільного JSON.
 fn debug_log(msg: &CloudMsg) {
     match msg {
-        CloudMsg::Phase(p) => eprintln!("[cloud] {p}"),
-        CloudMsg::ListRetry { secs, cached } => {
-            eprintln!("[cloud] список принтерів: повтор через {secs} с (кеш: {cached})")
-        }
+        CloudMsg::Phase(p) => eprintln!("[cloud] {p:?}"),
         CloudMsg::Link(up) => eprintln!("[cloud] з’єднання: {up}"),
         CloudMsg::Versions(dev, list) => eprintln!("[cloud] {dev}: модулів {}", list.len()),
         CloudMsg::Thumbnail(_, r) => eprintln!("[cloud] мініатюра: {}", r.is_ok()),
@@ -1055,7 +1181,6 @@ fn debug_log(msg: &CloudMsg) {
             s.nozzle_temper,
             s.bed_temper
         ),
-        CloudMsg::Error(e) => eprintln!("[cloud] помилка: {e}"),
         CloudMsg::PrintSent(r) => eprintln!("[cloud] друк: {r:?}"),
         CloudMsg::PrintUnsigned => eprintln!("[cloud] друк: плагін відмовив непідписаній програмі (-26)"),
         CloudMsg::CloudPrintWorks => eprintln!("[cloud] друк: хмара прийняла завдання"),
@@ -1180,9 +1305,16 @@ pub fn spawn_cloud() -> (CloudLink, CloudShutdown) {
     let stopping = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     // Для тестових запусків інтерфейсу: без другого агента поруч із робочим.
     if paths::env("SLICENV_CLOUD_OFF").is_some() {
-        ui_tx
-            .unbounded_send(CloudMsg::Phase("Хмару вимкнено (SLICENV_CLOUD_OFF)".into()))
-            .ok();
+        // `SLICENV_FAKE_CLOUD=cloud-off|login|no-server|connecting` — показати стан хмари без
+        // мережі й плагіна (перевірка інтерфейсу).
+        let phase = match paths::env("SLICENV_FAKE_CLOUD").as_deref().and_then(|v| v.to_str()) {
+            Some("cloud-off") => source::Phase::CloudOff,
+            Some("login") => source::Phase::NeedLogin { expired: false },
+            Some("no-server") => source::Phase::NoServer,
+            Some("connecting") => source::Phase::Connecting,
+            _ => source::Phase::Disabled,
+        };
+        ui_tx.unbounded_send(CloudMsg::Phase(phase)).ok();
         // Фіктивний принтер для перевірки інтерфейсу; команди до нього нікуди не йдуть.
         if paths::env("SLICENV_FAKE_PRINTER").is_some() {
             let fake = cloud::Printer {
@@ -1192,7 +1324,19 @@ pub fn spawn_cloud() -> (CloudLink, CloudShutdown) {
                 online: true,
             };
             let dev = fake.dev_id.clone();
-            ui_tx.unbounded_send(CloudMsg::Printers(vec![fake])).ok();
+            // `SLICENV_FAKE_PRINTERS=N` — ще N−1 фіктивних принтерів (масштаб списку).
+            let extra = paths::env("SLICENV_FAKE_PRINTERS")
+                .and_then(|v| v.to_str()?.parse::<usize>().ok())
+                .unwrap_or(1)
+                .saturating_sub(1);
+            let mut list = vec![fake];
+            list.extend((1..=extra).map(|i| cloud::Printer {
+                dev_id: DeviceId::new(format!("TEST{i:08}")),
+                name: format!("Test P1S {i}"),
+                model: "C12".into(),
+                online: i % 3 != 0,
+            }));
+            ui_tx.unbounded_send(CloudMsg::Printers(list)).ok();
             // Правдоподібний знімок — щоб бачити сторінку без справжнього принтера.
             // `SLICENV_FAKE_PRINTER=idle` дає вільний принтер (рух головки доступний).
             let idle = paths::env("SLICENV_FAKE_PRINTER").is_some_and(|v| v == "idle");
@@ -1298,8 +1442,7 @@ impl Workspace {
         let klipper_rx = self.start_klipper(window, cx);
         let mut ui_rx = futures::stream::select(futures::stream::select(ui_rx, lan_rx), klipper_rx);
         self.cloud.commands = Some(cmd_tx);
-        // Українське джерело: перекладається під час показу, тож зміна мови діє одразу.
-        self.cloud.phase = "Запуск…".into();
+        self.cloud.source = source::Phase::Starting;
         self.cloud.jog_step = 1;
         let input = cx
             .new(|cx| InputState::new(window, cx).placeholder(tr("Серійний номер, напр. 03919C…")));
@@ -1314,6 +1457,14 @@ impl Workspace {
         );
         self._subscriptions.push(sub);
         self.cloud.serial_input = Some(input);
+        let filter = cx.new(|cx| InputState::new(window, cx).placeholder(tr("Пошук принтера")));
+        let sub = cx.subscribe(&filter, |_, _, event: &gpui_component::input::InputEvent, cx| {
+            if matches!(event, gpui_component::input::InputEvent::Change) {
+                cx.notify();
+            }
+        });
+        self._subscriptions.push(sub);
+        self.cloud.filter_input = Some(filter);
 
         let mut field = |kind: DeviceField, placeholder: &str| {
             let entity = cx.new(|cx| InputState::new(window, cx).placeholder(tr(placeholder)));
@@ -1355,27 +1506,24 @@ impl Workspace {
                         }
                         let mut status_for = None;
                         match msg {
-                            CloudMsg::Phase(p) => {
-                                cloud.connecting = p.starts_with("Підключення");
-                                cloud.phase = p.into();
-                            }
-                            CloudMsg::ListRetry { secs, cached } => {
-                                let mut text = crate::tr_format!(
-                                    "Хмара не віддала список принтерів, повтор через {secs} с"
-                                );
-                                if cached {
-                                    text += &tr(" (показую збережений)");
-                                }
-                                cloud.phase = text.into();
-                            }
+                            CloudMsg::Phase(p) => cloud.source = p,
                             CloudMsg::Link(up) => cloud.connected = up,
                             CloudMsg::Printers(list) => {
-                                if cloud.selected.is_none() {
-                                    cloud.selected =
-                                        list.iter().find(|p| p.online).map(|p| p.dev_id.clone());
-                                }
-                                cloud.lan.set_cloud_list(list);
+                                cloud.lan.set_cloud_list(list.clone());
                                 cloud.rebuild_printers();
+                                // Як у робочому потоці: перший онлайн, інакше перший. Вибраного
+                                // хмарного принтера більше немає (вихід, інший акаунт, хмару
+                                // вимкнено) — не «підключення…» без кінця.
+                                match source::reselect(cloud.selected.as_ref(), &cloud.printers, &list) {
+                                    source::Reselect::Keep => {}
+                                    source::Reselect::Pick(dev) => cloud.select(Some(dev), window),
+                                    source::Reselect::Replace(dev) => {
+                                        cloud.select(dev.clone(), window);
+                                        if let Some(dev) = dev {
+                                            cloud.send(CloudCmd::Select(dev));
+                                        }
+                                    }
+                                }
                             }
                             CloudMsg::Lan(msg) => lan::handle(this, msg, window, cx),
                             CloudMsg::Klipper(msg) => klipper::handle(this, msg, window, cx),
@@ -1398,11 +1546,6 @@ impl Workspace {
                                 if let Some(stale) = cloud.job.accept(&key, result) {
                                     window.drop_image(stale).ok();
                                 }
-                            }
-                            CloudMsg::Error(e) => {
-                                cloud.connecting = false;
-                                cloud.phase = "Хмара недоступна".into();
-                                cloud.error = Some(tr(&e).into());
                             }
                             CloudMsg::Blocked(text) => this.toast(ToastKind::Error, text, cx),
                             CloudMsg::PrintUnsigned => {
@@ -1447,6 +1590,42 @@ impl Workspace {
             }
         })
         .detach();
+    }
+
+    /// Одна дія для поточного стану хмари (рядок у доку, кнопка в діалозі друку, майстер).
+    /// «Увімкнути хмару» — пряма дія: без майстра, одразу перепідключення.
+    pub(crate) fn cloud_source_action(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        match self.cloud.source.action() {
+            Some(source::Action::EnableCloud) => self.enable_open_plugin_cloud(cx),
+            Some(source::Action::SignIn | source::Action::Setup) => self.open_cloud_setup(window, cx),
+            Some(source::Action::Retry) => {
+                if matches!(self.cloud.source, source::Phase::ListRetry { .. }) {
+                    self.cloud.send(CloudCmd::Refresh);
+                } else {
+                    self.cloud.source = source::Phase::Connecting;
+                    self.cloud.send(CloudCmd::Reconnect);
+                }
+            }
+            None => self.open_cloud_setup(window, cx),
+        }
+        cx.notify();
+    }
+
+    /// Увімкнути хмару відкритого плагіна (дія користувача) і перепідключитися.
+    pub(crate) fn enable_open_plugin_cloud(&mut self, cx: &mut Context<Self>) {
+        match cloud::obn::set_cloud(true) {
+            Ok(()) => {
+                self.cloud.source = source::Phase::Connecting;
+                self.cloud.send(CloudCmd::Reconnect);
+                self.toast(
+                    ToastKind::Success,
+                    tr("Хмару відкритого плагіна ввімкнено: моделі для хмарного друку вивантажуються в Bambu Cloud"),
+                    cx,
+                );
+            }
+            Err(e) => self.toast(ToastKind::Error, format!("{e:#}"), cx),
+        }
+        cx.notify();
     }
 
     /// Єдиний вхід для команд з інтерфейсу. Охоронець у `CloudState::dispatch` спрацьовує
@@ -1638,7 +1817,7 @@ impl Workspace {
 }
 
 impl Workspace {
-    fn add_manual_printer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn add_manual_printer(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(input) = &self.cloud.serial_input else {
             return;
         };
@@ -1669,14 +1848,42 @@ pub fn render(
     crate::prepare::docked("device-docks", ws, Some(left), center, None)
 }
 
-/// Лівий док: принтери акаунта зі станом і ручне додавання за серійним номером.
+/// Фільтр списку: усі слова мають знайтися в одному з полів (без регістру).
+pub(crate) fn matches_filter(filter: &str, fields: &[&str]) -> bool {
+    let filter = filter.trim().to_lowercase();
+    filter.split_whitespace().all(|word| {
+        fields.iter().any(|f| f.to_lowercase().contains(word))
+    })
+}
+
+/// Скільки рядків у доку, після якого з’являється пошук.
+pub(crate) const FILTER_FROM: usize = 8;
+
+/// Лівий док: один список принтерів (транспорт — мітка рядка), згорнута група знайдених у
+/// мережі, контекст вибраного принтера лише за потреби й один рядок стану Bambu Cloud.
+/// Десять принтерів подовжують список, що прокручується, а не док.
 fn printers_panel(
     cloud: &CloudState,
     window: &mut Window,
     cx: &mut Context<Workspace>,
 ) -> gpui::AnyElement {
     let z = zed();
-    let rows = cloud.printers.iter().enumerate().map(|(i, p)| {
+    let found_count = cloud.lan.found.len() + cloud.klipper.found.len();
+    let show_filter = cloud.printers.len() + found_count > FILTER_FROM;
+    let filter = cloud
+        .filter_input
+        .as_ref()
+        .filter(|_| show_filter)
+        .map(|i| i.read(cx).value().to_string())
+        .unwrap_or_default();
+    let rows: Vec<_> = cloud
+        .printers
+        .iter()
+        .enumerate()
+        .filter(|(_, p)| {
+            matches_filter(&filter, &[&p.name, p.dev_id.as_str(), &model_label(p)])
+        })
+        .map(|(i, p)| {
         let selected = cloud.selected.as_ref() == Some(&p.dev_id);
         let dev = p.dev_id.clone();
         let name = if p.name.is_empty() {
@@ -1685,11 +1892,11 @@ fn printers_panel(
             p.name.clone()
         };
         let badge = if cloud.klipper.has(&p.dev_id) {
-            Some("Klipper")
+            "Klipper"
         } else if cloud.lan.has(&p.dev_id) {
-            Some("LAN")
+            "LAN"
         } else {
-            None
+            "Cloud"
         };
         let (state, color, live) = if selected && p.online {
             cloud.summary()
@@ -1729,22 +1936,20 @@ fn printers_panel(
                             .text_xs()
                             .text_color(z.text_muted)
                             .child(ui::status_dot(color, live))
-                            .child(div().truncate().child(state)),
+                            .child(div().min_w_0().truncate().child(state)),
                     ),
             )
-            .when_some(badge, |d, badge| {
-                d.child(
-                    div()
-                        .flex_none()
-                        .px(px(4.))
-                        .rounded(px(3.))
-                        .border_1()
-                        .border_color(z.border_variant)
-                        .text_xs()
-                        .text_color(z.text_muted)
-                        .child(badge),
-                )
-            })
+            .child(
+                div()
+                    .flex_none()
+                    .px(px(4.))
+                    .rounded(px(3.))
+                    .border_1()
+                    .border_color(z.border_variant)
+                    .text_xs()
+                    .text_color(z.text_muted)
+                    .child(badge),
+            )
             .on_click(cx.listener(move |this, _, window, cx| {
                 // Повторний клік по вибраному принтеру нічого не скидає.
                 if this.cloud.selected.as_ref() != Some(&dev) {
@@ -1753,17 +1958,59 @@ fn printers_panel(
                 }
                 cx.notify();
             }))
-    });
+            .into_any_element()
+    })
+    .collect();
+    let empty = cloud.printers.is_empty();
+    let filtered_out = !empty && rows.is_empty();
+
+    // Знайдені, але не додані: згорнуто, якщо вже є хоч один принтер.
+    let found_open = cloud.found_open.unwrap_or(empty) || !filter.is_empty();
+    let mut found: Vec<gpui::AnyElement> = Vec::new();
+    if found_count > 0 {
+        found.push(
+            ui::list_item("printers-found-toggle", 0, false)
+                .h(px(28.))
+                .gap(px(6.))
+                .text_xs()
+                .text_color(z.text_muted)
+                .child(ui::icon(if found_open { IconName::ChevronDown } else { IconName::ChevronRight }).size(px(12.)))
+                .child(div().flex_1().min_w_0().truncate().child(crate::tr_format!("Знайдено в мережі ({found_count})")))
+                .on_click(cx.listener(move |this, _, _, cx| {
+                    this.cloud.found_open = Some(!found_open);
+                    cx.notify();
+                }))
+                .into_any_element(),
+        );
+        if found_open {
+            found.extend(lan::found_rows(cloud, &filter, cx));
+            found.extend(klipper::found_rows(cloud, &filter, cx));
+        }
+    }
+
+    let mut context = lan::context_lines(cloud, cx);
+    context.extend(klipper::context_lines(cloud));
 
     ui::dock()
         .child(ui::panel_header(
             "Принтери",
             vec![
+                ui::icon_button("printers-add", IconName::Plus, "Додати принтер")
+                    .on_click(cx.listener(|this, _, window, cx| this.open_add_printer(window, cx)))
+                    .into_any_element(),
                 ui::icon_button("cloud-refresh", IconName::RefreshCw, "Оновити список")
                     .on_click(cx.listener(|this, _, _, _| this.cloud.send(CloudCmd::Refresh)))
                     .into_any_element(),
             ],
         ))
+        .children(cloud.filter_input.as_ref().filter(|_| show_filter).map(|input| {
+            div().flex_none().px(px(8.)).pt(px(6.)).child(crate::widgets::field(
+                input,
+                gpui_component::input::Input::new(input),
+                window,
+                cx,
+            ))
+        }))
         .child(
             div()
                 .id("printers-list")
@@ -1772,66 +2019,84 @@ fn printers_panel(
                 .py(px(4.))
                 .overflow_y_scroll()
                 .children(rows)
-                .when(cloud.printers.is_empty(), |d| {
+                .when(empty || filtered_out, |d| {
                     d.child(
                         div()
-                            .flex()
-                            .items_center()
-                            .gap(px(8.))
-                            .p(px(10.))
+                            .px(px(10.))
+                            .py(px(8.))
                             .text_sm()
                             .text_color(z.text_muted)
-                            .when(cloud.error.is_none(), |d| {
-                                d.child(ui::spinner("printers-spin"))
-                            })
-                            .child(div().flex_1().min_w_0().child(if cloud.error.is_some() {
-                                tr("Принтерів ще немає — додайте свій у блоці «Локальна мережа» нижче.")
-                            } else {
-                                tr(&cloud.phase)
-                            })),
+                            .whitespace_normal()
+                            .child(tr(if filtered_out { "Нічого не знайдено" } else { "Принтерів ще немає" })),
                     )
-                }),
+                })
+                .children(found),
         )
-        .child(lan::panel_section(cloud, cx))
-        .child(klipper::panel_section(cloud, cx))
-        // Ручне додавання за серійником — хмарне; без робочої хмари воно лише заважає.
-        .children(cloud.serial_input.as_ref().filter(|_| cloud.error.is_none()).map(|input| {
-            div()
-                .flex()
-                .flex_col()
-                .flex_none()
-                .gap(px(6.))
-                .p(px(10.))
-                .border_t_1()
-                .border_color(z.border_variant)
-                .child(
-                    div()
-                        .text_xs()
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(z.text_muted)
-                        .child(tr("Додати за серійним номером")),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .gap(px(4.))
-                        .child(crate::widgets::field(
-                            input,
-                            gpui_component::input::Input::new(input),
-                            window,
-                            cx,
-                        ))
-                        .child(
-                            ui::icon_button("add-printer", IconName::Plus, "Додати").on_click(
-                                cx.listener(|this, _, window, cx| {
-                                    this.add_manual_printer(window, cx)
-                                }),
-                            ),
-                        ),
-                )
-                .child(div().text_xs().text_color(z.text_placeholder).child(tr(
-                    "Серійний номер — на екрані A1 (Налаштування → Пристрій) або в Bambu Studio.",
-                )))
+        .when(!context.is_empty(), |d| {
+            d.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .flex_none()
+                    .gap(px(6.))
+                    .p(px(10.))
+                    .border_t_1()
+                    .border_color(z.border_variant)
+                    .children(context),
+            )
+        })
+        .child(cloud_source_row(cloud, cx))
+        .into_any_element()
+}
+
+/// Єдине місце, де показується стан Bambu Cloud: «Bambu Cloud · стан» і одна дія.
+/// Спінер — лише коли справді йде підключення.
+fn cloud_source_row(cloud: &CloudState, cx: &mut Context<Workspace>) -> gpui::AnyElement {
+    let z = zed();
+    let phase = &cloud.source;
+    let color = if phase.connected() && cloud.connected {
+        z.success
+    } else if phase.problem() {
+        z.warning
+    } else {
+        z.text_placeholder
+    };
+    let count = cloud
+        .printers
+        .iter()
+        .filter(|p| !cloud.lan.has(&p.dev_id) && !cloud.klipper.has(&p.dev_id))
+        .count();
+    let text = if phase.connected() && cloud.connected && count > 0 {
+        crate::tr_format!("Bambu Cloud · підключено · {count}")
+    } else {
+        format!("Bambu Cloud · {}", phase.text())
+    };
+    div()
+        .id("cloud-source")
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(6.))
+        .min_h(px(32.))
+        .px(px(10.))
+        .py(px(4.))
+        .border_t_1()
+        .border_color(z.border_variant)
+        .text_xs()
+        .text_color(z.text_muted)
+        .child(if phase.busy() {
+            ui::spinner("cloud-source-spin")
+        } else {
+            ui::icon(if phase.problem() { IconName::CloudOff } else { IconName::Cloud })
+                .size(px(14.))
+                .text_color(color)
+                .into_any_element()
+        })
+        .child(div().flex_1().min_w_0().whitespace_normal().child(text))
+        .children(phase.action().map(|action| {
+            ui::ghost_button("cloud-source-action", None, action.label())
+                .text_xs()
+                .on_click(cx.listener(|this, _, window, cx| this.cloud_source_action(window, cx)))
         }))
         .into_any_element()
 }
@@ -2494,17 +2759,14 @@ impl Workspace {
                 "[{}]",
                 vec![r#"{"ams_id":255,"slot_id":255}"#; slots].join(",")
             );
-            ws.cloud.sending = true;
-            if via_cloud {
-                // An explicit cloud action must bypass LAN routing for saved printers.
-                if let Some(tx) = &ws.cloud.commands {
-                    tx.send(CloudCmd::Print(Box::new(req))).ok();
-                }
-            } else {
-                ws.cloud.send(CloudCmd::Print(Box::new(req)));
-            }
             ws.close_modal(cx);
-            ws.toast(ToastKind::Info, tr("Надсилаю завдання на принтер…"), cx);
+            match ws.cloud.send_print(req, via_cloud) {
+                Ok(()) => {
+                    ws.cloud.sending = true;
+                    ws.toast(ToastKind::Info, tr("Надсилаю завдання на принтер…"), cx);
+                }
+                Err(text) => ws.toast(ToastKind::Error, text, cx),
+            }
         });
 
         self.open_modal(
@@ -2525,6 +2787,15 @@ impl Workspace {
                         }))
                 };
                 let note = |text: &str| div().pb(px(6.)).text_xs().text_color(z.text_muted).child(tr(text));
+                // Хмара не готова: кнопка називає одну дію, якої бракує, а не «Через хмару».
+                let cloud_ready = ws.cloud.connected && ws.cloud.source.connected();
+                let cloud_label = match ws.cloud.source.action() {
+                    _ if cloud_ready => "Через хмару",
+                    Some(source::Action::EnableCloud) => "Увімкнути хмару",
+                    Some(source::Action::SignIn) => "Увійти в Bambu Cloud",
+                    _ if ws.cloud.source.busy() => "Хмара підключається…",
+                    _ => "Налаштувати хмару…",
+                };
                 let action_button = |action: print_paths::Action, primary: bool, cx: &mut Context<Workspace>| {
                     use print_paths::Action;
                     let (id, icon, label): (&'static str, IconName, &'static str) = match action {
@@ -2532,7 +2803,7 @@ impl Workspace {
                         Action::LanAdd => ("print-add-lan", IconName::Wifi, "Надіслати по локальній мережі"),
                         Action::LanManual => ("print-lan-manual", IconName::Wifi, "Додати принтер у мережі"),
                         Action::Connect => ("print-send-connect", IconName::Send, "Надіслати через Bambu Connect"),
-                        Action::Cloud => ("print-send-cloud", IconName::Cloud, "Через хмару"),
+                        Action::Cloud => ("print-send-cloud", IconName::Cloud, cloud_label),
                     };
                     let button = if primary {
                         ui::accent_button(id, icon, label, true)
@@ -2548,10 +2819,13 @@ impl Workspace {
                         .on_click(cx.listener(move |ws, _, window, cx| match action {
                             Action::LanSend => send(ws, false, cx),
                             Action::Cloud => {
-                                if ws.cloud.connected {
+                                if ws.cloud.connected && ws.cloud.source.connected() {
                                     send(ws, true, cx);
+                                } else if ws.cloud.source.busy() {
+                                    // Підключення вже йде: чекаємо, нічого не відкриваємо.
                                 } else {
-                                    ws.open_cloud_setup(window, cx);
+                                    ws.close_modal(cx);
+                                    ws.cloud_source_action(window, cx);
                                 }
                             },
                             Action::Connect => connect_send(ws, cx),
@@ -2604,15 +2878,6 @@ impl Workspace {
                                 .text_color(z.text_placeholder)
                                 .child(format!("{}: {bed_label}", tr("Пластина"))),
                         )
-                        .when(open_plugin, |d| {
-                            d.child(note(if cloud::obn::cloud_enabled() {
-                                "Відкритий плагін: хмару увімкнено. Для друку потрібен окремий вхід в акаунт через цей плагін."
-                            } else {
-                                "Відкритий плагін встановлено, але хмару вимкнено. Увімкніть «Друк і стан через хмару» та увійдіть в акаунт через цей плагін."
-                            }))
-                            .child(ui::ghost_button("print-obn-settings", Some(IconName::Cloud), "Налаштувати хмарний друк")
-                                .on_click(cx.listener(|ws, _, window, cx| ws.open_open_plugin(window, cx))))
-                        })
                         .when_some(material_warning.clone(), |d, text| {
                             d.child(
                                 div()
@@ -2916,6 +3181,98 @@ mod dispatch_tests {
         );
         assert!(idle.dispatch(jog(Axis::X, 1)).is_ok());
         assert_eq!(rx.try_iter().count(), 1);
+    }
+}
+
+#[cfg(test)]
+mod flow_tests {
+    use super::*;
+
+    fn printer(id: &str) -> cloud::Printer {
+        cloud::Printer {
+            dev_id: DeviceId::new(id),
+            name: String::new(),
+            model: "N2S".into(),
+            online: true,
+        }
+    }
+
+    fn request(id: &str) -> cloud::PrintRequest {
+        let file = std::path::PathBuf::from("/nonexistent/plate.gcode.3mf");
+        cloud::PrintRequest::new(DeviceId::new(id), file.clone(), file, "test".into())
+    }
+
+    #[test]
+    fn idle_worker_answers_print_and_control_instead_of_dropping_them() {
+        // Раніше в режимі очікування все, крім Reconnect/Shutdown, губилося: «Друкувати»
+        // лишалась заблокованою «попереднім завданням» до перезапуску (D2).
+        match idle_command(CloudCmd::Print(Box::new(request("CLD1")))) {
+            Idle::Reply(CloudMsg::PrintSent(Err(text))) => assert!(!text.is_empty()),
+            _ => panic!("друк у режимі очікування не отримав відповіді"),
+        }
+        assert!(matches!(
+            idle_command(CloudCmd::Control(DeviceId::new("CLD1"), Control::Home)),
+            Idle::Reply(CloudMsg::Blocked(_))
+        ));
+        assert!(matches!(
+            idle_command(CloudCmd::Camera(true)),
+            Idle::Reply(CloudMsg::CameraStopped(Some(_)))
+        ));
+        assert!(matches!(idle_command(CloudCmd::Reconnect), Idle::Resume));
+        assert!(matches!(idle_command(CloudCmd::Shutdown), Idle::Stop));
+        assert!(matches!(idle_command(CloudCmd::Select(DeviceId::new("X"))), Idle::Ignore));
+        assert!(matches!(idle_command(CloudCmd::Refresh), Idle::Ignore));
+    }
+
+    #[test]
+    fn print_dispatch_routes_lan_and_explicit_cloud_and_fails_without_a_channel() {
+        let (tx, rx) = mpsc::channel();
+        let mut state = CloudState::default();
+        state.commands = Some(tx);
+        state.lan.printers = vec![printer("LAN1")];
+        state.selected = Some(DeviceId::new("LAN1"));
+        // Збережений LAN-принтер: друк іде LAN-робітнику, не в хмару.
+        state.send_print(request("LAN1"), false).unwrap();
+        assert!(rx.try_recv().is_err());
+        // Явне «Через хмару» обходить LAN-маршрут.
+        state.send_print(request("LAN1"), true).unwrap();
+        assert!(matches!(rx.try_recv(), Ok(CloudCmd::Print(_))));
+        // Хмарний принтер.
+        state.selected = Some(DeviceId::new("CLD1"));
+        state.send_print(request("CLD1"), false).unwrap();
+        assert!(matches!(rx.try_recv(), Ok(CloudCmd::Print(_))));
+        // Канал закрито (SLICENV_CLOUD_OFF, потік завершився): помилка, а не вічне «надсилається».
+        drop(rx);
+        assert!(state.send_print(request("CLD1"), true).is_err());
+        state.commands = None;
+        assert!(state.send_print(request("CLD1"), false).is_err());
+    }
+
+    #[test]
+    fn global_status_is_neutral_without_a_printer_and_honest_for_a_cloud_printer() {
+        let mut state = CloudState::default();
+        // Хмару вимкнено у відкритому плагіні, принтера немає: жодної фази хмари в заголовку.
+        state.source = source::Phase::CloudOff;
+        let (text, _, live) = state.summary();
+        assert_eq!(text, tr("Немає принтера"));
+        assert!(!live);
+        assert!(!state.waiting_status(), "спінер без принтера");
+        // Хмарний принтер, хмара не працює: причина, а не «підключення…» зі спінером.
+        state.printers = vec![printer("CLD1")];
+        state.selected = Some(DeviceId::new("CLD1"));
+        let (text, _, live) = state.summary();
+        assert!(text.contains(&source::Phase::CloudOff.text()), "{text}");
+        assert!(!live);
+        assert!(!state.waiting_status());
+        // Підключається — тоді справді чекаємо.
+        state.source = source::Phase::Connecting;
+        assert!(state.waiting_status());
+        // З’єднано, статусу ще немає — чекаємо; статус прийшов — не чекаємо.
+        state.source = source::Phase::Connected;
+        state.connected = true;
+        assert!(state.waiting_status());
+        state.status = Some(PrinterStatus::default());
+        assert!(!state.waiting_status());
     }
 }
 

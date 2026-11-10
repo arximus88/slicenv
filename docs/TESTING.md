@@ -188,6 +188,17 @@ PNG без вікна: `cargo run --release -p viewer --example gcode_preview --
 Вони не входять у CI: потрібні реальні моделі (`angel_medium.3mf`), пакети рушіїв,
 мережа (`packages.py` завантажує Orca ~204 МБ) і фіксовані піксельні координати.
 
+Фіктивні дані для «Пристрою» й майстра — без мережі, плагіна й принтерів (лише разом із
+`SLICENV_CLOUD_OFF=1` / `SLICENV_LAN_OFF=1`):
+
+| Змінна | Що дає |
+|---|---|
+| `SLICENV_FAKE_PRINTER=1` (`=idle`) | один хмарний принтер зі статусом, історією, мініатюрою |
+| `SLICENV_FAKE_PRINTERS=N` | ще N−1 фіктивних принтерів (масштаб списку доку) |
+| `SLICENV_FAKE_FOUND=N` | N «знайдених у мережі» Bambu (LAN вимкнено) |
+| `SLICENV_FAKE_CLOUD=cloud-off\|login\|no-server\|connecting` | стан рядка Bambu Cloud |
+| `SLICENV_WIZARD_DEMO=login\|session\|plugin` | стани форми входу в майстрі |
+
 ## Порівняння G-code з оригінальним рушієм
 
 `tools/gcode-diff.py` перевіряє, що Slicenv дає той самий G-code, що й GUI Bambu Studio чи

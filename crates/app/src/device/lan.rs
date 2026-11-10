@@ -247,6 +247,18 @@ pub fn spawn() -> (mpsc::Sender<LanCmd>, async_mpsc::UnboundedReceiver<CloudMsg>
             .name("lan-worker".into())
             .spawn(move || worker(cmd_rx, ui_tx))
             .ok();
+    } else if let Some(n) = paths::env("SLICENV_FAKE_FOUND").and_then(|v| v.to_str()?.parse::<usize>().ok()) {
+        // Перевірка інтерфейсу: N фіктивних «знайдених у мережі» без жодного зв’язку.
+        let found = (1..=n)
+            .map(|i| Found {
+                serial: format!("FAKE{i:011}"),
+                ip: format!("192.0.2.{i}"),
+                name: format!("Fake A1 {i}"),
+                model: if i % 2 == 0 { "C12" } else { "N2S" }.into(),
+                lan_only: false,
+            })
+            .collect();
+        ui_tx.unbounded_send(CloudMsg::Lan(LanMsg::Found(found))).ok();
     }
     (cmd_tx, ui_rx)
 }
@@ -900,7 +912,7 @@ impl Workspace {
     }
 
     /// Модалка «Принтер у локальній мережі»; `found` заповнює IP і серійник.
-    pub(super) fn open_lan_dialog(
+    pub(crate) fn open_lan_dialog(
         &mut self,
         found: Option<Found>,
         window: &mut Window,
@@ -1096,8 +1108,50 @@ pub fn model_chips(
         }))
 }
 
-/// Блок «Локальна мережа» в лівому доку: знайдені принтери, кнопка додавання, стан.
-pub fn panel_section(cloud: &CloudState, cx: &mut Context<Workspace>) -> gpui::Div {
+/// Знайдені в мережі, але не додані Bambu-принтери — рядки згорнутої групи в списку доку.
+pub fn found_rows(cloud: &CloudState, filter: &str, cx: &mut Context<Workspace>) -> Vec<gpui::AnyElement> {
+    let z = zed();
+    cloud
+        .lan
+        .found
+        .iter()
+        .enumerate()
+        .filter(|(_, f)| super::matches_filter(filter, &[&f.name, &f.serial, lan::model_name(&f.model), &f.ip]))
+        .map(|(i, f)| {
+            let item = f.clone();
+            let title = if f.name.is_empty() { f.serial.clone() } else { f.name.clone() };
+            ui::list_item(("lan-found", i), 0, false)
+                .h(px(40.))
+                .px(px(6.))
+                .gap(px(8.))
+                .child(ui::icon(IconName::Wifi).flex_none().text_color(z.text_muted))
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .flex_1()
+                        .min_w_0()
+                        .child(div().truncate().text_sm().child(title))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(z.text_muted)
+                                .truncate()
+                                .child(format!("{} · {}", lan::model_name(&f.model), f.ip)),
+                        ),
+                )
+                .child(ui::icon(IconName::Plus).flex_none().text_color(z.text_placeholder))
+                .on_click(cx.listener(move |ws, _, window, cx| {
+                    ws.open_lan_dialog(Some(item.clone()), window, cx)
+                }))
+                .into_any_element()
+        })
+        .collect()
+}
+
+/// Те, що стосується вибраного LAN-принтера зараз: вивантаження, проблема з’єднання, невідома
+/// модель. Порожньо — нічого не показується.
+pub fn context_lines(cloud: &CloudState, cx: &mut Context<Workspace>) -> Vec<gpui::AnyElement> {
     let z = zed();
     let unknown_model = cloud.selected.as_ref().is_some_and(|dev| {
         cloud
@@ -1106,88 +1160,31 @@ pub fn panel_section(cloud: &CloudState, cx: &mut Context<Workspace>) -> gpui::D
             .iter()
             .any(|p| &p.dev_id == dev && p.model.is_empty())
     });
-    let found = cloud.lan.found.iter().enumerate().map(|(i, f)| {
-        let item = f.clone();
-        let title = if f.name.is_empty() { f.serial.clone() } else { f.name.clone() };
-        ui::list_item(("lan-found", i), 0, false)
-            .h(px(40.))
-            .px(px(6.))
-            .gap(px(8.))
-            .child(ui::icon(IconName::Wifi).flex_none().text_color(z.text_muted))
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .min_w_0()
-                    .child(div().truncate().text_sm().child(title))
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(z.text_muted)
-                            .truncate()
-                            .child(format!("{} · {}", lan::model_name(&f.model), f.ip)),
-                    ),
-            )
-            .child(ui::icon(IconName::Plus).flex_none().text_color(z.text_placeholder))
-            .on_click(cx.listener(move |ws, _, window, cx| {
-                ws.open_lan_dialog(Some(item.clone()), window, cx)
-            }))
-    });
-    div()
-        .flex()
-        .flex_col()
-        .flex_none()
-        .gap(px(4.))
-        .p(px(10.))
-        .border_t_1()
-        .border_color(z.border_variant)
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .child(
-                    div()
-                        .flex_1()
-                        .text_xs()
-                        .font_weight(gpui::FontWeight::MEDIUM)
-                        .text_color(z.text_muted)
-                        .child(tr("Локальна мережа (LAN)")),
-                )
-                .child(
-                    ui::icon_button("lan-open", IconName::Plus, "Додати принтер у мережі")
-                        .on_click(cx.listener(|ws, _, window, cx| ws.open_lan_dialog(None, window, cx))),
-                ),
-        )
-        .when(!cloud.lan.found.is_empty(), |d| {
-            d.child(
-                div()
-                    .text_xs()
-                    .text_color(z.text_placeholder)
-                    .child(tr("Знайдено в мережі — натисни, щоб додати:")),
-            )
-            .children(found)
-        })
-        .children(cloud.lan.upload.map(|p| {
+    let mut out: Vec<gpui::AnyElement> = Vec::new();
+    if let Some(p) = cloud.lan.upload {
+        out.push(
             div()
                 .text_xs()
                 .text_color(z.accent)
                 .child(crate::tr_format!("Завантаження на принтер: {pct:.0}%", pct = p * 100.0))
-        }))
-        .children(
-            cloud
-                .selected
-                .as_ref()
-                .filter(|d| cloud.lan.has(d))
-                .and(cloud.lan.problem.clone())
-                .map(|p| div().text_xs().text_color(z.warning).child(p)),
-        )
-        .children(unknown_model.then(|| {
+                .into_any_element(),
+        );
+    }
+    if let Some(problem) = cloud
+        .selected
+        .as_ref()
+        .filter(|d| cloud.lan.has(d))
+        .and(cloud.lan.problem.clone())
+    {
+        out.push(div().text_xs().text_color(z.warning).whitespace_normal().child(problem).into_any_element());
+    }
+    if unknown_model {
+        out.push(
             div()
                 .flex()
                 .flex_col()
                 .gap(px(4.))
-                .child(div().text_xs().text_color(z.warning).child(tr(
+                .child(div().text_xs().text_color(z.warning).whitespace_normal().child(tr(
                     "Модель принтера ще невідома — без неї «Друкувати» неактивна. Виберіть модель:",
                 )))
                 .child(model_chips("lan-set-model", "", cx, |ws, code, _| {
@@ -1195,7 +1192,10 @@ pub fn panel_section(cloud: &CloudState, cx: &mut Context<Workspace>) -> gpui::D
                         ws.cloud.lan.send(LanCmd::SetModel(dev.as_str().to_owned(), code));
                     }
                 }))
-        }))
+                .into_any_element(),
+        );
+    }
+    out
 }
 
 #[cfg(test)]

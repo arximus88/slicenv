@@ -45,17 +45,21 @@ pub(super) fn main_pane(
         .border_color(z.border_variant)
         .child(ui::icon(IconName::Printer).text_color(z.text_muted))
         .child(div().font_weight(gpui::FontWeight::MEDIUM).child(title))
-        .child(
-            div()
-                .flex()
-                .items_center()
-                .gap(px(6.))
-                .text_color(z.text_muted)
-                .child(cloud.indicator("devices-cloud", color, live))
-                .child(state),
-        )
+        // Без вибраного принтера стану нема чого показувати: стан хмари — у доку.
+        .when(cloud.selected.is_some(), |d| {
+            d.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(6.))
+                    .min_w_0()
+                    .text_color(z.text_muted)
+                    .child(cloud.indicator("devices-cloud", color, live))
+                    .child(div().min_w_0().truncate().child(state)),
+            )
+        })
         .child(div().flex_1())
-        .when(cloud.selected.is_some() && !cloud.link_up(), |d| {
+        .when(cloud.selected.is_some() && !cloud.link_up() && !cloud.selected_is_cloud(), |d| {
             let lan = klipper || cloud.selected.as_ref().is_some_and(|dev| cloud.lan.has(dev));
             d.child(
                 div()
@@ -140,46 +144,45 @@ pub(super) fn main_pane(
 
     let body: AnyElement = match (&cloud.status, &cloud.selected) {
         (_, Some(_)) if klipper => super::klipper::body(cloud, window, cx),
-        // Принтера ще немає: головний шлях — LAN без акаунта; стан хмари — окремим рядком.
+        // Принтера ще немає: один вхід «Додати принтер» (той самий, що «+» у доку). Стан хмари
+        // тут не дублюється — він у рядку внизу доку.
         (_, None) => {
-            let first_found = cloud.lan.found.first().cloned();
-            let cloud_line = cloud
-                .error
-                .clone()
-                .unwrap_or_else(|| tr(&cloud.phase).into());
+            let found = cloud.lan.found.len() + cloud.klipper.found.len();
+            let text = if found > 0 {
+                crate::tr_format!("У мережі знайдено принтерів: {found}. Додайте свій — у локальній мережі, через Bambu Cloud або Klipper.")
+            } else {
+                tr("Додайте принтер у локальній мережі, через Bambu Cloud або Klipper. Нарізка й експорт G-code працюють і без нього.")
+            };
             ui::empty_state(
                 IconName::Printer,
                 "Принтер ще не під’єднано",
-                "Найпростіше — локальна мережа: без акаунта, потрібен лише код доступу з екрана принтера. Або пройдіть майстер налаштування — там є й Bambu Cloud.",
+                text,
                 vec![
-                    ui::accent_button("device-empty-lan", IconName::Wifi, "Додати принтер у мережі", true)
-                        .on_click(cx.listener(move |ws, _, window, cx| {
-                            ws.open_lan_dialog(first_found.clone(), window, cx)
-                        }))
-                        .into_any_element(),
-                    ui::ghost_button("device-empty-klipper", Some(IconName::Printer), "Додати принтер Klipper")
-                        .border_1()
-                        .border_color(z.border_variant)
-                        .on_click(cx.listener(|ws, _, window, cx| ws.open_klipper_dialog(None, window, cx)))
-                        .into_any_element(),
-                    ui::ghost_button("device-empty-wizard", Some(IconName::Sparkles), "Майстер налаштування")
-                        .border_1()
-                        .border_color(z.border_variant)
-                        .on_click(cx.listener(|ws, _, window, cx| ws.open_wizard(window, cx)))
+                    ui::accent_button("device-empty-add", IconName::Plus, "Додати принтер", true)
+                        .on_click(cx.listener(|ws, _, window, cx| ws.open_add_printer(window, cx)))
                         .into_any_element(),
                 ],
             )
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.))
-                    .mt(px(10.))
-                    .max_w(px(460.))
-                    .text_xs()
-                    .text_color(z.text_placeholder)
-                    .child(ui::icon(if cloud.error.is_some() { IconName::CloudOff } else { IconName::Cloud }))
-                    .child(div().flex_1().min_w_0().child(crate::tr_format!("Bambu Cloud: {cloud_line}"))),
+            .into_any_element()
+        }
+        // Хмарний принтер, а хмара не працює: одна причина й одна дія замість «чекаю на статус».
+        (None, Some(_))
+            if cloud.selected_is_cloud() && !cloud.connected && !cloud.source.busy() =>
+        {
+            ui::empty_state(
+                IconName::CloudOff,
+                "Bambu Cloud не підключено",
+                crate::tr_format!("Bambu Cloud: {state}", state = cloud.source.text()),
+                cloud
+                    .source
+                    .action()
+                    .map(|action| {
+                        ui::accent_button("device-cloud-action", IconName::Cloud, action.label(), true)
+                            .on_click(cx.listener(|ws, _, window, cx| ws.cloud_source_action(window, cx)))
+                            .into_any_element()
+                    })
+                    .into_iter()
+                    .collect(),
             )
             .into_any_element()
         }
@@ -237,30 +240,6 @@ pub(super) fn main_pane(
         .bg(z.editor)
         .child(toolbar)
         .children(tabs)
-        .when_some(
-            // Помилка хмари стосується лише хмарних принтерів; LAN працює без неї.
-            cloud
-                .error
-                .clone()
-                .filter(|_| cloud.selected.as_ref().is_some_and(|d| !cloud.lan.has(d) && !cloud.klipper.has(d))),
-            |d, e| {
-                d.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(8.))
-                        .px(px(12.))
-                        .py(px(6.))
-                        .bg(z.error.opacity(0.1))
-                        .border_b_1()
-                        .border_color(z.border_variant)
-                        .text_sm()
-                        .text_color(z.error)
-                        .child(ui::icon(IconName::TriangleAlert))
-                        .child(e),
-                )
-            },
-        )
         .child(
             div()
                 .id("device-main")

@@ -117,10 +117,31 @@ fn read_regular(path: &Path, max: u64) -> Result<Vec<u8>> {
 }
 
 /// Чи це OBN (будь-якої збірки) — щоб пошук закритого плагіна його не підхопив мовчки.
+///
+/// Результат кешується за (шлях, розмір, час зміни): робочий потік хмари в режимі очікування
+/// питає це кожні 2 с, а бібліотека закритого плагіна — десятки мегабайт (D6).
 pub fn is_open_plugin(path: &Path) -> bool {
-    read_regular(path, MAX_LIBRARY)
+    type Key = (PathBuf, u64, Option<std::time::SystemTime>);
+    static CACHE: std::sync::Mutex<Vec<(Key, bool)>> = std::sync::Mutex::new(Vec::new());
+    let key = fs::symlink_metadata(path)
         .ok()
-        .is_some_and(|b| flavor_of_bytes(&b).is_some())
+        .map(|m| (path.to_owned(), m.len(), m.modified().ok()));
+    if let Some(key) = &key
+        && let Some(hit) = CACHE
+            .lock()
+            .ok()
+            .and_then(|c| c.iter().find(|(k, _)| k == key).map(|(_, v)| *v))
+    {
+        return hit;
+    }
+    let result = read_regular(path, MAX_LIBRARY)
+        .ok()
+        .is_some_and(|b| flavor_of_bytes(&b).is_some());
+    if let (Some(key), Ok(mut cache)) = (key, CACHE.lock()) {
+        cache.retain(|(k, _)| k.0 != key.0);
+        cache.push((key, result));
+    }
+    result
 }
 
 fn elf(bytes: &[u8]) -> bool {
@@ -427,6 +448,19 @@ fn set_cloud_in(places: &Places, enabled: bool) -> Result<()> {
 pub fn has_session() -> bool {
     fs::symlink_metadata(paths::open_plugin_config_dir().join(SESSION_FILE))
         .is_ok_and(|m| m.is_file() && m.len() > 2)
+}
+
+/// Вихід з акаунта відкритого плагіна локально: видаляється лише `obn.auth.json`. Вибір
+/// плагіна, бібліотеки й `obn.conf` лишаються, мережевих запитів немає.
+pub fn forget_session() -> Result<()> {
+    forget_session_in(&paths::open_plugin_config_dir())
+}
+
+fn forget_session_in(dir: &Path) -> Result<()> {
+    match fs::remove_file(dir.join(SESSION_FILE)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+        _ => Ok(()),
+    }
 }
 
 /// Відмова від відкритого плагіна: вибір, копії бібліотек і тека конфігурації (сесія з
@@ -1060,6 +1094,30 @@ mod tests {
         let fresh = tempfile::tempdir().unwrap();
         write_conf(fresh.path(), false).unwrap();
         assert!(fs::read_to_string(fresh.path().join(CONF_FILE)).unwrap().starts_with("# obn.conf"));
+    }
+
+    #[test]
+    fn logout_removes_only_the_session_file() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join(SESSION_FILE), "{\"token\":\"x\"}").unwrap();
+        fs::write(dir.path().join(CONF_FILE), "block_cloud = 0\n").unwrap();
+        forget_session_in(dir.path()).unwrap();
+        assert!(!dir.path().join(SESSION_FILE).exists());
+        assert!(dir.path().join(CONF_FILE).exists(), "налаштування плагіна мають лишитися");
+        // Повторний вихід — не помилка.
+        forget_session_in(dir.path()).unwrap();
+    }
+
+    #[test]
+    fn open_plugin_detection_is_cached_until_the_file_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let lib = dir.path().join("libbambu_networking.so");
+        fs::write(&lib, fake_library(b"")).unwrap();
+        assert!(!is_open_plugin(&lib));
+        assert!(!is_open_plugin(&lib));
+        // Інший вміст і розмір — кеш не підставляє старої відповіді.
+        fs::write(&lib, fake_library(b" obn.conf open-bamboo-networking ")).unwrap();
+        assert!(is_open_plugin(&lib));
     }
 
     fn fake_library(extra: &[u8]) -> Vec<u8> {

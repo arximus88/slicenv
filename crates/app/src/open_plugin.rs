@@ -191,7 +191,12 @@ impl Workspace {
     }
 
     fn obn_toggle_cloud(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let enabled = !cloud::obn::cloud_enabled();
+        self.obn_set_cloud(!cloud::obn::cloud_enabled(), window, cx);
+    }
+
+    /// Перемикач хмари відкритого плагіна — лише дією користувача. Вимкнене лишається
+    /// вимкненим: перевірка сесії в майстрі його більше не чіпає.
+    pub(crate) fn obn_set_cloud(&mut self, enabled: bool, window: &mut Window, cx: &mut Context<Self>) {
         let result = cloud::obn::set_cloud(enabled)
             .map(|_| {
                 if enabled {
@@ -271,10 +276,17 @@ impl Workspace {
             );
         }
 
-        if installed && cloud::obn::cloud_enabled() {
+        // Вхід видно й з вимкненою хмарою: свіжий вхід — це явний запит на хмару, після нього
+        // вона вмикається сама (з видимим рядком і «Вимкнути» в діалозі Bambu Cloud).
+        if installed && !cloud::obn::has_session() {
             body = body.child(
                 ui::accent_button("obn-login", IconName::Cloud, "Увійти в Bambu Cloud через відкритий плагін", !s.busy)
-                    .when(!s.busy, |d| d.on_click(cx.listener(|ws, _, window, cx| ws.open_cloud_setup(window, cx)))),
+                    .when(!s.busy, |d| {
+                        d.on_click(cx.listener(|ws, _, window, cx| {
+                            ws.close_modal(cx);
+                            ws.open_cloud_setup(window, cx)
+                        }))
+                    }),
             );
         }
 

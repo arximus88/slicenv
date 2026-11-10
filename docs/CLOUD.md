@@ -89,8 +89,27 @@ Orca `BBLNetworkPlugin.hpp` і Studio `NetworkAgent.hpp`; `send_message` в об
      `account`, `avatar` — як читає Orca), далі `change_user` з payload Orca
      (`{"command":"user_login","data":{"token","refresh_token","expires_in","refresh_expires_in","user":{"uid","name","account","avatar"}}}`;
      `expires_in` — рядок з `std::to_string(double)`, `"7776000.000000"`).
-- Вихід: `Client::logout()` → `user_logout(false)` (локально, як Orca при не-користувацьких
-  виходах; на сервер не йде, бо скопійований токен спільний зі Studio) + `account::forget_own_session()`.
+- Вихід: кнопка «Вийти» в діалозі Bambu Cloud видаляє лише сесію Slicenv —
+  `account::forget_own_session()` (закритий плагін) або `obn::forget_session()` (відкритий),
+  без мережевих запитів; далі `Reconnect`. Сесії Bambu Studio / OrcaSlicer не чіпаються, тож
+  із закритим плагіном потік може далі взяти сесію Studio/Orca (як і раніше, `cloud::setup`).
+
+### Стан хмари в інтерфейсі
+
+Робочий потік (`device::worker`) — єдине джерело стану: `device::source::Phase`
+(`NeedPlugin`, `NeedLogin`, `CloudOff`, `Connecting`, `NoServer`, `Connected`, `ListRetry`,
+`Failed`). «Підключено» — лише після `is_server_connected`. Стан показується в одному місці —
+рядок «Bambu Cloud · …» унизу доку з однією дією (`Налаштувати…`, `Увійти`,
+`Увімкнути хмару`, `Повторити`); заголовок вікна, тулбар і рядок стану показують вибраний
+принтер або «Немає принтера». Кожна сесія починається з порожнього списку; кеш
+`printers.json` прив’язаний до хешу id акаунта. Після кінця сесії потік шле `Link(false)`, а
+в режимі очікування відповідає на `Print`/`Control` помилкою замість мовчазного відкидання.
+
+Вхід: свіжий (пароль, браузер, «Використати вхід» Studio/Orca) — `source::Login::Fresh`:
+перепідключення, а з відкритим плагіном ще й увімкнення хмари (видно рядок з «Вимкнути»).
+Перевірка вже збереженої сесії — `Login::Existing`: лише нік, без зміни згоди й без
+`Reconnect`. Закриття діалогу скасовує очікування браузера; пізній результат входу, якщо він
+усе ж прийшов, застосовується й показується тостом.
 - Google/Apple: **наступний крок**. Плагін уже вміє `get_my_token(ticket)` (`Client::tokens_from_ticket`,
   перевірено офлайн), але адресу переходу на сторінку Google/Apple сайт Bambu віддає лише через
   JS-міст webview (`thirdparty_login` → `data.url` у `WebUserLoginDialog`). Потрібно або
