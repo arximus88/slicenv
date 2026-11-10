@@ -1692,5 +1692,9 @@
   "Файл вивантажено, але команду друку не надіслано (MQTT)": "The file was uploaded, but the print command was not sent (MQTT)",
   "Файл завеликий для принтера": "The file is too large for the printer",
   "Файл для друку не знайдено": "Print file not found",
-  "Хмару для відкритого плагіна вимкнено: друкуйте по локальній мережі або увімкніть «Друк і стан через хмару» в налаштуваннях відкритого плагіна": "Cloud is off for the open plugin: print over the local network or turn on “Cloud printing and status” in the open plugin settings"
+  "Хмару для відкритого плагіна вимкнено: друкуйте по локальній мережі або увімкніть «Друк і стан через хмару» в налаштуваннях відкритого плагіна": "Cloud is off for the open plugin: print over the local network or turn on “Cloud printing and status” in the open plugin settings",
+  "Відкритий плагін: хмару увімкнено. Для друку потрібен окремий вхід в акаунт через цей плагін.": "Open plugin: cloud is enabled. Printing requires signing in separately through this plugin.",
+  "Відкритий плагін встановлено, але хмару вимкнено. Увімкніть «Друк і стан через хмару» та увійдіть в акаунт через цей плагін.": "The open plugin is installed, but cloud is off. Turn on “Cloud printing and status” and sign in through this plugin.",
+  "Налаштувати хмарний друк": "Set up cloud printing",
+  "Увійти в Bambu Cloud через відкритий плагін": "Sign in to Bambu Cloud through the open plugin"
 }

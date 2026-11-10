@@ -271,6 +271,13 @@ impl Workspace {
             );
         }
 
+        if installed && cloud::obn::cloud_enabled() {
+            body = body.child(
+                ui::accent_button("obn-login", IconName::Cloud, "Увійти в Bambu Cloud через відкритий плагін", !s.busy)
+                    .when(!s.busy, |d| d.on_click(cx.listener(|ws, _, window, cx| ws.open_cloud_setup(window, cx)))),
+            );
+        }
+
         // Згода.
         let accepted = s.accepted;
         body = body.child(

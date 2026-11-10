@@ -2471,7 +2471,7 @@ impl Workspace {
                 ws.send_via_bambu_connect(&gcode_3mf, &name, cx);
             })
         };
-        let send = Rc::new(move |ws: &mut Workspace, cx: &mut Context<Workspace>| {
+        let send = Rc::new(move |ws: &mut Workspace, via_cloud: bool, cx: &mut Context<Workspace>| {
             let o = ws.cloud.print;
             let slots = filament_slots(&gcode_3mf);
             let mut req = cloud::PrintRequest::new(
@@ -2495,7 +2495,14 @@ impl Workspace {
                 vec![r#"{"ams_id":255,"slot_id":255}"#; slots].join(",")
             );
             ws.cloud.sending = true;
-            ws.cloud.send(CloudCmd::Print(Box::new(req)));
+            if via_cloud {
+                // An explicit cloud action must bypass LAN routing for saved printers.
+                if let Some(tx) = &ws.cloud.commands {
+                    tx.send(CloudCmd::Print(Box::new(req))).ok();
+                }
+            } else {
+                ws.cloud.send(CloudCmd::Print(Box::new(req)));
+            }
             ws.close_modal(cx);
             ws.toast(ToastKind::Info, tr("Надсилаю завдання на принтер…"), cx);
         });
@@ -2539,7 +2546,14 @@ impl Workspace {
                     let found = found.clone();
                     button
                         .on_click(cx.listener(move |ws, _, window, cx| match action {
-                            Action::LanSend | Action::Cloud => send(ws, cx),
+                            Action::LanSend => send(ws, false, cx),
+                            Action::Cloud => {
+                                if ws.cloud.connected {
+                                    send(ws, true, cx);
+                                } else {
+                                    ws.open_cloud_setup(window, cx);
+                                }
+                            },
                             Action::Connect => connect_send(ws, cx),
                             Action::LanAdd => {
                                 ws.close_modal(cx);
@@ -2590,6 +2604,15 @@ impl Workspace {
                                 .text_color(z.text_placeholder)
                                 .child(format!("{}: {bed_label}", tr("Пластина"))),
                         )
+                        .when(open_plugin, |d| {
+                            d.child(note(if cloud::obn::cloud_enabled() {
+                                "Відкритий плагін: хмару увімкнено. Для друку потрібен окремий вхід в акаунт через цей плагін."
+                            } else {
+                                "Відкритий плагін встановлено, але хмару вимкнено. Увімкніть «Друк і стан через хмару» та увійдіть в акаунт через цей плагін."
+                            }))
+                            .child(ui::ghost_button("print-obn-settings", Some(IconName::Cloud), "Налаштувати хмарний друк")
+                                .on_click(cx.listener(|ws, _, window, cx| ws.open_open_plugin(window, cx))))
+                        })
                         .when_some(material_warning.clone(), |d, text| {
                             d.child(
                                 div()
