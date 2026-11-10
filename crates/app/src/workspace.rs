@@ -26,7 +26,7 @@ pub type PresetSelect = Entity<Dropdown>;
 /// Рамка меша пластини (min, max).
 pub type PlateBounds = (glam::Vec3, glam::Vec3);
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
     Home,
     Prepare,
@@ -36,9 +36,10 @@ pub enum Page {
 }
 
 impl Page {
-    pub const PROJECT_TABS: [Page; 3] = [Page::Prepare, Page::Preview, Page::Project];
+    /// Режими поточного проєкту в порядку панелі (`project_bar`): «Проєкт» — першим.
+    pub const PROJECT_TABS: [Page; 3] = [Page::Project, Page::Prepare, Page::Preview];
 
-    fn icon(self) -> IconName {
+    pub(crate) fn icon(self) -> IconName {
         match self {
             Page::Home => IconName::House,
             Page::Prepare => IconName::Box,
@@ -48,13 +49,24 @@ impl Page {
         }
     }
 
-    fn title(self) -> &'static str {
+    pub(crate) fn title(self) -> &'static str {
         match self {
             Page::Home => "Головна",
             Page::Prepare => "Підготовка",
             Page::Preview => "Перегляд",
             Page::Device => "Пристрій",
             Page::Project => "Проєкт",
+        }
+    }
+
+    /// Підказка кнопки режиму: назва й клавіші.
+    pub(crate) fn hint(self) -> &'static str {
+        match self {
+            Page::Home => "Головна (Ctrl+1)",
+            Page::Prepare => "Підготовка (Ctrl+2)",
+            Page::Preview => "Перегляд (Ctrl+3)",
+            Page::Project => "Проєкт (Ctrl+4)",
+            Page::Device => "Пристрій (Ctrl+5)",
         }
     }
 }
@@ -173,6 +185,12 @@ pub struct Workspace {
     pub boolean_preview: bool,
     pub geometry_revision: u64,
     pub project_epoch: u64,
+    /// Останній виданий номер документа (`fresh_epoch`).
+    pub(crate) epoch_counter: u64,
+    /// Вкладки відкритих проєктів (`tabs.rs`): активний документ і припарковані.
+    pub(crate) tabs: Vec<crate::tabs::Tab>,
+    /// Де в рядку вкладок з’явиться наступний відкритий документ.
+    pub(crate) tab_cursor: usize,
     /// Рамки частин і інстансів без зсуву інстанса (див. `project::bounds_cache`).
     pub volume_bounds_cache: project::bounds_cache::VolumeBoundsCache,
     pub instance_bounds_cache: project::bounds_cache::InstanceBoundsCache,
@@ -238,6 +256,8 @@ pub struct Workspace {
     /// Видимість лівого й правого доків (Ctrl+B / Ctrl+Alt+B, як у Zed).
     pub left_dock: bool,
     pub right_dock: bool,
+    /// Панель режимів і дій проєкту над центром сторінки: виміряна ширина, стиснення.
+    pub(crate) project_bar: crate::project_bar::BarState,
 
     pub frame: Option<Arc<RenderImage>>,
     pub frame_size: (u32, u32),
@@ -403,6 +423,9 @@ impl Workspace {
             boolean_preview: true,
             geometry_revision: 0,
             project_epoch: 0,
+            epoch_counter: 0,
+            tabs: Vec::new(),
+            tab_cursor: 0,
             volume_bounds_cache: Default::default(),
             instance_bounds_cache: Default::default(),
             boolean_mesh: None,
@@ -433,6 +456,7 @@ impl Workspace {
             focus: cx.focus_handle(),
             left_dock: true,
             right_dock: true,
+            project_bar: Default::default(),
             frame: None,
             frame_size: (0, 0),
             viewport_failed: false,
@@ -659,18 +683,30 @@ impl Workspace {
     }
 
     pub fn open(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        self.cancel_slice();
         // Готовий G-code — одразу «Перегляд» (GUI-бенч Preview, файли з інших слайсерів).
         // Проєкт не замінюється, тож і питати про незбережені зміни не треба: confirm_discard
         // скинув би `edited`, а зміни лишились би в пам’яті без захисту.
         if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gcode")) {
+            self.cancel_slice();
             self.load_preview(path, true, cx);
             return;
         }
-        let retry = path.clone();
-        if !crate::objects::confirm_discard(self, window, cx, move |ws, window, cx| {
-            ws.open(retry.clone(), window, cx)
-        }) {
+        // Файл уже відкрито в іншій вкладці — переходимо на неї.
+        if let Some(index) = self.parked_tab(&path) {
+            self.switch_tab(index, cx);
+            return;
+        }
+        if self.path.as_deref() == Some(path.as_path()) && !self.untitled {
+            // Той самий файл ще раз — перечитати з диска; зміни в пам’яті буде втрачено.
+            let retry = path.clone();
+            if !crate::objects::confirm_discard(self, window, cx, move |ws, window, cx| {
+                ws.open(retry.clone(), window, cx)
+            }) {
+                return;
+            }
+            self.cancel_slice();
+        } else if !self.can_leave_document(cx) {
+            // Інший файл відкривається в новій вкладці; поточний проєкт лишається у своїй.
             return;
         }
         let load_path = path.clone();
@@ -719,12 +755,17 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         self.finish_scene_gesture();
+        // Інший файл — нова вкладка: поточний документ паркується з усім своїм станом.
+        // Той самий файл (перечитування) замінює документ у своїй вкладці.
+        if self.untitled || self.path.as_deref() != Some(path.as_path()) {
+            self.park_active();
+        }
         self.history.clear();
         self.history_pending = None;
         self.cancel_slice();
         // MCP open_project замінює й незавершене відкриття з UI.
         self.jobs.cancel(JobKind::Open);
-        self.project_epoch = self.project_epoch.wrapping_add(1);
+        self.fresh_epoch();
         self.project = project;
         self.rebuild_instance_bounds();
         self.sync_model_color();
@@ -745,6 +786,7 @@ impl Workspace {
             )
             .into();
         self.path = Some(path);
+        self.sync_active_tab();
         self.plates = plates;
         self.invalidate_plate_bounds();
         self.error = None;
@@ -1258,20 +1300,11 @@ impl Workspace {
             && !self.slicing()
     }
 
-    /// Заголовок як у Zed: проєкт, навігація між сторінками, стан принтера й головні дії.
+    /// Заголовок як у Zed: «Головна» й вкладка проєкту ліворуч, глобальний стан принтера й
+    /// налаштування праворуч. Режими й дії проєкту — у панелі над центром (`project_bar`).
     fn title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let z = zed();
-        let running = self.slicing();
-        let slice_label = match (running, self.plate_to_slice()) {
-            (true, _) => crate::i18n::tr("Скасувати").to_string(),
-            (_, Some(n)) if self.plates.len() > 1 => crate::tr_format!("Нарізати пластину {n}"),
-            _ => "Нарізати".to_string(),
-        };
         let (printer, printer_color, live) = self.cloud.summary();
-        let can_print = self.can_send_print();
-        let print_primary = can_print && !running;
-        let has_project = self.project.is_some();
-
         let separator = || {
             div()
                 .flex_none()
@@ -1285,12 +1318,13 @@ impl Workspace {
             div()
                 .flex()
                 .flex_1()
+                .min_w_0()
                 .items_center()
                 .gap(px(2.))
                 .h_full()
                 .pr(px(6.))
                 .child(
-                    ui::icon_button("home-page", Page::Home.icon(), Page::Home.title())
+                    ui::icon_button("home-page", Page::Home.icon(), Page::Home.hint())
                         .no_window_drag()
                         .toggled(self.page == Page::Home)
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -1299,73 +1333,18 @@ impl Workspace {
                         })),
                 )
                 .child(separator())
-                .child(
-                    // Довга назва обрізається трикрапкою; позначка змін «●» лишається видимою.
-                    if self.path.is_some() {
-                        ui::ghost_button_bare("project-name", IconName::FileBox)
-                            .child(div().min_w_0().truncate().child(self.model_name.clone()))
-                            .when(self.edited, |d| d.child(div().flex_none().child("●")))
-                    } else {
-                        ui::ghost_button("project-name", Some(IconName::FileBox), "Відкрити модель…")
-                    }
-                    .no_window_drag()
-                    .when_some(self.path.clone(), |d, path| {
-                        use crate::file_menu::FileMenu as _;
-                        d.file_menu(path, cx)
-                    })
-                    .max_w(px(220.))
-                    .overflow_hidden()
-                    .text_color(z.text_muted)
-                    .tooltip({
-                        let tip: SharedString = match &self.path {
-                            Some(_) if self.untitled => crate::i18n::tr(
-                                "Новий проєкт, ще не збережено — правий клік: зберегти чи закрити",
-                            ),
-                            Some(path) => crate::tr_format!(
-                                "{} — клацни, щоб перейти до «Підготовки»; правий клік — дії з файлом",
-                                path.display()
-                            ),
-                            None => crate::i18n::tr("Відкрити 3MF, STL чи G-code (Ctrl+O)"),
-                        }
-                        .into();
-                        move |window, cx| Tooltip::new(tip.clone()).build(window, cx)
-                    })
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        if this.path.is_some() {
-                            this.enter_page(Page::Prepare, cx);
-                            cx.notify();
-                        } else {
-                            this.prompt_open(window, cx);
-                        }
-                    })),
-                )
-                .children(
-                    Page::PROJECT_TABS
-                        .iter()
-                        .enumerate()
-                        .filter(|_| self.path.is_some())
-                        .map(|(i, page)| {
-                            let page = *page;
-                            ui::ghost_button(("page", i), Some(page.icon()), page.title())
-                                .no_window_drag()
-                                .text_color(z.text_muted)
-                                .toggled(self.page == page)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.enter_page(page, cx);
-                                    cx.notify();
-                                }))
-                        }),
-                )
-                .child(separator())
-                .child(
-                    ui::icon_button(
-                        "open-preferences",
-                        IconName::Settings,
-                        "Налаштування (Ctrl+,)",
-                    )
-                    .no_window_drag()
-                    .on_click(cx.listener(|this, _, window, cx| this.open_preferences(window, cx))),
-                )
+                // Вкладки відкритих проєктів; без жодного — кнопка «Відкрити модель…».
+                .child(if self.tabs.is_empty() {
+                    let tip: SharedString = crate::i18n::tr("Відкрити 3MF, STL чи G-code (Ctrl+O)").into();
+                    ui::ghost_button("project-name", Some(IconName::FileBox), "Відкрити модель…")
+                        .no_window_drag()
+                        .text_color(z.text_muted)
+                        .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                        .on_click(cx.listener(|this, _, window, cx| this.prompt_open(window, cx)))
+                        .into_any_element()
+                } else {
+                    self.tab_strip(cx).into_any_element()
+                })
                 .child(div().flex_1())
                 .child(
                     div()
@@ -1398,78 +1377,14 @@ impl Workspace {
                             cx.notify();
                         })),
                 )
-                .child(separator())
                 .child(
-                    ui::icon_button("save-project", IconName::Save, "Зберегти проєкт (Ctrl+S)")
-                        .no_window_drag()
-                        .inert(!has_project)
-                        .when(has_project, |d| {
-                            d.on_click(
-                                cx.listener(|this, _, window, cx| this.prompt_save(window, cx)),
-                            )
-                        }),
-                )
-                .child(
-                    // Виділена кнопка — наступний крок: до нарізки «Нарізати», після — «Друкувати».
-                    if print_primary {
-                        ui::ghost_button("slice", Some(IconName::Scissors), slice_label)
-                    } else {
-                        ui::accent_button(
-                            "slice",
-                            IconName::Scissors,
-                            slice_label,
-                            running || self.can_slice(),
-                        )
-                    }
+                    ui::icon_button(
+                        "open-preferences",
+                        IconName::Settings,
+                        "Налаштування (Ctrl+,)",
+                    )
                     .no_window_drag()
-                    .tooltip({
-                        let tip: SharedString = if running {
-                            crate::i18n::tr("Зупинити нарізку")
-                        } else {
-                            crate::tr_format!(
-                                "Нарізати активну пластину рушієм нарізки {} (Ctrl+R)",
-                                self.engine_label
-                            )
-                        }
-                        .into();
-                        move |window, cx| Tooltip::new(tip.clone()).build(window, cx)
-                    })
-                    .when(running, |d| d.child(ui::spinner("slice-btn-spin")))
-                    .when(!running, |d| d.child(ui::kbd("Ctrl+R")))
-                    .when(running || self.can_slice(), |d| {
-                        d.on_click(cx.listener(|this, _, window, cx| {
-                            if this.slicing() {
-                                this.stop_slice();
-                                cx.notify();
-                            } else {
-                                this.start_slice(window, cx);
-                            }
-                        }))
-                    }),
-                )
-                .child(
-                    {
-                        let label = if self.cloud.sending {
-                            "Надсилаю…"
-                        } else {
-                            "Друкувати"
-                        };
-                        if print_primary {
-                            ui::accent_button("send-print", IconName::Send, label, true)
-                        } else {
-                            ui::ghost_button("send-print", Some(IconName::Send), label)
-                        }
-                    }
-                    .no_window_drag()
-                    .inert(!can_print)
-                    .when(can_print, |d| {
-                        d.on_click(
-                            cx.listener(|this, _, window, cx| this.open_print_dialog(window, cx)),
-                        )
-                    })
-                    .when_some(self.print_blocker(), |d, why| {
-                        d.tooltip(move |window, cx| Tooltip::new(why.clone()).build(window, cx))
-                    }),
+                    .on_click(cx.listener(|this, _, window, cx| this.open_preferences(window, cx))),
                 ),
         )
     }
@@ -1640,13 +1555,24 @@ impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _profile = paths::profile::Span::new("Workspace::render");
         let z = zed();
+        self.project_bar.window.set(f32::from(window.viewport_size().width));
         let content = match self.page {
             Page::Home => crate::home::render(self, window, cx).into_any_element(),
             Page::Prepare => crate::prepare::render(self, window, cx).into_any_element(),
             Page::Preview => crate::preview::render(self, cx).into_any_element(),
             Page::Device => crate::device::render(self, window, cx).into_any_element(),
-            Page::Project => self.project_details(cx),
+            Page::Project => {
+                let details = self.project_details(cx);
+                self.with_project_bar(details, false, cx)
+            }
         };
+        if !self.shows_project_bar() {
+            self.project_bar.hide();
+        }
+        // Сторінка «Проєкт» не має в’юпорта, який друкує знімок стану щокадру.
+        if crate::ui_state::trace_enabled() {
+            self.trace_ui_state(cx);
+        }
 
         let overlays = self.overlays(window, cx);
         // Рамку вікна (тінь, смуга зміни розміру) малює `Root` gpui-component 0.8 — один раз.
@@ -1731,6 +1657,8 @@ impl Render for Workspace {
                 .on_action(cx.listener(|this, _: &crate::CloseFile, window, cx| {
                     this.close_file(window, cx)
                 }))
+                .on_action(cx.listener(|this, _: &crate::NextTab, _, cx| this.cycle_tab(true, cx)))
+                .on_action(cx.listener(|this, _: &crate::PreviousTab, _, cx| this.cycle_tab(false, cx)))
                 .on_action(cx.listener(|this, _: &crate::NewProject, window, cx| {
                     this.new_project(window, cx)
                 }))
@@ -1929,13 +1857,6 @@ impl Workspace {
                     .flex()
                     .gap(px(8.))
                     .mt(px(16.))
-                    .child(
-                        ui::ghost_button("project-prepare", Some(IconName::Box), "Підготовка")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.enter_page(Page::Prepare, cx);
-                                cx.notify();
-                            })),
-                    )
                     .child(
                         ui::ghost_button("project-save", Some(IconName::Save), "Зберегти як…")
                             .inert(self.project.is_none())

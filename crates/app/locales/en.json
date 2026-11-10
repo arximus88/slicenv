@@ -1775,5 +1775,13 @@
   "Застосовано: Omarchy «{name}», {mode}": "Applied: Omarchy “{name}”, {mode}",
   "Застосовано: {mode} з теми ОС, з системним акцентом": "Applied: {mode} from the OS theme, with the system accent",
   "Застосовано: {mode} з теми ОС": "Applied: {mode} from the OS theme",
-  "Застосовано: {mode}, вибрано вручну": "Applied: {mode}, chosen manually"
+  "Застосовано: {mode}, вибрано вручну": "Applied: {mode}, chosen manually",
+  "Головна (Ctrl+1)": "Home (Ctrl+1)",
+  "Підготовка (Ctrl+2)": "Prepare (Ctrl+2)",
+  "Перегляд (Ctrl+3)": "Preview (Ctrl+3)",
+  "Проєкт (Ctrl+4)": "Project (Ctrl+4)",
+  "Пристрій (Ctrl+5)": "Device (Ctrl+5)",
+  "Іде нарізка цього проєкту — дочекайся її або зупини, щоб перейти до іншого": "This project is being sliced — wait for it or stop it to switch to another one",
+  "{} — правий клік: дії з файлом": "{} — right-click for file actions",
+  "Закрити (Ctrl+W)": "Close (Ctrl+W)"
 }

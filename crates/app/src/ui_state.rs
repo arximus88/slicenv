@@ -35,7 +35,7 @@ impl Workspace {
                 f32::from(b.size.height),
             ]
         });
-        json!({
+        let mut state = json!({
             "page": match self.page { Page::Prepare => "prepare", Page::Preview => "preview", _ => "other" },
             "language": self.preferences.language,
             "process_dirty": self.process_editor.as_ref().is_some_and(|e| e.is_dirty()),
@@ -74,7 +74,31 @@ impl Workspace {
             "section_ghost": self.cut_ghost,
             "navigation_drag": self.navigation_dragging(),
             "navigation_tween": self.navigation_animating(),
-        })
+        });
+        // Окремим об’єктом: `json!` вичерпує ліміт рекурсії макросів на довгому переліку.
+        state["shell"] = json!({
+            "mode": match self.page {
+                Page::Home => "home",
+                Page::Prepare => "prepare",
+                Page::Preview => "preview",
+                Page::Device => "device",
+                Page::Project => "project",
+            },
+            "project_bar": self.project_bar.shown().map(|d| d.name()),
+            // Рамка панелі й ширина центру, в якому вона стоїть.
+            "project_bar_bounds": self.project_bar.geometry().map(|(b, _)| b),
+            "project_bar_room": self.project_bar.geometry().map(|(_, w)| w),
+            "project": self.model_name,
+            // Вкладки по порядку: назва, чи активна, чи є незбережені зміни.
+            "tabs": self.tab_infos().iter().map(|t| json!([t.name, t.active, t.edited])).collect::<Vec<_>>(),
+            "docks": [self.left_dock, self.right_dock],
+            "slicing": self.slicing(),
+            "can_slice": self.can_slice(),
+            "can_print": self.can_send_print(),
+            "sliced": matches!(self.slice_state, crate::workspace::SliceState::Done(_)),
+            "modal": self.modal.is_some(),
+        });
+        state
     }
 
     /// Друкує `UI_TRACE` лише при зміні стану. Викликати тільки під `trace_enabled()`.

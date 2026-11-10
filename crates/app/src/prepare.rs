@@ -21,7 +21,7 @@ pub fn render(
     let left = ws.cached_panel("prepare-objects", crate::objects::panel, cx);
     let right = ws.cached_panel(SETTINGS_PANEL, settings_panel, cx);
     let center = ws.viewport_view("prepare-center", center, cx);
-    docked("prepare-docks", ws, Some(left), center, Some(right))
+    docked("prepare-docks", ws, Some(left), center, Some(right), cx)
 }
 
 /// Ключ кешу панелі «Друк»: «Перегляд» вбудовує той самий вид, що й «Підготовка».
@@ -36,7 +36,10 @@ pub fn docked(
     left: Option<AnyElement>,
     center: AnyElement,
     right: Option<AnyElement>,
+    cx: &mut Context<Workspace>,
 ) -> impl IntoElement {
+    // Панель режимів і дій проєкту плаває поверх сцени вгорі центру.
+    let center = ws.with_project_bar(center, true, cx);
     let mut group = h_resizable(id);
     if let Some(left) = left {
         let (size, range) = if id == "preview-docks" {

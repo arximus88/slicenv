@@ -700,7 +700,7 @@ pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoEleme
         // Невдала нарізка — картка: що сталось, хто виправляє, що зробити, деталі.
         if let crate::workspace::SliceState::Failed(err, failure) = &ws.slice_state {
             let card = failure_card(err.clone(), failure.clone(), ws.can_slice(), ws.slice_exhausted, ws.slice_fallback.clone(), cx);
-            return div()
+            let page = div()
                 .relative()
                 .flex()
                 .flex_1()
@@ -708,6 +708,7 @@ pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoEleme
                 .child(card)
                 .children(crate::plate_strip::strip(ws, cx))
                 .into_any_element();
+            return ws.with_project_bar(page, true, cx);
         }
         // Прев’ю скинули, поки сторінка відкрита (зміна пластини, геометрії): сцена знову
         // показує моделі замість траєкторії.
@@ -718,7 +719,7 @@ pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoEleme
         // силуетом, підказка компактна поверх сцени.
         let center = ws.viewport_view("preview-unsliced", |ws, _, cx| unsliced_center(ws, cx), cx);
         let settings = ws.cached_panel(crate::prepare::SETTINGS_PANEL, crate::prepare::settings_panel, cx);
-        return crate::prepare::docked("preview-unsliced-docks", ws, None, center, Some(settings))
+        return crate::prepare::docked("preview-unsliced-docks", ws, None, center, Some(settings), cx)
             .into_any_element();
     }
     // Центр зі сценою — окремий вид: рух камери не перебудовує статистику праворуч.
@@ -727,16 +728,7 @@ pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoEleme
     // виходячи з Preview); статистика й легенда — ліворуч.
     let left = ws.cached_panel("preview-summary", |ws, _, cx| summary_panel(ws, cx), cx);
     let settings = ws.cached_panel(crate::prepare::SETTINGS_PANEL, crate::prepare::settings_panel, cx);
-    crate::prepare::docked("preview-docks", ws, Some(left), center, Some(settings)).into_any_element()
-}
-
-/// Хлібні крихти Preview: модель і пластина.
-fn crumbs(ws: &Workspace) -> Vec<SharedString> {
-    let mut crumbs: Vec<SharedString> = vec![ws.model_name.clone()];
-    if let Some(n) = ws.plate_to_slice() {
-        crumbs.push(crate::tr_format!("Пластина {n}").into());
-    }
-    crumbs
+    crate::prepare::docked("preview-docks", ws, Some(left), center, Some(settings), cx).into_any_element()
 }
 
 /// Картка поверх сцени внизу по центру: не закриває об’єкти й не ловить орбіту камери.
@@ -877,7 +869,6 @@ fn unsliced_center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::Any
         .size_full()
         .min_w_0()
         .bg(z.editor)
-        .child(ui::toolbar().child(ui::breadcrumbs(crumbs(ws))))
         .child({
             let strip = crate::plate_strip::strip(ws, cx);
             ws.viewport(cx)
@@ -901,25 +892,35 @@ fn center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
     let layer = toolpath.layers.get(to.saturating_sub(1));
     let mono = |d: gpui::Div| d.font_family(crate::theme::MONO_FONT).text_xs();
 
-    let mut crumbs = crumbs(ws);
-    crumbs.push(
-        if from + 1 == to {
-            crate::tr_format!("шар {to} з {}", toolpath.layer_count())
-        } else {
-            crate::tr_format!("шари {}–{to} з {}", from + 1, toolpath.layer_count())
-        }
-        .into(),
-    );
-    let toolbar = ui::toolbar()
-        .child(ui::breadcrumbs(crumbs))
-        .child(div().flex_1())
+    // Рядок шару плаває під панеллю проєкту, на тій самій осі: назву файлу показує вкладка
+    // в заголовку, пластину — колонка пластин, тож тут лише режим і поточний шар.
+    let layers: SharedString = if from + 1 == to {
+        crate::tr_format!("шар {to} з {}", toolpath.layer_count())
+    } else {
+        crate::tr_format!("шари {}–{to} з {}", from + 1, toolpath.layer_count())
+    }
+    .into();
+    let layer_row = ui::scene_control("preview-layer-row")
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(8.))
+        .h(px(30.))
+        .pl(px(3.))
+        .pr(px(6.))
+        .rounded(px(8.))
+        .bg(z.panel.opacity(0.94))
+        .border_1()
+        .border_color(z.border_variant)
+        .shadow_sm()
+        .text_sm()
         .child(crate::photo_mode::mode_switch(ws, cx))
-        .child(div().w(px(8.)))
+        .child(div().flex_none().child(layers))
         .children(layer.map(|l| {
             mono(div())
                 .flex()
-                .gap(px(12.))
-                .px(px(6.))
+                .flex_none()
+                .gap(px(10.))
                 .text_color(z.text_muted)
                 .child(crate::tr_format!("Z {:.2} мм", l.z))
                 .child(crate::tr_format!("h {:.2} мм", l.height))
@@ -940,7 +941,7 @@ fn center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
     // Вертикальний повзунок шарів праворуч.
     let layers_card = ui::scene_control("preview-layer-card")
         .absolute()
-        .top(px(12.))
+        .top(px(ws.project_bar.below()))
         .bottom(px(64.))
         .right(px(12.))
         .w(px(52.))
@@ -1049,9 +1050,9 @@ fn center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
         .size_full()
         .min_w_0()
         .bg(z.editor)
-        .child(toolbar)
         .child(
             ws.viewport(cx)
+                .children(ws.project_bar.on_axis(ws.project_bar.below(), layer_row))
                 .child(crate::navigation::cube(ws, cx))
                 .child(layers_card)
                 .child(moves_bar)
@@ -1101,7 +1102,8 @@ fn stale_card(ws: &Workspace, cx: &mut Context<Workspace>) -> Option<gpui::Div> 
     Some(
         div()
             .absolute()
-            .top(px(12.))
+            // Під панеллю проєкту й рядком шару.
+            .top(px(ws.project_bar.below() + 36.))
             .left(px(left))
             .right(px(cube))
             .flex()
