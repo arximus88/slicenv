@@ -1562,6 +1562,7 @@ impl Render for Workspace {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _profile = paths::profile::Span::new("Workspace::render");
         let z = zed();
+        self.project_bar.window.set(f32::from(window.viewport_size().width));
         let content = match self.page {
             Page::Home => crate::home::render(self, window, cx).into_any_element(),
             Page::Prepare => crate::prepare::render(self, window, cx).into_any_element(),
@@ -1569,7 +1570,7 @@ impl Render for Workspace {
             Page::Device => crate::device::render(self, window, cx).into_any_element(),
             Page::Project => {
                 let details = self.project_details(cx);
-                self.with_project_bar(details, cx)
+                self.with_project_bar(details, false, cx)
             }
         };
         if !self.shows_project_bar() {

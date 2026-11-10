@@ -428,28 +428,6 @@ pub fn toolbar() -> gpui::Div {
         .text_sm()
 }
 
-/// Хлібні крихти: «Пластина 1 › Body1».
-pub fn breadcrumbs(parts: Vec<SharedString>) -> gpui::Div {
-    let z = zed();
-    let last = parts.len().saturating_sub(1);
-    div().flex().items_center().gap(px(4.)).min_w_0().children(
-        parts.into_iter().enumerate().flat_map(move |(i, p)| {
-            let sep = (i > 0).then(|| {
-                div()
-                    .text_color(z.text_placeholder)
-                    .child("›")
-                    .into_any_element()
-            });
-            let part = div()
-                .truncate()
-                .text_color(if i == last { z.text } else { z.text_muted })
-                .child(p)
-                .into_any_element();
-            sep.into_iter().chain(std::iter::once(part))
-        }),
-    )
-}
-
 /// Рядок «назва — значення» (властивості, статус принтера).
 pub fn prop_row(label: impl Into<SharedString>, value: impl IntoElement) -> gpui::Div {
     let z = zed();

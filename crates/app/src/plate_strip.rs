@@ -598,7 +598,7 @@ pub(crate) fn strip(ws: &mut Workspace, cx: &mut Context<Workspace>) -> Option<g
     Some(
         div()
             .absolute()
-            .top(px(12.))
+            .top(px(ws.project_bar.below()))
             .left(px(12.))
             .bottom(px(84.))
             .w(px(width))

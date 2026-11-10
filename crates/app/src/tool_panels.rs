@@ -885,7 +885,8 @@ pub fn panel(ws: &Workspace, window: &Window, cx: &mut Context<Workspace>) -> Op
     Some(
         ui::scene_control("tool-panel")
             .absolute()
-            .top(px(10.))
+            // Під панеллю режимів і дій проєкту.
+            .top(px(ws.project_bar.below()))
             .left(px(10.))
             .w(px(if tool == Tool::Cut { 344. } else { 318. }))
             .flex()

@@ -259,7 +259,8 @@ pub fn cube(ws: &Workspace, cx: &mut Context<Workspace>) -> gpui::AnyElement {
         .id("navigation-cube")
         .occlude()
         .absolute()
-        .top(px(12.))
+        // Під панеллю режимів і дій проєкту, а в нарізаному «Перегляді» — ще й під рядком шару.
+        .top(px(ws.project_bar.below() + if prepare || ws.preview.is_none() { 0. } else { 36. }))
         .right(px(right))
         .w(px(SIZE))
         .h(px(SIZE + 22.))

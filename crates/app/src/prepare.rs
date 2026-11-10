@@ -38,8 +38,8 @@ pub fn docked(
     right: Option<AnyElement>,
     cx: &mut Context<Workspace>,
 ) -> impl IntoElement {
-    // Панель режимів і дій проєкту — над центром, між доками.
-    let center = ws.with_project_bar(center, cx);
+    // Панель режимів і дій проєкту плаває поверх сцени вгорі центру.
+    let center = ws.with_project_bar(center, true, cx);
     let mut group = h_resizable(id);
     if let Some(left) = left {
         let (size, range) = if id == "preview-docks" {

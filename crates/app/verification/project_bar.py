@@ -95,19 +95,23 @@ def main():
         return s['shell']['project_bar_bounds']
 
     def check_bar(s, width, label):
-        """The bar is whole, inside its row, above the scene and clear of the docks."""
+        """The bar is whole, floats over the top of the scene, clear of the docks, and sits
+        on the window axis unless the centre is too narrow or off to one side for that."""
         shell = s['shell']
         assert shell['project_bar'], f'{label}: no bar on {shell["mode"]}'
         x, y, w, h = bar(s)
         room = shell['project_bar_room']
-        assert w <= room - 8, f'{label}: bar {w} wider than its row {room}'
+        assert w <= room - 8, f'{label}: bar {w} wider than the centre {room}'
         assert x >= 0 and x + w <= width + 1, f'{label}: bar leaves the window'
         if shell['mode'] in ('prepare', 'preview') and s['viewport']:
             vx, vy, vw, _ = s['viewport']
             assert x >= vx + 3 and x + w <= vx + vw - 3, f'{label}: bar overlaps a dock: {bar(s)} vs {s["viewport"]}'
-            assert y + h <= vy, f'{label}: bar covers the scene: {bar(s)} vs {s["viewport"]}'
-            # Centred over the scene.
-            assert abs((x + w / 2) - (vx + vw / 2)) <= 1.5, f'{label}: bar off-centre'
+            assert vy <= y and y + h <= vy + 80, f'{label}: bar is not at the top of the scene: {bar(s)} vs {s["viewport"]}'
+            mid = x + w / 2
+            on_axis = abs(mid - width / 2) <= 1.5
+            # Off the axis only when pushed against an edge of the centre or centred in it.
+            pushed = x - vx <= 40 or vx + vw - (x + w) <= 40 or abs(mid - (vx + vw / 2)) <= 1.5
+            assert on_axis or pushed, f'{label}: bar neither on the window axis nor against the centre edge: {bar(s)} vs {s["viewport"]}'
         return x, y, w, h
 
     def action(s, which):
@@ -176,7 +180,6 @@ def main():
     vx, vy, vw, vh = s['viewport']
     camera = s['camera']
     drag(x + w / 2, mid, 0, 220)                 # starts on the bar, ends over the scene
-    drag(vx + 12, mid, 160, 200)                 # starts in the empty row beside the bar
     drag(x + w / 2, mid, 60, 180, button=3)
     move(x + w / 2, mid)
     command('click', '4', 'click', '4', 'click', '5')
@@ -190,20 +193,30 @@ def main():
     assert zoomed['shell']['project_bar'], 'bar moved with the camera'
     assert bar(settled()) == [x, y, w, h], 'bar moved with the camera'
 
-    # --- docks: the bar follows the centre ---
+    # --- docks and modes: the centre changes, the bar stays where it was in the window ---
+    home = [x, y, w, h]
+    assert abs((x + w / 2) - widths[0] / 2) <= 1.5, f'bar off the window axis: {home}'
     key('ctrl+b')
     s = wait(lambda s: s['shell']['docks'] == [False, True], 'left dock closed')
     s = settled()
     check_bar(s, widths[0], 'left dock closed')
     assert s['shell']['project_bar_room'] > start['shell']['project_bar_room']
+    assert bar(s) == home, f'closing the left dock moved the bar: {home} -> {bar(s)}'
     key('ctrl+alt+b')
     s = wait(lambda s: s['shell']['docks'] == [False, False], 'both docks closed')
     s = settled()
     check_bar(s, widths[0], 'no docks')
+    assert bar(s) == home, f'closing both docks moved the bar: {home} -> {bar(s)}'
     shot('no-docks.png')
+    key('ctrl+3')
+    s = wait(lambda s: s['shell']['mode'] == 'preview', 'preview without docks')
+    s = settled()
+    assert bar(s) == home, f'Preview moved the bar: {home} -> {bar(s)}'
     key('ctrl+4')
     s = wait(lambda s: s['shell']['mode'] == 'project', 'project without docks')
-    check_bar(settled(), widths[0], 'project without docks')
+    s = settled()
+    check_bar(s, widths[0], 'project without docks')
+    assert bar(s) == home, f'Project moved the bar: {home} -> {bar(s)}'
     key('ctrl+2')
     key('ctrl+b')
     key('ctrl+alt+b')

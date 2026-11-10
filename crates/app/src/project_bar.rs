@@ -2,12 +2,15 @@
 //!
 //! Заголовок вікна лишається для «Головної», вкладки проєкту й глобальних речей (стан
 //! принтера, налаштування). Режими (Проєкт · Підготовка · Перегляд) і дії (зберегти,
-//! нарізати, друкувати) живуть тут: власний рядок над центром сторінки, між доками. Це
-//! звичайний елемент розкладки, не шар поверх сцени, тож він не рухається з камерою, не
-//! накладається на куб навігації, панель інструмента чи колонку пластин і не забирає
-//! жестів сцени.
+//! нарізати, друкувати) живуть тут: панель плаває поверх сцени вгорі центру сторінки —
+//! сцена видна довкола й крізь неї, власного рядка розкладки вона не займає.
 //!
-//! Ширина центру залежить від доків і масштабу, тому панель стискається сходинками
+//! Панель стоїть на осі вікна, а не центру: згортання дока чи перехід між «Підготовкою»
+//! й «Переглядом» (у них різні ліві доки) її не зсуває; де центр для цього завузький,
+//! вона стає якнайближче до осі ([`slot`]). Куб навігації, колонка пластин, повзунок
+//! шарів і панель інструмента починаються під нею ([`BarState::below`]), тож вона їх не закриває.
+//!
+//! Вільна ширина залежить від доків і масштабу, тому панель стискається сходинками
 //! ([`Density`]): спершу зникає підказка клавіш, далі номер пластини в підписі нарізки,
 //! потім підписи режимів і нарешті підписи дій; у зовсім вузькому центрі (нарізаний
 //! «Перегляд» з обома доками у вікні мінімальної ширини) режими й дії стають у два рядки.
@@ -148,10 +151,42 @@ pub(crate) fn density_for(available: f32, labels: &Labels) -> Density {
         .unwrap_or(Density::Stacked)
 }
 
-/// Виміряна ширина центру й стиснення, з яким панель намальовано востаннє.
+/// Де стоїть панель: вісь і півширина її місця в координатах вікна, стиснення.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Slot {
+    pub centre: f32,
+    pub half: f32,
+    pub density: Density,
+}
+
+/// Місце панелі: `x`, `width` — центр сторінки в координатах вікна, `window` — ширина
+/// вікна. Панель стоїть на осі вікна; де центр для цього завузький чи збоку — якнайближче
+/// до неї, не виходячи за його краї.
+pub(crate) fn slot(x: f32, width: f32, window: f32, labels: &Labels) -> Slot {
+    let density = density_for(width, labels);
+    let half = estimated_width(density, labels) / 2. + MARGIN;
+    let centre = if width <= half * 2. {
+        x + width / 2.
+    } else {
+        (window / 2.).clamp(x + half, x + width - half)
+    };
+    Slot { centre, half, density }
+}
+
+/// Верх панелі від верху центру і її висота в один рядок.
+const TOP: f32 = 8.;
+const HEIGHT: f32 = 34.;
+/// Висота панелі у два рядки ([`Density::Stacked`]).
+const HEIGHT_STACKED: f32 = 60.;
+
+/// Виміряний центр сторінки й місце, де панель намальовано востаннє.
 #[derive(Clone, Default)]
 pub(crate) struct BarState {
-    width: Rc<Cell<f32>>,
+    /// Лівий край, верх і ширина центру в координатах вікна.
+    region: Rc<Cell<(f32, f32, f32)>>,
+    /// Ширина вікна в останньому кадрі.
+    pub(crate) window: Rc<Cell<f32>>,
+    slot: Rc<Cell<Option<Slot>>>,
     shown: Rc<Cell<Option<Density>>>,
     /// Рамка самої панелі у вікні — лише для знімка стану (`ui_state`).
     bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
@@ -169,8 +204,30 @@ impl BarState {
         let b = self.bounds.get()?;
         Some((
             [b.origin.x, b.origin.y, b.size.width, b.size.height].map(f32::from),
-            self.width.get(),
+            self.region.get().2,
         ))
+    }
+
+    /// Ставить `child` на вісь панелі за `top` px від верху центру сторінки. Позиція —
+    /// у координатах вікна: коли док згортається чи з’являється, вісь не чекає наступного
+    /// кадру з новими розмірами центру, і панель не блимає на старому місці.
+    pub(crate) fn on_axis(&self, top: f32, child: impl IntoElement) -> Option<gpui::Anchored> {
+        let slot = self.slot.get()?;
+        let (_, y, width) = self.region.get();
+        // До першого кадру розкладки місце невідоме.
+        (width > 0.).then(|| {
+            gpui::anchored()
+                .position(gpui::point(px(slot.centre - slot.half), px(y + top)))
+                .snap_to_window_with_margin(px(0.))
+                .child(div().flex().justify_center().w(px(slot.half * 2.)).child(child))
+        })
+    }
+
+    /// Низ панелі від верху центру сторінки: звідси починається те, що в сцені стоїть під
+    /// нею (куб навігації, колонка пластин, повзунок шарів, панель інструмента).
+    pub(crate) fn below(&self) -> f32 {
+        let height = if self.shown.get() == Some(Density::Stacked) { HEIGHT_STACKED } else { HEIGHT };
+        TOP + height + 6.
     }
 
     /// Сторінка без панелі («Головна», «Пристрій»).
@@ -231,25 +288,33 @@ impl Workspace {
         self.path.is_some() && Page::PROJECT_TABS.contains(&self.page)
     }
 
-    /// Центр сторінки проєкту з панеллю режимів і дій над ним.
-    pub(crate) fn with_project_bar(&self, content: AnyElement, cx: &mut Context<Self>) -> AnyElement {
+    /// Центр сторінки проєкту з панеллю режимів і дій поверх нього. `scene` — у центрі
+    /// 3D-сцена: панель плаває над нею; без сцени («Проєкт») вміст починається під панеллю.
+    pub(crate) fn with_project_bar(
+        &self,
+        content: AnyElement,
+        scene: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         if !self.shows_project_bar() {
             self.project_bar.hide();
             return content;
         }
         div()
+            .relative()
             .flex()
             .flex_col()
             .size_full()
             .min_w_0()
             .min_h_0()
             .bg(zed().editor)
-            .child(self.project_bar(cx))
+            .when(!scene, |d| d.pt(px(self.project_bar.below())))
             .child(div().flex().flex_1().min_w_0().min_h_0().child(content))
+            .child(self.project_bar(scene, cx))
             .into_any_element()
     }
 
-    fn project_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn project_bar(&self, scene: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let z = zed();
         let running = self.slicing();
         let can_slice = self.can_slice();
@@ -266,8 +331,11 @@ impl Workspace {
         };
         let print_label = crate::i18n::tr(if self.cloud.sending { "Надсилаю…" } else { "Друкувати" });
         let titles = [Page::Prepare, Page::Preview].map(|p| crate::i18n::tr(p.title()));
-        let density = density_for(
-            self.project_bar.width.get(),
+        let (region_x, _, region_width) = self.project_bar.region.get();
+        let slot = slot(
+            region_x,
+            region_width,
+            self.project_bar.window.get(),
             &Labels {
                 modes: [&titles[0], &titles[1]],
                 slice_long: &slice_long,
@@ -276,7 +344,9 @@ impl Workspace {
                 running,
             },
         );
+        let density = slot.density;
         self.project_bar.shown.set(Some(density));
+        self.project_bar.slot.set(Some(slot));
 
         let modes = Page::PROJECT_TABS.iter().enumerate().map(|(i, page)| {
             let page = *page;
@@ -376,16 +446,24 @@ impl Workspace {
                 d.on_click(cx.listener(|this, _, window, cx| this.prompt_save(window, cx)))
             });
 
-        // Ширину центру знає лише розкладка: якщо за нею панель мала бути іншою, наступний
-        // кадр перемалює її. Ширина рядка від стиснення не залежить, тож це не цикл.
+        // Край і ширину центру знає лише розкладка: якщо за ними панель мала стояти інакше,
+        // наступний кадр перемалює її. Центр від панелі не залежить, тож це не цикл.
         let measure = {
-            let width = self.project_bar.width.clone();
+            let region = self.project_bar.region.clone();
             let entity = cx.entity().downgrade();
             canvas(
                 move |bounds, _, cx| {
-                    let measured = f32::from(bounds.size.width);
-                    if (width.get() - measured).abs() >= 0.5 {
-                        width.set(measured);
+                    let measured = (
+                        f32::from(bounds.origin.x),
+                        f32::from(bounds.origin.y),
+                        f32::from(bounds.size.width),
+                    );
+                    let (x, y, width) = region.get();
+                    if (x - measured.0).abs() >= 0.5
+                        || (y - measured.1).abs() >= 0.5
+                        || (width - measured.2).abs() >= 0.5
+                    {
+                        region.set(measured);
                         let entity = entity.clone();
                         cx.defer(move |cx| {
                             let _ = entity.update(cx, |_, cx| cx.notify());
@@ -416,20 +494,7 @@ impl Workspace {
             .inset_0()
         };
 
-        div()
-            .relative()
-            .flex()
-            .flex_none()
-            .justify_center()
-            .w_full()
-            .min_w_0()
-            .overflow_hidden()
-            .pt(px(8.))
-            .pb(px(4.))
-            .child(measure)
-            .child(
-                div()
-                    .id("project-bar")
+        let bar =                 ui::scene_control("project-bar")
                     .relative()
                     .flex()
                     .flex_none()
@@ -443,10 +508,10 @@ impl Workspace {
                     })
                     .p(px(PADDING))
                     .rounded(px(8.))
-                    .bg(z.panel)
+                    .bg(z.panel.opacity(if scene { 0.94 } else { 1. }))
                     .border_1()
                     .border_color(z.border_variant)
-                    .shadow_sm()
+                    .shadow_md()
                     .child(outline)
                     .child(
                         div()
@@ -465,8 +530,13 @@ impl Workspace {
                             .child(save)
                             .child(slice)
                             .child(print),
-                    ),
-            )
+                    );
+        // Шар на весь центр: сам він подій не ловить, сцену під собою закриває лише панель.
+        div()
+            .absolute()
+            .inset_0()
+            .child(measure)
+            .children(self.project_bar.on_axis(TOP, bar))
     }
 }
 
@@ -536,6 +606,35 @@ mod tests {
         assert_eq!(between(Density::Full, Density::NoKeys), Density::NoKeys);
         assert_eq!(between(Density::NoKeys, Density::ShortSlice), Density::ShortSlice);
         assert_eq!(between(Density::ShortSlice, Density::IconModes), Density::IconModes);
+    }
+
+    /// Панель стоїть на осі вікна, хоч який лівий док: «Підготовка» (док 272), «Перегляд»
+    /// до нарізки (без дока) і згорнуті доки дають ту саму позицію у вікні.
+    #[test]
+    fn docks_do_not_move_the_bar() {
+        let labels = labels(false);
+        let window = 1534.;
+        for (x, width) in [(272., 1534. - 272. - 380.), (0., 1534. - 380.), (0., 1534.), (272., 1534. - 272.)] {
+            let s = slot(x, width, window, &labels);
+            assert_eq!(s.density, Density::Full);
+            assert_eq!(s.centre, window / 2., "док {x}, центр {width}");
+        }
+    }
+
+    /// Центр збоку від осі вікна: панель якнайближче до осі, але ціла в його межах.
+    #[test]
+    fn bar_stays_inside_an_off_axis_centre() {
+        let labels = labels(false);
+        for (x, width) in [(1000., 400.), (460., 500.), (0., 300.), (20., 120.)] {
+            let s = slot(x, width, 1534., &labels);
+            assert_eq!(s.density, density_for(width, &labels));
+            if s.density != Density::Stacked {
+                assert!(s.centre - s.half >= x - 0.01 && s.centre + s.half <= x + width + 0.01, "{x}+{width}: {s:?}");
+            }
+        }
+        // Центр праворуч від осі: панель притиснута до його лівого краю.
+        let s = slot(1000., 400., 1534., &labels);
+        assert!((s.centre - s.half - 1000.).abs() < 0.01);
     }
 
     /// Невідома ширина (до першого кадру розкладки) не ховає підписів.
