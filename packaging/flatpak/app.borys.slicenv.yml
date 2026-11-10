@@ -154,9 +154,9 @@ modules:
       - install -Dm644 -t /app/share/licenses/app.borys.slicenv LICENSE THIRD-PARTY-NOTICES.md
         packaging/THIRD-PARTY-RUST-CRATES.md
     sources:
-      # Для Flathub: тег релізу і його коміт (`git rev-parse v0.1.0^{commit}`).
+      # Для Flathub: тег релізу і його коміт (`git rev-parse v0.1.1^{commit}`).
       - type: git
         url: https://github.com/arximus88/slicenv.git
-        tag: v0.1.0
-        commit: 03ade6f980f865c9bca59e8e9d09455929321144
+        tag: v0.1.1
+        commit: f8985c649e749d36418bd979c6c91458e38e2721
       - cargo-sources.json
