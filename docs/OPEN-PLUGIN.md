@@ -112,7 +112,19 @@ Open Bamboo Networking (OBN) від persano. Цей форк друкує з **D
 | `block_cloud` | `1` (типово) / `0` (перемикач «Друк і стан через хмару», свіжий вхід у Bambu Cloud або «Увімкнути хмару» в рядку хмари) | `1` — лише LAN і REST акаунта, як у робочому конфігу дизайнера; `0` — хмарний MQTT і хмарний друк. Перевірка збереженої сесії `block_cloud` не змінює |
 | `client_name` | `BambuStudio` | інакше 403 на `/my/task` |
 | `cloud_print` | `cloud_only` | типове; `lan_only` заблокував би `start_print` |
-| `log_stderr`, `log_to_file`, `bambusource_log_*` | `0` | за README OBN логи містять токени, коди доступу й серійники без маскування |
+| `log_stderr`, `log_to_file`, `bambusource_log_stderr`, `bambusource_log_to_file` | `0`; `log_file` порожній, `bambusource_log_file = off` | за README OBN логи містять токени, коди доступу й серійники без маскування |
+
+**Логи — до `set_config_dir`.** OBN читає налаштування логів не з теки конфігурації, а з
+`log_dir`, який отримує `bambu_network_create_agent` (`abi_lifecycle.cpp`:
+`config::load_or_create(log_dir)` → `log::apply_config`, одноразово). Без `obn.conf` там плагін
+створює шаблон із `log_stderr = 1` і пише в stderr застосунку e-mail, user id і серійники ще до
+`set_config_dir`. Тому `Client::load` перед `create_agent` кладе в приватний `log_dir` копію
+нашого `obn.conf` із примусово вимкненими логами (`obn::seed_log_dir`), а на старті процесу
+задаються `OBN_LOG_STDERR=0`, `OBN_LOG_TO_FILE=0`, порожній `OBN_LOG_FILE` і
+`OBN_BAMBUSOURCE_LOG_*` (`obn::quiet_process_env`; змінні мають пріоритет над файлом).
+Обмеження: рядок `[obn] Loaded Open Bamboo Networking plugin, … commit …, ABI …` друкує
+конструктор бібліотеки під час `dlopen`, і жоден конфіг його не вимикає. Ідентифікаторів у
+ньому немає; глушити заради нього stderr усього GUI-процесу не будемо.
 
 Решту ключів (наприклад, `slicer_key_pem`, якщо користувач принесе власні ключі) Slicenv не
 чіпає. Плагін сам дописує в теку `obn.env` (реєстр IP ↔ серійник для `libBambuSource`) і

@@ -281,9 +281,12 @@ impl Events {
 /// на Arch/CachyOS немає: без `SSL_CERT_FILE` усі REST-запити (список принтерів — -11,
 /// історія — -1) падають, тоді як MQTT працює. Задає змінну, якщо її немає.
 ///
+/// Заразом вимикає логи відкритого плагіна через змінні оточення ([`obn::quiet_process_env`]).
+///
 /// # Safety
 /// Змінює оточення процесу: викликати на старті, до створення інших потоків.
 pub unsafe fn configure_tls_env() {
+    unsafe { obn::quiet_process_env() };
     if std::env::var_os("SSL_CERT_FILE").is_some() || std::env::var_os("SSL_CERT_DIR").is_some() {
         return;
     }
@@ -523,6 +526,9 @@ impl Client {
         } else {
             session::Session::copy_from(&options.studio_config_dir)?
         };
+        // Відкритий плагін читає налаштування логів з log_dir ще в create_agent — до
+        // set_config_dir. Без цього він пише e-mail, user id і серійники в stderr застосунку.
+        obn::seed_log_dir(&session.config, &session.log)?;
         let (sender, receiver) = mpsc::sync_channel(256);
         let dropped = Arc::new(AtomicU64::new(0));
         let mut state = Box::new(CallbackState {

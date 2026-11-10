@@ -2,6 +2,10 @@
 #include "../native/print_params.hpp"
 #include "../native/task_params.hpp"
 #include <atomic>
+#include <cstdio>
+#include <cstdlib>
+#include <iterator>
+#include <sstream>
 #include <chrono>
 #include <fstream>
 #include <functional>
@@ -90,7 +94,56 @@ FAKE_API int bambu_network_user_logout(void *, bool request) {
     return 0;
 }
 FAKE_API std::string bambu_network_get_version() { return FAKE_VERSION; }
+#ifdef FAKE_OBN_LOGGING
+// Модель логування Open Bamboo Networking (abi_lifecycle.cpp, log.cpp, config.cpp):
+// create_agent читає obn.conf з log_dir, а без нього пише шаблон із log_stderr = 1; змінні
+// OBN_LOG_* мають пріоритет; налаштування застосовуються один раз. Значення вигадані.
+static std::string conf_value(const std::string &text, const std::string &key) {
+    std::string value, line;
+    std::istringstream in(text);
+    while (std::getline(in, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        auto eq = line.find('=');
+        if (eq == std::string::npos) continue;
+        auto trim = [](std::string s) {
+            s.erase(0, s.find_first_not_of(" \t"));
+            s.erase(s.find_last_not_of(" \t\r") + 1);
+            return s;
+        };
+        if (trim(line.substr(0, eq)) == key) value = trim(line.substr(eq + 1));
+    }
+    return value;
+}
+static bool truthy(const char *v) { return v && *v && std::string(v) != "0"; }
+FAKE_API void *bambu_network_create_agent(std::string log_dir) {
+    const std::string path = log_dir + "/obn.conf";
+    std::string text;
+    {
+        std::ifstream in(path);
+        if (in) text.assign(std::istreambuf_iterator<char>(in), {});
+    }
+    if (text.empty()) {
+        text = "log_stderr = 1\nlog_to_file = 1\n";
+        std::ofstream(path) << text;
+    }
+    bool echo = conf_value(text, "log_stderr") != "0";
+    bool to_file = conf_value(text, "log_to_file") == "1";
+    if (const char *e = std::getenv("OBN_LOG_STDERR")) echo = truthy(e);
+    if (const char *e = std::getenv("OBN_LOG_TO_FILE")) to_file = truthy(e);
+    if (std::getenv("OBN_LOG_FILE")) to_file = false;
+    const char *line = "auth.cpp:124 load_locked: loaded session for synthetic-user@example.invalid "
+                       "(user_id=999000111) printer SYNTHETIC12345678\n";
+    if (echo) {
+        std::fputs("[obn] ", stderr);
+        std::fputs(line, stderr);
+        std::fflush(stderr);
+    }
+    if (to_file) std::ofstream(log_dir + "/obn.log") << line;
+    return new Fake;
+}
+#else
 FAKE_API void *bambu_network_create_agent(std::string) { return new Fake; }
+#endif
 FAKE_API int bambu_network_destroy_agent(void *p) {
     auto agent = static_cast<Fake *>(p);
     agent->destroyed->store(true);

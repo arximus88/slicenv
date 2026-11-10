@@ -153,6 +153,10 @@ pub struct CloudState {
     pub found_open: Option<bool>,
     /// Пошук у доку (з’являється, коли рядків більше за [`FILTER_FROM`]).
     pub filter_input: Option<gpui::Entity<InputState>>,
+    /// Свідомо вибраний маршрут друку для принтера («Змінити…» в діалозі друку), на сеанс.
+    pub print_route: std::collections::HashMap<DeviceId, print_paths::Route>,
+    /// У діалозі друку розгорнуто вибір маршруту.
+    pub route_picker: bool,
     commands: Option<mpsc::Sender<CloudCmd>>,
 }
 
@@ -214,6 +218,42 @@ impl CloudState {
             .ok_or(())
             .and_then(|tx| tx.send(cmd).map_err(|_| ()))
             .map_err(|_| tr("Bambu Cloud не підключено — завдання не надіслано"))
+    }
+
+    /// Вхідні дані маршруту друку для принтера: фактичний стан з’єднань, а не наявність запису.
+    pub fn print_inputs(
+        &self,
+        dev: &DeviceId,
+        found: bool,
+        connect_installed: bool,
+        open_plugin: bool,
+        cloud_print: bool,
+    ) -> print_paths::Inputs {
+        use print_paths::{Cloud, Lan};
+        let lan = if self.lan.has(dev) {
+            Lan::Saved { up: self.lan.is_up(dev) }
+        } else if found {
+            Lan::Found
+        } else {
+            Lan::Absent
+        };
+        let link = self.connected && self.source.connected();
+        let cloud = match self.lan.cloud_printer(dev) {
+            _ if !link && self.source.busy() => Cloud::Connecting,
+            _ if !link => Cloud::NeedsSetup,
+            Some(p) if p.online => Cloud::Ready,
+            Some(_) => Cloud::PrinterOffline,
+            None => Cloud::NotInAccount,
+        };
+        print_paths::Inputs {
+            os: print_paths::Os::current(),
+            connect_installed,
+            lan,
+            cloud,
+            cloud_print,
+            open_plugin,
+            chosen: self.print_route.get(dev).copied(),
+        }
     }
 
     /// Вибраний принтер іде через хмару (не LAN і не Klipper).
@@ -1312,6 +1352,8 @@ pub fn spawn_cloud() -> (CloudLink, CloudShutdown) {
             Some("login") => source::Phase::NeedLogin { expired: false },
             Some("no-server") => source::Phase::NoServer,
             Some("connecting") => source::Phase::Connecting,
+            // Лише вигляд «хмара підключена» для перевірки інтерфейсу; транспорту немає.
+            Some("connected") => source::Phase::Connected,
             _ => source::Phase::Disabled,
         };
         ui_tx.unbounded_send(CloudMsg::Phase(phase)).ok();
@@ -2699,9 +2741,10 @@ impl Workspace {
             .map(|p| p.model.clone())
             .unwrap_or_default();
         let material_warning = open_frame_warning(&model_id, &filament_types(&gcode_3mf));
-        // Шляхи вибираються ДО будь-якої спроби: хмарний друк плагіном Bambu для непідписаних
-        // програм завжди дає -26, тож його кнопки немає, доки він хоч раз не пройде.
-        // Наявність Bambu Connect перевіряється при кожному відкритті (встановили — помітимо).
+        // Маршрут друку перераховується при кожному малюванні: хмара могла підключитися, LAN —
+        // упасти. Свідомий вибір користувача (`print_route`) ніколи тихо не підміняється.
+        // Хмарний друк плагіном Bambu для непідписаних програм дає -26, тож хмара як маршрут —
+        // лише з відкритим плагіном (хмару ввімкнено) або після реального успіху в сеансі.
         let found = self
             .cloud
             .lan
@@ -2709,25 +2752,11 @@ impl Workspace {
             .iter()
             .find(|f| f.serial == dev.as_str())
             .cloned();
-        let lan_state = if self.cloud.lan.has(&dev) {
-            print_paths::Lan::Saved
-        } else if found.is_some() {
-            print_paths::Lan::Found
-        } else {
-            print_paths::Lan::Absent
-        };
-        // Відкритий плагін (вибір користувача): LAN-друк він підписує сам, а хмара — лише
-        // якщо її ввімкнено в його налаштуваннях. Попередження -26 тут не буває.
+        let connect_installed = crate::bambu_connect::installed();
         let open_plugin = crate::open_plugin::active();
-        let paths = print_paths::choose(print_paths::Inputs {
-            os: print_paths::Os::current(),
-            connect_installed: crate::bambu_connect::installed(),
-            lan: lan_state,
-            cloud_print_works: (open_plugin && cloud::obn::cloud_enabled())
-                || (!open_plugin && self.cloud.cloud_print_works)
-                || std::env::var_os("SLICENV_CLOUD_PRINT").is_some_and(|v| v == "1"),
-            open_plugin,
-        });
+        let obn_cloud = open_plugin && cloud::obn::cloud_enabled();
+        let env_cloud = std::env::var_os("SLICENV_CLOUD_PRINT").is_some_and(|v| v == "1");
+        self.cloud.route_picker = false;
         let connect_send = {
             let gcode_3mf = gcode_3mf.clone();
             let name = format!("{project} {plate}");
@@ -2736,6 +2765,7 @@ impl Workspace {
                 ws.send_via_bambu_connect(&gcode_3mf, &name, cx);
             })
         };
+        let route_dev = dev.clone();
         let send = Rc::new(move |ws: &mut Workspace, via_cloud: bool, cx: &mut Context<Workspace>| {
             let o = ws.cloud.print;
             let slots = filament_slots(&gcode_3mf);
@@ -2787,63 +2817,104 @@ impl Workspace {
                         }))
                 };
                 let note = |text: &str| div().pb(px(6.)).text_xs().text_color(z.text_muted).child(tr(text));
-                // Хмара не готова: кнопка називає одну дію, якої бракує, а не «Через хмару».
-                let cloud_ready = ws.cloud.connected && ws.cloud.source.connected();
-                let cloud_label = match ws.cloud.source.action() {
-                    _ if cloud_ready => "Через хмару",
-                    Some(source::Action::EnableCloud) => "Увімкнути хмару",
-                    Some(source::Action::SignIn) => "Увійти в Bambu Cloud",
-                    _ if ws.cloud.source.busy() => "Хмара підключається…",
-                    _ => "Налаштувати хмару…",
+                let cloud_print = obn_cloud || (!open_plugin && ws.cloud.cloud_print_works) || env_cloud;
+                let plan = print_paths::plan(ws.cloud.print_inputs(
+                    &route_dev,
+                    found.is_some(),
+                    connect_installed,
+                    open_plugin,
+                    cloud_print,
+                ));
+                let route_name = |r: print_paths::Route| match r {
+                    print_paths::Route::Cloud => (IconName::Cloud, "Bambu Cloud"),
+                    print_paths::Route::Lan => (IconName::Wifi, "Локальна мережа"),
+                    print_paths::Route::Connect => (IconName::Send, "Bambu Connect"),
                 };
-                let action_button = |action: print_paths::Action, primary: bool, cx: &mut Context<Workspace>| {
-                    use print_paths::Action;
-                    let (id, icon, label): (&'static str, IconName, &'static str) = match action {
-                        Action::LanSend => ("print-send-lan", IconName::Wifi, "Надіслати по локальній мережі"),
-                        Action::LanAdd => ("print-add-lan", IconName::Wifi, "Надіслати по локальній мережі"),
-                        Action::LanManual => ("print-lan-manual", IconName::Wifi, "Додати принтер у мережі"),
-                        Action::Connect => ("print-send-connect", IconName::Send, "Надіслати через Bambu Connect"),
-                        Action::Cloud => ("print-send-cloud", IconName::Cloud, cloud_label),
-                    };
-                    let button = if primary {
-                        ui::accent_button(id, icon, label, true)
-                    } else {
-                        ui::ghost_button(id, Some(icon), label)
+                // Одна дія, якої бракує вибраному маршруту (для хмари — та сама, що в доку).
+                let fix: Option<(&'static str, &'static str)> = match plan.blocker {
+                    Some(print_paths::Blocker::CloudSetup) => Some((
+                        "print-fix-cloud",
+                        match ws.cloud.source.action() {
+                            Some(source::Action::EnableCloud) => "Увімкнути хмару",
+                            Some(source::Action::SignIn) => "Увійти в Bambu Cloud",
+                            Some(source::Action::Retry) => "Повторити",
+                            _ => "Налаштувати хмару…",
+                        },
+                    )),
+                    Some(print_paths::Blocker::LanAddFound) => Some(("print-add-lan", "Додати принтер…")),
+                    Some(print_paths::Blocker::LanAddManual) => Some(("print-lan-manual", "Додати принтер у мережі")),
+                    _ => None,
+                };
+                let reason = plan.blocker.map(|b| match b {
+                    print_paths::Blocker::CloudSetup => "Bambu Cloud не підключено.",
+                    print_paths::Blocker::CloudConnecting => "Хмара підключається…",
+                    print_paths::Blocker::CloudPrinterOffline => "Bambu Cloud бачить принтер офлайн. Якщо принтер у режимі LAN Only, друкуйте через локальну мережу.",
+                    print_paths::Blocker::CloudNotInAccount => "Цього принтера немає в акаунті Bambu Cloud.",
+                    print_paths::Blocker::LanOffline => "Немає з’єднання з принтером у локальній мережі: перевірте, що він увімкнений і в тій самій мережі.",
+                    print_paths::Blocker::LanAddFound => "Принтер знайдено в локальній мережі: введіть код доступу з його екрана, і файл можна буде надіслати напряму.",
+                    print_paths::Blocker::LanAddManual if open_plugin => "Відкритий плагін друкує по локальній мережі: додайте принтер за IP і кодом доступу з його екрана. Друк через хмару вмикається в налаштуваннях відкритого плагіна.",
+                    print_paths::Blocker::LanAddManual => "Додайте принтер у локальній мережі за IP, серійним номером і кодом доступу з його екрана.",
+                    print_paths::Blocker::NoRoute => "",
+                });
+                let found = found.clone();
+                let route_row = plan.route.map(|r| {
+                    let (icon, label) = route_name(r);
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(6.))
+                        .pb(px(6.))
+                        .text_sm()
+                        .child(div().text_color(z.text_muted).child(tr("Маршрут:")))
+                        .child(ui::icon(icon).text_color(if plan.ready() { z.accent } else { z.text_muted }))
+                        .child(div().font_weight(gpui::FontWeight::MEDIUM).child(tr(label)))
+                        .when(!plan.alternatives.is_empty(), |d| {
+                            d.child(
+                                ui::ghost_button("print-route-change", None, "Змінити…")
+                                    .text_xs()
+                                    .text_color(z.text_muted)
+                                    .on_click(cx.listener(|ws, _, _, cx| {
+                                        ws.cloud.route_picker = !ws.cloud.route_picker;
+                                        cx.notify();
+                                    })),
+                            )
+                        })
+                });
+                let picker = (ws.cloud.route_picker && !plan.alternatives.is_empty()).then(|| {
+                    let inputs = ws.cloud.print_inputs(&route_dev, found.is_some(), connect_installed, open_plugin, cloud_print);
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .gap(px(6.))
+                        .pb(px(6.))
+                        .children(plan.alternatives.iter().map(|&r| {
+                            let (icon, label) = route_name(r);
+                            let ready = print_paths::blocker(&inputs, r).is_none();
+                            let dev = route_dev.clone();
+                            ui::ghost_button(
+                                match r {
+                                    print_paths::Route::Cloud => "print-route-cloud",
+                                    print_paths::Route::Lan => "print-route-lan",
+                                    print_paths::Route::Connect => "print-route-connect",
+                                },
+                                Some(icon),
+                                label,
+                            )
                             .border_1()
                             .border_color(z.border_variant)
-                    };
-                    let send = send.clone();
-                    let connect_send = connect_send.clone();
-                    let found = found.clone();
-                    button
-                        .on_click(cx.listener(move |ws, _, window, cx| match action {
-                            Action::LanSend => send(ws, false, cx),
-                            Action::Cloud => {
-                                if ws.cloud.connected && ws.cloud.source.connected() {
-                                    send(ws, true, cx);
-                                } else if ws.cloud.source.busy() {
-                                    // Підключення вже йде: чекаємо, нічого не відкриваємо.
-                                } else {
-                                    ws.close_modal(cx);
-                                    ws.cloud_source_action(window, cx);
-                                }
-                            },
-                            Action::Connect => connect_send(ws, cx),
-                            Action::LanAdd => {
-                                ws.close_modal(cx);
-                                ws.open_lan_dialog(found.clone(), window, cx);
-                            }
-                            Action::LanManual => {
-                                ws.close_modal(cx);
-                                ws.open_lan_dialog(None, window, cx);
-                            }
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(z.text_placeholder)
+                                    .child(tr(if ready { "готово" } else { "недоступно зараз" })),
+                            )
+                            .on_click(cx.listener(move |ws, _, _, cx| {
+                                ws.cloud.print_route.insert(dev.clone(), r);
+                                ws.cloud.route_picker = false;
+                                cx.notify();
+                            }))
                         }))
-                        .into_any_element()
-                };
-                let material_warning = material_warning.clone();
-                let primary = paths.primary;
-                let secondary = paths.secondary.clone();
-                let notice = paths.notice;
+                });
                 crate::widgets::modal(
                     "Надіслати на друк",
                     520.,
@@ -2889,22 +2960,53 @@ impl Workspace {
                                     .child(div().text_xs().child(text)),
                             )
                         })
-                        .map(|d| match primary {
-                            Some(print_paths::Action::LanSend) if open_plugin => d.child(note(
+                        .when_some(route_row, |d, row| d.child(row))
+                        .when_some(picker, |d, p| d.child(p))
+                        .map(|d| match (plan.route, plan.blocker) {
+                            (Some(print_paths::Route::Lan), None) if open_plugin => d.child(note(
                                 "Через локальну мережу з відкритим плагіном: він підписує команду друку, Developer Mode не потрібен. Файл ляже на microSD принтера, і друк почнеться одразу.",
                             )),
-                            Some(print_paths::Action::LanSend) => d.child(note(
+                            (Some(print_paths::Route::Lan), None) => d.child(note(
                                 "Через локальну мережу: файл буде завантажено на microSD принтера, і друк почнеться одразу.",
                             )),
-                            Some(print_paths::Action::LanManual) if open_plugin => d.child(note(
-                                "Відкритий плагін друкує по локальній мережі: додайте принтер за IP і кодом доступу з його екрана. Друк через хмару вмикається в налаштуваннях відкритого плагіна.",
+                            (Some(print_paths::Route::Cloud), None) => d.child(note(
+                                "Через Bambu Cloud: модель вивантажується в хмару Bambu, і принтер почне друк.",
                             )),
-                            Some(print_paths::Action::Connect) => d.child(note(
+                            (Some(print_paths::Route::Connect), None) => d.child(note(
                                 "Файл відкриється в Bambu Connect — там виберіть принтер, калібрування й натисніть «Друк».",
                             )),
                             _ => d,
                         })
-                        .when(notice != print_paths::ConnectNotice::None, |d| {
+                        .when_some(reason.filter(|r| !r.is_empty()), |d, text| {
+                            d.child(
+                                div()
+                                    .flex()
+                                    .items_start()
+                                    .gap(px(6.))
+                                    .pb(px(6.))
+                                    .child(ui::icon(IconName::Info).text_color(z.text_muted))
+                                    .child(div().flex_1().min_w_0().text_xs().whitespace_normal().child(tr(text))),
+                            )
+                        })
+                        .when_some(fix, |d, (id, label)| {
+                            let found = found.clone();
+                            d.child(
+                                div().flex().pb(px(6.)).child(
+                                    ui::ghost_button(id, None, label)
+                                        .border_1()
+                                        .border_color(z.border_variant)
+                                        .on_click(cx.listener(move |ws, _, window, cx| {
+                                            ws.close_modal(cx);
+                                            match id {
+                                                "print-fix-cloud" => ws.cloud_source_action(window, cx),
+                                                "print-add-lan" => ws.open_lan_dialog(found.clone(), window, cx),
+                                                _ => ws.open_lan_dialog(None, window, cx),
+                                            }
+                                        })),
+                                ),
+                            )
+                        })
+                        .when(plan.notice != print_paths::ConnectNotice::None, |d| {
                             d.child(
                                 div()
                                     .flex()
@@ -2918,7 +3020,7 @@ impl Workspace {
                                     .child(div().text_sm().child(tr(
                                         "Щоб друкувати через інтернет, потрібен Bambu Connect — безкоштовна програма Bambu Lab.",
                                     )))
-                                    .map(|d| match notice {
+                                    .map(|d| match plan.notice {
                                         print_paths::ConnectNotice::NoLinuxBuild => d
                                             .child(div().text_xs().text_color(z.text_muted).child(tr(
                                                 "Версії Bambu Connect для Linux поки немає. Друкуйте по локальній мережі або експортуйте файл і відкрийте його на іншому комп’ютері.",
@@ -2951,14 +3053,9 @@ impl Workspace {
                                             ),
                                         ),
                                     })
-                                    .when(primary == Some(print_paths::Action::LanAdd), |d| {
-                                        d.child(div().text_xs().text_color(z.text_muted).child(tr(
-                                            "Принтер знайдено в локальній мережі: введіть код доступу з його екрана, і файл можна буде надіслати напряму.",
-                                        )))
-                                    }),
                             )
                         })
-                        .when(paths.print_options, |d| {
+                        .when(plan.print_options, |d| {
                             d.child(ui::divider())
                                 .child(toggle(
                                     "opt-level",
@@ -2992,7 +3089,7 @@ impl Workspace {
                     Some(
                         div()
                             .flex()
-                            .flex_wrap()
+                            .items_center()
                             .gap(px(6.))
                             .child(
                                 ui::ghost_button("print-cancel", None, "Скасувати")
@@ -3000,15 +3097,26 @@ impl Workspace {
                             )
                             .child(
                                 ui::ghost_button("print-export", Some(IconName::Download), "Експортувати .gcode.3mf…")
-                                    .border_1()
-                                    .border_color(z.border_variant)
                                     .on_click(cx.listener(|ws, _, window, cx| {
                                         ws.close_modal(cx);
                                         ws.prompt_export(window, cx);
                                     })),
                             )
-                            .children(secondary.iter().map(|&a| action_button(a, false, cx)))
-                            .children(primary.map(|a| action_button(a, true, cx)))
+                            .child(div().flex_1())
+                            .child({
+                                let ready = plan.ready();
+                                let route = plan.route;
+                                let send = send.clone();
+                                let connect_send = connect_send.clone();
+                                ui::accent_button("print-send", IconName::Send, "Друкувати", ready).when(ready, |b| {
+                                    b.on_click(cx.listener(move |ws, _, _, cx| match route {
+                                        Some(print_paths::Route::Lan) => send(ws, false, cx),
+                                        Some(print_paths::Route::Cloud) => send(ws, true, cx),
+                                        Some(print_paths::Route::Connect) => connect_send(ws, cx),
+                                        None => {}
+                                    }))
+                                })
+                            })
                             .into_any_element(),
                     ),
                 )

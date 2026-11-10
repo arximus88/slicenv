@@ -206,17 +206,76 @@ impl Conf {
 /// - `block_cloud`: 1 — лише LAN і REST акаунта (як у дизайнера 2026-11-09); 0 — хмарний
 ///   MQTT і хмарний друк (README OBN, «Option B»).
 /// - `client_name = BambuStudio`: з іншим іменем хмара відповідає 403 на `/my/task`.
-/// - логи вимкнено: за README OBN вони містять токени, коди доступу й серійники без маскування.
+/// - логи вимкнено ([`QUIET_KEYS`]): за README OBN вони містять токени, коди доступу й
+///   серійники без маскування.
 pub fn required_keys(cloud: bool) -> Vec<(&'static str, &'static str)> {
-    vec![
+    let mut keys = vec![
         ("block_cloud", if cloud { "0" } else { "1" }),
         ("client_name", "BambuStudio"),
         ("cloud_print", "cloud_only"),
-        ("log_stderr", "0"),
-        ("log_to_file", "0"),
-        ("bambusource_log_stderr", "0"),
-        ("bambusource_log_to_file", "0"),
-    ]
+    ];
+    keys.extend_from_slice(QUIET_KEYS);
+    keys
+}
+
+/// Ключі `obn.conf`, що вимикають усі стоки логів OBN: stderr і файли основного плагіна
+/// (`log.cpp`: порожній `log_file` — без файлу) і libBambuSource (`source_log.cpp`:
+/// `bambusource_log_file = off` — без файлу, навіть якщо хтось увімкне `*_to_file`).
+pub const QUIET_KEYS: &[(&str, &str)] = &[
+    ("log_stderr", "0"),
+    ("log_to_file", "0"),
+    ("log_file", ""),
+    ("bambusource_log_stderr", "0"),
+    ("bambusource_log_to_file", "0"),
+    ("bambusource_log_file", "off"),
+];
+
+/// Змінні оточення OBN, які мають пріоритет над `obn.conf` (`log.cpp` `ensure_initialized_locked`
+/// і `apply_config`; `source_log.cpp` через `lan_tls::env_var_get`). Порожній `OBN_LOG_FILE`
+/// означає «явний шлях не задано» і блокує файл `<log_dir>/obn.log` та `log_file` з конфігу.
+///
+/// `OBN_BAMBUSOURCE_LOG_*` плагін сам перезаписує значеннями з конфігу, прочитаного в
+/// `create_agent` (`lan_tls::propagate_cross_so_env`), тож головний захист — [`seed_log_dir`];
+/// змінні тут — запобіжник для libBambuSource і для коду, що логує до `create_agent`.
+pub const QUIET_ENV: &[(&str, &str)] = &[
+    ("OBN_LOG_STDERR", "0"),
+    ("OBN_LOG_TO_FILE", "0"),
+    ("OBN_LOG_FILE", ""),
+    ("OBN_BAMBUSOURCE_LOG_STDERR", "0"),
+    ("OBN_BAMBUSOURCE_LOG_TO_FILE", "0"),
+    ("OBN_BAMBUSOURCE_LOG_FILE", "off"),
+];
+
+/// Задає [`QUIET_ENV`] (перезаписуючи — журнал застосунку не має отримувати сирі логи
+/// стороннього плагіна, навіть якщо хтось виставив `OBN_LOG_STDERR=1`).
+///
+/// # Safety
+/// Змінює оточення процесу: викликати на старті, до створення інших потоків.
+pub unsafe fn quiet_process_env() {
+    for (k, v) in QUIET_ENV {
+        unsafe { std::env::set_var(k, v) };
+    }
+}
+
+/// OBN у `bambu_network_create_agent(log_dir)` читає `obn.conf` **з `log_dir`**
+/// (`abi_lifecycle.cpp`: `config::load_or_create(log_dir)` → `log::apply_config`), а не з теки
+/// конфігурації: та приходить пізніше через `set_config_dir`, коли налаштування логів уже
+/// застосовано (одноразово, `config_applied`). Без файлу в `log_dir` плагін створює шаблон із
+/// `log_stderr = 1` — і пише в stderr застосунку e-mail, user id, серійники.
+///
+/// Тому перед `create_agent` кладемо в `log_dir` копію нашого `obn.conf` (ті самі
+/// `block_cloud`, `client_name`…) з примусово вимкненими логами ([`QUIET_KEYS`]).
+/// Немає `obn.conf` у `config_dir` (закритий плагін Bambu) — нічого не робимо.
+pub fn seed_log_dir(config_dir: &Path, log_dir: &Path) -> Result<bool> {
+    let Ok(bytes) = read_regular(&config_dir.join(CONF_FILE), 1024 * 1024) else {
+        return Ok(false);
+    };
+    let mut conf = Conf::parse(&String::from_utf8_lossy(&bytes));
+    for (k, v) in QUIET_KEYS {
+        conf.set(k, v);
+    }
+    write_private(&log_dir.join(CONF_FILE), conf.render().as_bytes())?;
+    Ok(true)
 }
 
 fn header() -> &'static str {
@@ -1044,6 +1103,29 @@ pub fn local_print_error(code: i32) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn log_dir_gets_our_conf_with_logs_forced_off() {
+        let config = tempfile::tempdir().unwrap();
+        let log = tempfile::tempdir().unwrap();
+        // Закритий плагін: obn.conf немає — log_dir не чіпаємо.
+        assert!(!seed_log_dir(config.path(), log.path()).unwrap());
+        assert!(!log.path().join(CONF_FILE).exists());
+        fs::write(
+            config.path().join(CONF_FILE),
+            "# мій коментар\nblock_cloud = 0\nlog_stderr = 1\nlog_to_file = 1\nlog_file = /tmp/x.log\nbambusource_log_file = stderr\n",
+        )
+        .unwrap();
+        assert!(seed_log_dir(config.path(), log.path()).unwrap());
+        let seeded = Conf::parse(&fs::read_to_string(log.path().join(CONF_FILE)).unwrap());
+        assert_eq!(seeded.get("block_cloud"), Some("0"));
+        for (k, v) in QUIET_KEYS {
+            assert_eq!(seeded.get(k), Some(*v), "{k}");
+        }
+        assert!(seeded.render().starts_with("# мій коментар"));
+        // Конфіг користувача не змінюється.
+        assert!(fs::read_to_string(config.path().join(CONF_FILE)).unwrap().contains("log_stderr = 1"));
+    }
 
     #[test]
     fn conf_keeps_comments_and_unknown_keys_and_overrides_ours() {
