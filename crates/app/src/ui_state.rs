@@ -89,6 +89,8 @@ impl Workspace {
             "project_bar_bounds": self.project_bar.geometry().map(|(b, _)| b),
             "project_bar_room": self.project_bar.geometry().map(|(_, w)| w),
             "project": self.model_name,
+            // Вкладки по порядку: назва, чи активна, чи є незбережені зміни.
+            "tabs": self.tab_infos().iter().map(|t| json!([t.name, t.active, t.edited])).collect::<Vec<_>>(),
             "docks": [self.left_dock, self.right_dock],
             "slicing": self.slicing(),
             "can_slice": self.can_slice(),

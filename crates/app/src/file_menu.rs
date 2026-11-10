@@ -84,7 +84,7 @@ impl Workspace {
         self.history_pending = None;
         self.cancel_slice();
         self.jobs.cancel(crate::jobs::JobKind::Open);
-        self.project_epoch = self.project_epoch.wrapping_add(1);
+        self.fresh_epoch();
         self.project = None;
         self.rebuild_instance_bounds();
         self.sync_model_color();
@@ -114,16 +114,17 @@ impl Workspace {
         self.rebuild_editors();
         self.edited = false;
         self.enter_page(crate::workspace::Page::Home, cx);
+        // Сусідня вкладка, якщо є, стає активною; «Головна» — лише після останньої.
+        self.after_document_closed(cx);
         cx.notify();
     }
 
     /// «Новий проєкт» (Ctrl+N): порожня пластина з поточними принтером, процесом і
     /// філаментом, вкладка «Без назви», сторінка «Підготовка». Файлу немає, доки його не
     /// збережуть: `path` — лише запропоноване ім’я в теці бібліотеки для діалогу збереження.
-    pub fn new_project(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if !crate::objects::confirm_discard(self, window, cx, |ws, window, cx| {
-            ws.new_project(window, cx)
-        }) {
+    pub fn new_project(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        // Новий проєкт — нова вкладка; поточний лишається у своїй.
+        if !self.can_leave_document(cx) {
             return;
         }
         let mut project = project::Project::default();

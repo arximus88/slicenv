@@ -185,6 +185,12 @@ pub struct Workspace {
     pub boolean_preview: bool,
     pub geometry_revision: u64,
     pub project_epoch: u64,
+    /// Останній виданий номер документа (`fresh_epoch`).
+    pub(crate) epoch_counter: u64,
+    /// Вкладки відкритих проєктів (`tabs.rs`): активний документ і припарковані.
+    pub(crate) tabs: Vec<crate::tabs::Tab>,
+    /// Де в рядку вкладок з’явиться наступний відкритий документ.
+    pub(crate) tab_cursor: usize,
     /// Рамки частин і інстансів без зсуву інстанса (див. `project::bounds_cache`).
     pub volume_bounds_cache: project::bounds_cache::VolumeBoundsCache,
     pub instance_bounds_cache: project::bounds_cache::InstanceBoundsCache,
@@ -417,6 +423,9 @@ impl Workspace {
             boolean_preview: true,
             geometry_revision: 0,
             project_epoch: 0,
+            epoch_counter: 0,
+            tabs: Vec::new(),
+            tab_cursor: 0,
             volume_bounds_cache: Default::default(),
             instance_bounds_cache: Default::default(),
             boolean_mesh: None,
@@ -674,18 +683,30 @@ impl Workspace {
     }
 
     pub fn open(&mut self, path: PathBuf, window: &mut Window, cx: &mut Context<Self>) {
-        self.cancel_slice();
         // Готовий G-code — одразу «Перегляд» (GUI-бенч Preview, файли з інших слайсерів).
         // Проєкт не замінюється, тож і питати про незбережені зміни не треба: confirm_discard
         // скинув би `edited`, а зміни лишились би в пам’яті без захисту.
         if path.extension().is_some_and(|e| e.eq_ignore_ascii_case("gcode")) {
+            self.cancel_slice();
             self.load_preview(path, true, cx);
             return;
         }
-        let retry = path.clone();
-        if !crate::objects::confirm_discard(self, window, cx, move |ws, window, cx| {
-            ws.open(retry.clone(), window, cx)
-        }) {
+        // Файл уже відкрито в іншій вкладці — переходимо на неї.
+        if let Some(index) = self.parked_tab(&path) {
+            self.switch_tab(index, cx);
+            return;
+        }
+        if self.path.as_deref() == Some(path.as_path()) && !self.untitled {
+            // Той самий файл ще раз — перечитати з диска; зміни в пам’яті буде втрачено.
+            let retry = path.clone();
+            if !crate::objects::confirm_discard(self, window, cx, move |ws, window, cx| {
+                ws.open(retry.clone(), window, cx)
+            }) {
+                return;
+            }
+            self.cancel_slice();
+        } else if !self.can_leave_document(cx) {
+            // Інший файл відкривається в новій вкладці; поточний проєкт лишається у своїй.
             return;
         }
         let load_path = path.clone();
@@ -734,12 +755,17 @@ impl Workspace {
         cx: &mut Context<Self>,
     ) {
         self.finish_scene_gesture();
+        // Інший файл — нова вкладка: поточний документ паркується з усім своїм станом.
+        // Той самий файл (перечитування) замінює документ у своїй вкладці.
+        if self.untitled || self.path.as_deref() != Some(path.as_path()) {
+            self.park_active();
+        }
         self.history.clear();
         self.history_pending = None;
         self.cancel_slice();
         // MCP open_project замінює й незавершене відкриття з UI.
         self.jobs.cancel(JobKind::Open);
-        self.project_epoch = self.project_epoch.wrapping_add(1);
+        self.fresh_epoch();
         self.project = project;
         self.rebuild_instance_bounds();
         self.sync_model_color();
@@ -760,6 +786,7 @@ impl Workspace {
             )
             .into();
         self.path = Some(path);
+        self.sync_active_tab();
         self.plates = plates;
         self.invalidate_plate_bounds();
         self.error = None;
@@ -1278,8 +1305,6 @@ impl Workspace {
     fn title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let z = zed();
         let (printer, printer_color, live) = self.cloud.summary();
-        let on_project = Page::PROJECT_TABS.contains(&self.page);
-
         let separator = || {
             div()
                 .flex_none()
@@ -1308,50 +1333,18 @@ impl Workspace {
                         })),
                 )
                 .child(separator())
-                .child(
-                    // Вкладка відкритого проєкту. Довга назва обрізається трикрапкою;
-                    // позначка змін «●» лишається видимою.
-                    if self.path.is_some() {
-                        ui::ghost_button_bare("project-name", IconName::FileBox)
-                            .flex_shrink(1.)
-                            .min_w_0()
-                            .child(div().min_w_0().truncate().child(self.model_name.clone()))
-                            .when(self.edited, |d| d.child(div().flex_none().child("●")))
-                            .toggled(on_project)
-                    } else {
-                        ui::ghost_button("project-name", Some(IconName::FileBox), "Відкрити модель…")
-                    }
-                    .no_window_drag()
-                    .when_some(self.path.clone(), |d, path| {
-                        use crate::file_menu::FileMenu as _;
-                        d.file_menu(path, cx)
-                    })
-                    .max_w(px(260.))
-                    .overflow_hidden()
-                    .when(!on_project || self.path.is_none(), |d| d.text_color(z.text_muted))
-                    .tooltip({
-                        let tip: SharedString = match &self.path {
-                            Some(_) if self.untitled => crate::i18n::tr(
-                                "Новий проєкт, ще не збережено — правий клік: зберегти чи закрити",
-                            ),
-                            Some(path) => crate::tr_format!(
-                                "{} — клацни, щоб перейти до «Підготовки»; правий клік — дії з файлом",
-                                path.display()
-                            ),
-                            None => crate::i18n::tr("Відкрити 3MF, STL чи G-code (Ctrl+O)"),
-                        }
-                        .into();
-                        move |window, cx| Tooltip::new(tip.clone()).build(window, cx)
-                    })
-                    .on_click(cx.listener(|this, _, window, cx| {
-                        if this.path.is_some() {
-                            this.enter_page(Page::Prepare, cx);
-                            cx.notify();
-                        } else {
-                            this.prompt_open(window, cx);
-                        }
-                    })),
-                )
+                // Вкладки відкритих проєктів; без жодного — кнопка «Відкрити модель…».
+                .child(if self.tabs.is_empty() {
+                    let tip: SharedString = crate::i18n::tr("Відкрити 3MF, STL чи G-code (Ctrl+O)").into();
+                    ui::ghost_button("project-name", Some(IconName::FileBox), "Відкрити модель…")
+                        .no_window_drag()
+                        .text_color(z.text_muted)
+                        .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+                        .on_click(cx.listener(|this, _, window, cx| this.prompt_open(window, cx)))
+                        .into_any_element()
+                } else {
+                    self.tab_strip(cx).into_any_element()
+                })
                 .child(div().flex_1())
                 .child(
                     div()
@@ -1664,6 +1657,8 @@ impl Render for Workspace {
                 .on_action(cx.listener(|this, _: &crate::CloseFile, window, cx| {
                     this.close_file(window, cx)
                 }))
+                .on_action(cx.listener(|this, _: &crate::NextTab, _, cx| this.cycle_tab(true, cx)))
+                .on_action(cx.listener(|this, _: &crate::PreviousTab, _, cx| this.cycle_tab(false, cx)))
                 .on_action(cx.listener(|this, _: &crate::NewProject, window, cx| {
                     this.new_project(window, cx)
                 }))

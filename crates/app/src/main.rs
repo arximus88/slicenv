@@ -33,6 +33,7 @@ mod prepare;
 mod preset_editor;
 mod profile_fetch;
 mod project_bar;
+mod tabs;
 mod preview;
 mod photo_mode;
 mod setting_help;
@@ -71,6 +72,8 @@ gpui::actions!(
         SaveProjectAs,
         CloseFile,
         NewProject,
+        NextTab,
+        PreviousTab,
         UndoProject,
         RedoProject,
         OpenFile,
@@ -175,6 +178,10 @@ fn main() {
                 gpui::KeyBinding::new("ctrl-o", OpenFile, None),
                 gpui::KeyBinding::new("ctrl-n", NewProject, None),
                 gpui::KeyBinding::new("ctrl-w", CloseFile, Some("Workspace")),
+                gpui::KeyBinding::new("ctrl-tab", NextTab, Some("Workspace")),
+                gpui::KeyBinding::new("ctrl-shift-tab", PreviousTab, Some("Workspace")),
+                gpui::KeyBinding::new("ctrl-pagedown", NextTab, Some("Workspace")),
+                gpui::KeyBinding::new("ctrl-pageup", PreviousTab, Some("Workspace")),
                 gpui::KeyBinding::new("ctrl-q", QuitApplication, None),
                 gpui::KeyBinding::new("ctrl-1", GoHome, None),
                 gpui::KeyBinding::new("ctrl-2", GoPrepare, None),
