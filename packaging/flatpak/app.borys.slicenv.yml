@@ -157,5 +157,5 @@ modules:
       # Джерела 0.1.1 закріплено комітом підготовки версії; тег створюється під час публікації.
       - type: git
         url: https://github.com/arximus88/slicenv.git
-        commit: f8985c649e749d36418bd979c6c91458e38e2721
+        commit: ddbea45ee2741aef0bec67c8f71e7277831d4ad0
       - cargo-sources.json
