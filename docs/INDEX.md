@@ -44,6 +44,7 @@
 |---|---|
 | [LAN.md](LAN.md) | Bambu Lab у локальній мережі без плагіна: протоколи, TLS |
 | [CLOUD.md](CLOUD.md) | Bambu Cloud: плагін за згодою, сесії, вхід через браузер |
+| [LINUX-CLOUD-PRINT.md](LINUX-CLOUD-PRINT.md) | Друк через інтернет на Linux: Bambu Studio, відкритий плагін, LAN — заміри |
 | [KLIPPER.md](KLIPPER.md) | Принтери Klipper через Moonraker: пошук mDNS, додавання, стан, камера MJPEG, керування (температури, Home, джог, вентилятор, консоль, аварійна зупинка), друк; перевірено лише проти емулятора |
 
 ## MCP
