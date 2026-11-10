@@ -700,7 +700,7 @@ pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoEleme
         // Невдала нарізка — картка: що сталось, хто виправляє, що зробити, деталі.
         if let crate::workspace::SliceState::Failed(err, failure) = &ws.slice_state {
             let card = failure_card(err.clone(), failure.clone(), ws.can_slice(), ws.slice_exhausted, ws.slice_fallback.clone(), cx);
-            return div()
+            let page = div()
                 .relative()
                 .flex()
                 .flex_1()
@@ -708,6 +708,7 @@ pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoEleme
                 .child(card)
                 .children(crate::plate_strip::strip(ws, cx))
                 .into_any_element();
+            return ws.with_project_bar(page, cx);
         }
         // Прев’ю скинули, поки сторінка відкрита (зміна пластини, геометрії): сцена знову
         // показує моделі замість траєкторії.
@@ -718,7 +719,7 @@ pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoEleme
         // силуетом, підказка компактна поверх сцени.
         let center = ws.viewport_view("preview-unsliced", |ws, _, cx| unsliced_center(ws, cx), cx);
         let settings = ws.cached_panel(crate::prepare::SETTINGS_PANEL, crate::prepare::settings_panel, cx);
-        return crate::prepare::docked("preview-unsliced-docks", ws, None, center, Some(settings))
+        return crate::prepare::docked("preview-unsliced-docks", ws, None, center, Some(settings), cx)
             .into_any_element();
     }
     // Центр зі сценою — окремий вид: рух камери не перебудовує статистику праворуч.
@@ -727,7 +728,7 @@ pub fn render(ws: &mut Workspace, cx: &mut Context<Workspace>) -> impl IntoEleme
     // виходячи з Preview); статистика й легенда — ліворуч.
     let left = ws.cached_panel("preview-summary", |ws, _, cx| summary_panel(ws, cx), cx);
     let settings = ws.cached_panel(crate::prepare::SETTINGS_PANEL, crate::prepare::settings_panel, cx);
-    crate::prepare::docked("preview-docks", ws, Some(left), center, Some(settings)).into_any_element()
+    crate::prepare::docked("preview-docks", ws, Some(left), center, Some(settings), cx).into_any_element()
 }
 
 /// Хлібні крихти Preview: модель і пластина.

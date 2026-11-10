@@ -1,0 +1,546 @@
+//! Панель режимів і дій поточного проєкту над робочою областю.
+//!
+//! Заголовок вікна лишається для «Головної», вкладки проєкту й глобальних речей (стан
+//! принтера, налаштування). Режими (Проєкт · Підготовка · Перегляд) і дії (зберегти,
+//! нарізати, друкувати) живуть тут: власний рядок над центром сторінки, між доками. Це
+//! звичайний елемент розкладки, не шар поверх сцени, тож він не рухається з камерою, не
+//! накладається на куб навігації, панель інструмента чи колонку пластин і не забирає
+//! жестів сцени.
+//!
+//! Ширина центру залежить від доків і масштабу, тому панель стискається сходинками
+//! ([`Density`]): спершу зникає підказка клавіш, далі номер пластини в підписі нарізки,
+//! потім підписи режимів і нарешті підписи дій; у зовсім вузькому центрі (нарізаний
+//! «Перегляд» з обома доками у вікні мінімальної ширини) режими й дії стають у два рядки.
+//! «Друкувати» не ховається ніколи.
+
+use std::{cell::Cell, rc::Rc};
+
+use gpui::{
+    AnyElement, Bounds, Context, FontWeight, Pixels, SharedString, Stateful, canvas, div,
+    prelude::*, px,
+};
+use gpui_component::tooltip::Tooltip;
+
+use crate::{
+    theme::zed,
+    ui::{self, IconName, Toggle as _},
+    workspace::{Page, Workspace},
+};
+
+/// Наскільки стиснуто панель; більше значення — менше тексту.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum Density {
+    /// Усі підписи й підказка клавіш.
+    Full,
+    /// Без підказки клавіш (вона лишається в tooltip).
+    NoKeys,
+    /// «Нарізати» без номера пластини.
+    ShortSlice,
+    /// Режими — лише іконки.
+    IconModes,
+    /// Усе — лише іконки.
+    Icons,
+    /// Лише іконки у два рядки: режими над діями.
+    Stacked,
+}
+
+impl Density {
+    const ALL: [Density; 6] = [
+        Density::Full,
+        Density::NoKeys,
+        Density::ShortSlice,
+        Density::IconModes,
+        Density::Icons,
+        Density::Stacked,
+    ];
+
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Density::Full => "full",
+            Density::NoKeys => "no-keys",
+            Density::ShortSlice => "short-slice",
+            Density::IconModes => "icon-modes",
+            Density::Icons => "icons",
+            Density::Stacked => "stacked",
+        }
+    }
+}
+
+/// Підписи панелі мовою інтерфейсу — від них залежить, скільки місця їй треба.
+pub(crate) struct Labels<'a> {
+    /// Режими з видимим підписом («Підготовка», «Перегляд»); «Проєкт» — завжди іконка.
+    pub modes: [&'a str; 2],
+    /// Підпис нарізки з номером пластини і без нього (однакові, якщо пластина одна).
+    pub slice_long: &'a str,
+    pub slice_short: &'a str,
+    pub print: &'a str,
+    /// Іде нарізка: замість підказки клавіш — спінер.
+    pub running: bool,
+}
+
+/// Середня ширина знака `text_sm` із запасом: шрифти Windows ширші, англійські підписи
+/// довші.
+const CHAR: f32 = 7.8;
+const ICON_BUTTON: f32 = 24.;
+/// Відступи й іконка кнопки з підписом (`ui::ghost_button`): 8 + 14 + 6 + текст + 8.
+const MODE_CHROME: f32 = 36.;
+/// Те саме для дії з рамкою: 1 + 10 + 14 + 6 + текст + 10 + 1.
+const ACTION_CHROME: f32 = 42.;
+const ACTION_ICON: f32 = 28.;
+const KEYS: f32 = 58.;
+const SPINNER: f32 = 20.;
+const GAP: f32 = 2.;
+/// Проміжок між групою режимів і діями.
+const GROUP_GAP: f32 = 12.;
+const PADDING: f32 = 4.;
+/// Поле з кожного боку панелі до краю центру.
+const MARGIN: f32 = 8.;
+
+/// Оцінка ширини панелі за такого стиснення.
+fn estimated_width(density: Density, labels: &Labels) -> f32 {
+    let text = |s: &str| s.chars().count() as f32 * CHAR;
+    let mode = |s: &str| {
+        if density >= Density::IconModes {
+            ICON_BUTTON
+        } else {
+            MODE_CHROME + text(s)
+        }
+    };
+    let action = |s: &str| {
+        if density >= Density::Icons {
+            ACTION_ICON
+        } else {
+            ACTION_CHROME + text(s)
+        }
+    };
+    let slice = if density >= Density::ShortSlice {
+        labels.slice_short
+    } else {
+        labels.slice_long
+    };
+    let trailing = match density {
+        Density::Icons | Density::Stacked => 0.,
+        _ if labels.running => SPINNER,
+        Density::Full => KEYS,
+        _ => 0.,
+    };
+    // Шість елементів: іконка проєкту, два режими; зберегти, дві дії.
+    let modes = ICON_BUTTON + mode(labels.modes[0]) + mode(labels.modes[1]) + GAP * 2.;
+    let actions = ICON_BUTTON + action(slice) + trailing + action(labels.print) + GAP * 2.;
+    let content = if density == Density::Stacked {
+        modes.max(actions)
+    } else {
+        modes + GROUP_GAP + actions
+    };
+    // Рамка панелі й поля.
+    2. + PADDING * 2. + content
+}
+
+/// Найповніший вигляд, що вміщається в `available` (ширина центру). Невідома ширина
+/// (перший кадр) — повний вигляд.
+pub(crate) fn density_for(available: f32, labels: &Labels) -> Density {
+    if available <= 0. {
+        return Density::Full;
+    }
+    Density::ALL
+        .into_iter()
+        .find(|d| estimated_width(*d, labels) <= available - MARGIN * 2.)
+        .unwrap_or(Density::Stacked)
+}
+
+/// Виміряна ширина центру й стиснення, з яким панель намальовано востаннє.
+#[derive(Clone, Default)]
+pub(crate) struct BarState {
+    width: Rc<Cell<f32>>,
+    shown: Rc<Cell<Option<Density>>>,
+    /// Рамка самої панелі у вікні — лише для знімка стану (`ui_state`).
+    bounds: Rc<Cell<Option<Bounds<Pixels>>>>,
+}
+
+impl BarState {
+    /// Стиснення панелі в останньому кадрі; `None` — панелі на сторінці немає.
+    pub(crate) fn shown(&self) -> Option<Density> {
+        self.shown.get()
+    }
+
+    /// Рамка панелі `[x, y, ширина, висота]` і ширина рядка, в якому вона стоїть.
+    pub(crate) fn geometry(&self) -> Option<([f32; 4], f32)> {
+        self.shown.get()?;
+        let b = self.bounds.get()?;
+        Some((
+            [b.origin.x, b.origin.y, b.size.width, b.size.height].map(f32::from),
+            self.width.get(),
+        ))
+    }
+
+    /// Сторінка без панелі («Головна», «Пристрій»).
+    pub(crate) fn hide(&self) {
+        self.shown.set(None);
+    }
+}
+
+/// Кнопка дії: головна — тонований акцент (`ui::accent_button`), інша — без фону. Без
+/// підпису лишається сама іконка.
+fn action_button(
+    id: &'static str,
+    icon: AnyElement,
+    label: Option<SharedString>,
+    primary: bool,
+    enabled: bool,
+) -> Stateful<gpui::Div> {
+    let z = zed();
+    div()
+        .id(id)
+        .flex()
+        .flex_none()
+        .items_center()
+        .gap(px(6.))
+        .h(px(24.))
+        .px(px(if label.is_some() { 10. } else { 6. }))
+        .rounded(px(4.))
+        .border_1()
+        .border_color(gpui::transparent_black())
+        .text_sm()
+        .map(|d| match (primary, enabled) {
+            (true, true) => d
+                .cursor_pointer()
+                .font_weight(FontWeight::MEDIUM)
+                .bg(z.accent_bg)
+                .border_color(z.accent_border)
+                .text_color(z.accent)
+                .hover(|s| s.bg(z.accent.opacity(0.18)).border_color(z.border_focused))
+                .active(|s| s.bg(z.accent.opacity(0.26))),
+            (true, false) => d
+                .font_weight(FontWeight::MEDIUM)
+                .border_color(z.border_variant)
+                .text_color(z.text_placeholder),
+            (false, true) => d
+                .cursor_pointer()
+                .text_color(z.text)
+                .hover(|s| s.bg(z.element_hover))
+                .active(|s| s.bg(z.element_selected)),
+            (false, false) => d.inert(true),
+        })
+        .child(icon)
+        .children(label)
+}
+
+impl Workspace {
+    /// Сторінки поточного проєкту: лише на них є панель режимів і дій.
+    pub(crate) fn shows_project_bar(&self) -> bool {
+        self.path.is_some() && Page::PROJECT_TABS.contains(&self.page)
+    }
+
+    /// Центр сторінки проєкту з панеллю режимів і дій над ним.
+    pub(crate) fn with_project_bar(&self, content: AnyElement, cx: &mut Context<Self>) -> AnyElement {
+        if !self.shows_project_bar() {
+            self.project_bar.hide();
+            return content;
+        }
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .min_w_0()
+            .min_h_0()
+            .bg(zed().editor)
+            .child(self.project_bar(cx))
+            .child(div().flex().flex_1().min_w_0().min_h_0().child(content))
+            .into_any_element()
+    }
+
+    fn project_bar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let z = zed();
+        let running = self.slicing();
+        let can_slice = self.can_slice();
+        let can_print = self.can_send_print();
+        let print_primary = can_print && !running;
+        let has_project = self.project.is_some();
+
+        let slice_short = crate::i18n::tr(if running { "Скасувати" } else { "Нарізати" });
+        let slice_long = match self.plate_to_slice() {
+            Some(n) if !running && self.plates.len() > 1 => {
+                crate::tr_format!("Нарізати пластину {n}")
+            }
+            _ => slice_short.clone(),
+        };
+        let print_label = crate::i18n::tr(if self.cloud.sending { "Надсилаю…" } else { "Друкувати" });
+        let titles = [Page::Prepare, Page::Preview].map(|p| crate::i18n::tr(p.title()));
+        let density = density_for(
+            self.project_bar.width.get(),
+            &Labels {
+                modes: [&titles[0], &titles[1]],
+                slice_long: &slice_long,
+                slice_short: &slice_short,
+                print: &print_label,
+                running,
+            },
+        );
+        self.project_bar.shown.set(Some(density));
+
+        let modes = Page::PROJECT_TABS.iter().enumerate().map(|(i, page)| {
+            let page = *page;
+            let active = self.page == page;
+            // «Проєкт» — завжди іконка; назву дають tooltip і доступне ім’я.
+            let labelled = page != Page::Project && density < Density::IconModes;
+            let button = if labelled {
+                let tip: SharedString = crate::i18n::tr(page.hint()).into();
+                ui::ghost_button(("page", i), Some(page.icon()), page.title())
+                    .text_color(z.text_muted)
+                    .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+            } else {
+                ui::icon_button(("page", i), page.icon(), page.hint())
+            };
+            button
+                .toggled(active)
+            .role(gpui::Role::Tab)
+            .aria_label(crate::i18n::tr(page.title()))
+            .aria_selected(active)
+            .on_click(cx.listener(move |this, _, _, cx| {
+                this.enter_page(page, cx);
+                cx.notify();
+            }))
+        });
+        let modes: Vec<_> = modes.collect();
+
+        let slice_tip: SharedString = if running {
+            crate::i18n::tr("Зупинити нарізку")
+        } else {
+            crate::tr_format!(
+                "Нарізати активну пластину рушієм нарізки {} (Ctrl+R)",
+                self.engine_label
+            )
+        }
+        .into();
+        // Іконка без підпису під час нарізки — спінер: видно, що кнопка зупиняє.
+        let icons = density >= Density::Icons;
+        let slice_icon = if running && icons {
+            ui::spinner("slice-btn-spin")
+        } else {
+            ui::icon(IconName::Scissors).into_any_element()
+        };
+        let slice_text = match density {
+            Density::Icons | Density::Stacked => None,
+            Density::Full | Density::NoKeys => Some(slice_long.into()),
+            Density::ShortSlice | Density::IconModes => Some(slice_short.into()),
+        };
+        // Виділена кнопка — наступний крок: до нарізки «Нарізати», після — «Друкувати».
+        let slice = action_button(
+            "slice",
+            slice_icon,
+            slice_text,
+            !print_primary,
+            print_primary || running || can_slice,
+        )
+        .role(gpui::Role::Button)
+        .aria_label(slice_tip.clone())
+        .tooltip(move |window, cx| Tooltip::new(slice_tip.clone()).build(window, cx))
+        .when(running && !icons, |d| {
+            d.child(ui::spinner("slice-btn-spin"))
+        })
+        .when(!running && density == Density::Full, |d| d.child(ui::kbd("Ctrl+R")))
+        .when(running || can_slice, |d| {
+            d.on_click(cx.listener(|this, _, window, cx| {
+                if this.slicing() {
+                    this.stop_slice();
+                    cx.notify();
+                } else {
+                    this.start_slice(window, cx);
+                }
+            }))
+        });
+
+        // Чому друк недоступний; без підпису на кнопці підказка називає саму дію.
+        let print_tip = self
+            .print_blocker()
+            .or_else(|| icons.then(|| print_label.clone().into()));
+        let print = action_button(
+            "send-print",
+            ui::icon(IconName::Send).into_any_element(),
+            (!icons).then(|| print_label.clone().into()),
+            print_primary,
+            can_print,
+        )
+        .role(gpui::Role::Button)
+        .aria_label(print_label)
+        .when(can_print, |d| {
+            d.on_click(cx.listener(|this, _, window, cx| this.open_print_dialog(window, cx)))
+        })
+        .when_some(print_tip, |d, tip| {
+            d.tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+        });
+
+        let save = ui::icon_button("save-project", IconName::Save, "Зберегти проєкт (Ctrl+S)")
+            .inert(!has_project)
+            .when(has_project, |d| {
+                d.on_click(cx.listener(|this, _, window, cx| this.prompt_save(window, cx)))
+            });
+
+        // Ширину центру знає лише розкладка: якщо за нею панель мала бути іншою, наступний
+        // кадр перемалює її. Ширина рядка від стиснення не залежить, тож це не цикл.
+        let measure = {
+            let width = self.project_bar.width.clone();
+            let entity = cx.entity().downgrade();
+            canvas(
+                move |bounds, _, cx| {
+                    let measured = f32::from(bounds.size.width);
+                    if (width.get() - measured).abs() >= 0.5 {
+                        width.set(measured);
+                        let entity = entity.clone();
+                        cx.defer(move |cx| {
+                            let _ = entity.update(cx, |_, cx| cx.notify());
+                        });
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .inset_0()
+        };
+        // Рамка панелі потрібна лише приймальним сценаріям (`SLICENV_UI_TRACE`, MCP `ui_state`).
+        let outline = {
+            let slot = self.project_bar.bounds.clone();
+            let entity = cx.entity().downgrade();
+            canvas(
+                move |bounds, _, cx| {
+                    if slot.replace(Some(bounds)) != Some(bounds) && crate::ui_state::trace_enabled() {
+                        let entity = entity.clone();
+                        cx.defer(move |cx| {
+                            let _ = entity.update(cx, |_, cx| cx.notify());
+                        });
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .inset_0()
+        };
+
+        div()
+            .relative()
+            .flex()
+            .flex_none()
+            .justify_center()
+            .w_full()
+            .min_w_0()
+            .overflow_hidden()
+            .pt(px(8.))
+            .pb(px(4.))
+            .child(measure)
+            .child(
+                div()
+                    .id("project-bar")
+                    .relative()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .map(|d| {
+                        if density == Density::Stacked {
+                            d.flex_col().gap(px(GAP))
+                        } else {
+                            d.gap(px(GROUP_GAP))
+                        }
+                    })
+                    .p(px(PADDING))
+                    .rounded(px(8.))
+                    .bg(z.panel)
+                    .border_1()
+                    .border_color(z.border_variant)
+                    .shadow_sm()
+                    .child(outline)
+                    .child(
+                        div()
+                            .id("project-modes")
+                            .role(gpui::Role::TabList)
+                            .flex()
+                            .items_center()
+                            .gap(px(GAP))
+                            .children(modes),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(GAP))
+                            .child(save)
+                            .child(slice)
+                            .child(print),
+                    ),
+            )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn labels(running: bool) -> Labels<'static> {
+        Labels {
+            modes: ["Підготовка", "Перегляд"],
+            slice_long: if running { "Скасувати" } else { "Нарізати пластину 12" },
+            slice_short: if running { "Скасувати" } else { "Нарізати" },
+            print: "Друкувати",
+            running,
+        }
+    }
+
+    #[test]
+    fn project_icon_leads_the_modes() {
+        assert_eq!(Page::PROJECT_TABS[0], Page::Project);
+        assert_eq!(Page::PROJECT_TABS.len(), 3);
+    }
+
+    /// Вужчий центр ніколи не дає повнішої панелі, а вибраний вигляд справді вміщається.
+    #[test]
+    fn density_only_tightens_as_the_centre_narrows() {
+        for running in [false, true] {
+            let labels = labels(running);
+            let mut previous = Density::Full;
+            for width in (150..=1400).rev() {
+                let density = density_for(width as f32, &labels);
+                assert!(density >= previous, "{width}px: {density:?} після {previous:?}");
+                if density != Density::Stacked {
+                    assert!(estimated_width(density, &labels) <= width as f32 - MARGIN * 2.);
+                }
+                previous = density;
+            }
+            assert_eq!(density_for(1400., &labels), Density::Full);
+            assert_eq!(density_for(320., &labels), Density::Icons);
+            assert_eq!(density_for(150., &labels), Density::Stacked);
+        }
+    }
+
+    /// Усі шість кнопок («Друкувати» серед них) вміщаються в найвужчий штатний центр:
+    /// нарізаний «Перегляд» у вікні мінімальної ширини (960) з лівим доком 460 і правим 380.
+    /// Масштаб 125/150 % цього не змінює — мінімальна ширина вікна задана в логічних px.
+    #[test]
+    fn every_button_fits_the_narrowest_centre() {
+        let centre = 960. - 460. - 380.;
+        for running in [false, true] {
+            let labels = labels(running);
+            assert_eq!(density_for(centre, &labels), Density::Stacked);
+            assert!(estimated_width(Density::Stacked, &labels) <= centre - MARGIN * 2.);
+        }
+    }
+
+    /// Підказка клавіш зникає першою, номер пластини — другим, підписи режимів — раніше
+    /// за підписи дій.
+    #[test]
+    fn labels_give_way_in_order() {
+        let labels = labels(false);
+        let at = |d| estimated_width(d, &labels);
+        for pair in Density::ALL.windows(2) {
+            assert!(at(pair[1]) < at(pair[0]), "{:?} не вужчий за {:?}", pair[1], pair[0]);
+        }
+        let between = |a, b| density_for((at(a) + at(b)) / 2. + MARGIN * 2., &labels);
+        assert_eq!(between(Density::Full, Density::NoKeys), Density::NoKeys);
+        assert_eq!(between(Density::NoKeys, Density::ShortSlice), Density::ShortSlice);
+        assert_eq!(between(Density::ShortSlice, Density::IconModes), Density::IconModes);
+    }
+
+    /// Невідома ширина (до першого кадру розкладки) не ховає підписів.
+    #[test]
+    fn unknown_width_keeps_full_labels() {
+        assert_eq!(density_for(0., &labels(false)), Density::Full);
+    }
+}

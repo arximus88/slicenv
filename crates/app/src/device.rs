@@ -1887,7 +1887,7 @@ pub fn render(
 ) -> impl IntoElement {
     let left = printers_panel(&ws.cloud, window, cx);
     let center = pages::main_pane(ws, window, cx);
-    crate::prepare::docked("device-docks", ws, Some(left), center, None)
+    crate::prepare::docked("device-docks", ws, Some(left), center, None, cx)
 }
 
 /// Фільтр списку: усі слова мають знайтися в одному з полів (без регістру).

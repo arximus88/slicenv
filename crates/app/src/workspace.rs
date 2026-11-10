@@ -26,7 +26,7 @@ pub type PresetSelect = Entity<Dropdown>;
 /// Рамка меша пластини (min, max).
 pub type PlateBounds = (glam::Vec3, glam::Vec3);
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Page {
     Home,
     Prepare,
@@ -36,9 +36,10 @@ pub enum Page {
 }
 
 impl Page {
-    pub const PROJECT_TABS: [Page; 3] = [Page::Prepare, Page::Preview, Page::Project];
+    /// Режими поточного проєкту в порядку панелі (`project_bar`): «Проєкт» — першим.
+    pub const PROJECT_TABS: [Page; 3] = [Page::Project, Page::Prepare, Page::Preview];
 
-    fn icon(self) -> IconName {
+    pub(crate) fn icon(self) -> IconName {
         match self {
             Page::Home => IconName::House,
             Page::Prepare => IconName::Box,
@@ -48,13 +49,24 @@ impl Page {
         }
     }
 
-    fn title(self) -> &'static str {
+    pub(crate) fn title(self) -> &'static str {
         match self {
             Page::Home => "Головна",
             Page::Prepare => "Підготовка",
             Page::Preview => "Перегляд",
             Page::Device => "Пристрій",
             Page::Project => "Проєкт",
+        }
+    }
+
+    /// Підказка кнопки режиму: назва й клавіші.
+    pub(crate) fn hint(self) -> &'static str {
+        match self {
+            Page::Home => "Головна (Ctrl+1)",
+            Page::Prepare => "Підготовка (Ctrl+2)",
+            Page::Preview => "Перегляд (Ctrl+3)",
+            Page::Project => "Проєкт (Ctrl+4)",
+            Page::Device => "Пристрій (Ctrl+5)",
         }
     }
 }
@@ -238,6 +250,8 @@ pub struct Workspace {
     /// Видимість лівого й правого доків (Ctrl+B / Ctrl+Alt+B, як у Zed).
     pub left_dock: bool,
     pub right_dock: bool,
+    /// Панель режимів і дій проєкту над центром сторінки: виміряна ширина, стиснення.
+    pub(crate) project_bar: crate::project_bar::BarState,
 
     pub frame: Option<Arc<RenderImage>>,
     pub frame_size: (u32, u32),
@@ -433,6 +447,7 @@ impl Workspace {
             focus: cx.focus_handle(),
             left_dock: true,
             right_dock: true,
+            project_bar: Default::default(),
             frame: None,
             frame_size: (0, 0),
             viewport_failed: false,
@@ -1258,19 +1273,12 @@ impl Workspace {
             && !self.slicing()
     }
 
-    /// Заголовок як у Zed: проєкт, навігація між сторінками, стан принтера й головні дії.
+    /// Заголовок як у Zed: «Головна» й вкладка проєкту ліворуч, глобальний стан принтера й
+    /// налаштування праворуч. Режими й дії проєкту — у панелі над центром (`project_bar`).
     fn title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let z = zed();
-        let running = self.slicing();
-        let slice_label = match (running, self.plate_to_slice()) {
-            (true, _) => crate::i18n::tr("Скасувати").to_string(),
-            (_, Some(n)) if self.plates.len() > 1 => crate::tr_format!("Нарізати пластину {n}"),
-            _ => "Нарізати".to_string(),
-        };
         let (printer, printer_color, live) = self.cloud.summary();
-        let can_print = self.can_send_print();
-        let print_primary = can_print && !running;
-        let has_project = self.project.is_some();
+        let on_project = Page::PROJECT_TABS.contains(&self.page);
 
         let separator = || {
             div()
@@ -1285,12 +1293,13 @@ impl Workspace {
             div()
                 .flex()
                 .flex_1()
+                .min_w_0()
                 .items_center()
                 .gap(px(2.))
                 .h_full()
                 .pr(px(6.))
                 .child(
-                    ui::icon_button("home-page", Page::Home.icon(), Page::Home.title())
+                    ui::icon_button("home-page", Page::Home.icon(), Page::Home.hint())
                         .no_window_drag()
                         .toggled(self.page == Page::Home)
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -1300,11 +1309,15 @@ impl Workspace {
                 )
                 .child(separator())
                 .child(
-                    // Довга назва обрізається трикрапкою; позначка змін «●» лишається видимою.
+                    // Вкладка відкритого проєкту. Довга назва обрізається трикрапкою;
+                    // позначка змін «●» лишається видимою.
                     if self.path.is_some() {
                         ui::ghost_button_bare("project-name", IconName::FileBox)
+                            .flex_shrink(1.)
+                            .min_w_0()
                             .child(div().min_w_0().truncate().child(self.model_name.clone()))
                             .when(self.edited, |d| d.child(div().flex_none().child("●")))
+                            .toggled(on_project)
                     } else {
                         ui::ghost_button("project-name", Some(IconName::FileBox), "Відкрити модель…")
                     }
@@ -1313,9 +1326,9 @@ impl Workspace {
                         use crate::file_menu::FileMenu as _;
                         d.file_menu(path, cx)
                     })
-                    .max_w(px(220.))
+                    .max_w(px(260.))
                     .overflow_hidden()
-                    .text_color(z.text_muted)
+                    .when(!on_project || self.path.is_none(), |d| d.text_color(z.text_muted))
                     .tooltip({
                         let tip: SharedString = match &self.path {
                             Some(_) if self.untitled => crate::i18n::tr(
@@ -1338,33 +1351,6 @@ impl Workspace {
                             this.prompt_open(window, cx);
                         }
                     })),
-                )
-                .children(
-                    Page::PROJECT_TABS
-                        .iter()
-                        .enumerate()
-                        .filter(|_| self.path.is_some())
-                        .map(|(i, page)| {
-                            let page = *page;
-                            ui::ghost_button(("page", i), Some(page.icon()), page.title())
-                                .no_window_drag()
-                                .text_color(z.text_muted)
-                                .toggled(self.page == page)
-                                .on_click(cx.listener(move |this, _, _, cx| {
-                                    this.enter_page(page, cx);
-                                    cx.notify();
-                                }))
-                        }),
-                )
-                .child(separator())
-                .child(
-                    ui::icon_button(
-                        "open-preferences",
-                        IconName::Settings,
-                        "Налаштування (Ctrl+,)",
-                    )
-                    .no_window_drag()
-                    .on_click(cx.listener(|this, _, window, cx| this.open_preferences(window, cx))),
                 )
                 .child(div().flex_1())
                 .child(
@@ -1398,78 +1384,14 @@ impl Workspace {
                             cx.notify();
                         })),
                 )
-                .child(separator())
                 .child(
-                    ui::icon_button("save-project", IconName::Save, "Зберегти проєкт (Ctrl+S)")
-                        .no_window_drag()
-                        .inert(!has_project)
-                        .when(has_project, |d| {
-                            d.on_click(
-                                cx.listener(|this, _, window, cx| this.prompt_save(window, cx)),
-                            )
-                        }),
-                )
-                .child(
-                    // Виділена кнопка — наступний крок: до нарізки «Нарізати», після — «Друкувати».
-                    if print_primary {
-                        ui::ghost_button("slice", Some(IconName::Scissors), slice_label)
-                    } else {
-                        ui::accent_button(
-                            "slice",
-                            IconName::Scissors,
-                            slice_label,
-                            running || self.can_slice(),
-                        )
-                    }
+                    ui::icon_button(
+                        "open-preferences",
+                        IconName::Settings,
+                        "Налаштування (Ctrl+,)",
+                    )
                     .no_window_drag()
-                    .tooltip({
-                        let tip: SharedString = if running {
-                            crate::i18n::tr("Зупинити нарізку")
-                        } else {
-                            crate::tr_format!(
-                                "Нарізати активну пластину рушієм нарізки {} (Ctrl+R)",
-                                self.engine_label
-                            )
-                        }
-                        .into();
-                        move |window, cx| Tooltip::new(tip.clone()).build(window, cx)
-                    })
-                    .when(running, |d| d.child(ui::spinner("slice-btn-spin")))
-                    .when(!running, |d| d.child(ui::kbd("Ctrl+R")))
-                    .when(running || self.can_slice(), |d| {
-                        d.on_click(cx.listener(|this, _, window, cx| {
-                            if this.slicing() {
-                                this.stop_slice();
-                                cx.notify();
-                            } else {
-                                this.start_slice(window, cx);
-                            }
-                        }))
-                    }),
-                )
-                .child(
-                    {
-                        let label = if self.cloud.sending {
-                            "Надсилаю…"
-                        } else {
-                            "Друкувати"
-                        };
-                        if print_primary {
-                            ui::accent_button("send-print", IconName::Send, label, true)
-                        } else {
-                            ui::ghost_button("send-print", Some(IconName::Send), label)
-                        }
-                    }
-                    .no_window_drag()
-                    .inert(!can_print)
-                    .when(can_print, |d| {
-                        d.on_click(
-                            cx.listener(|this, _, window, cx| this.open_print_dialog(window, cx)),
-                        )
-                    })
-                    .when_some(self.print_blocker(), |d, why| {
-                        d.tooltip(move |window, cx| Tooltip::new(why.clone()).build(window, cx))
-                    }),
+                    .on_click(cx.listener(|this, _, window, cx| this.open_preferences(window, cx))),
                 ),
         )
     }
@@ -1645,8 +1567,18 @@ impl Render for Workspace {
             Page::Prepare => crate::prepare::render(self, window, cx).into_any_element(),
             Page::Preview => crate::preview::render(self, cx).into_any_element(),
             Page::Device => crate::device::render(self, window, cx).into_any_element(),
-            Page::Project => self.project_details(cx),
+            Page::Project => {
+                let details = self.project_details(cx);
+                self.with_project_bar(details, cx)
+            }
         };
+        if !self.shows_project_bar() {
+            self.project_bar.hide();
+        }
+        // Сторінка «Проєкт» не має в’юпорта, який друкує знімок стану щокадру.
+        if crate::ui_state::trace_enabled() {
+            self.trace_ui_state(cx);
+        }
 
         let overlays = self.overlays(window, cx);
         // Рамку вікна (тінь, смуга зміни розміру) малює `Root` gpui-component 0.8 — один раз.
@@ -1929,13 +1861,6 @@ impl Workspace {
                     .flex()
                     .gap(px(8.))
                     .mt(px(16.))
-                    .child(
-                        ui::ghost_button("project-prepare", Some(IconName::Box), "Підготовка")
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.enter_page(Page::Prepare, cx);
-                                cx.notify();
-                            })),
-                    )
                     .child(
                         ui::ghost_button("project-save", Some(IconName::Save), "Зберегти як…")
                             .inert(self.project.is_none())

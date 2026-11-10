@@ -32,6 +32,7 @@ mod mcp;
 mod prepare;
 mod preset_editor;
 mod profile_fetch;
+mod project_bar;
 mod preview;
 mod photo_mode;
 mod setting_help;

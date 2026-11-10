@@ -315,7 +315,7 @@ pub fn render(
     let query = ws.library_search.read(cx).value().to_string();
     let left = tree(ws, &query, cx);
     let center = grid(ws, &query, window, cx);
-    crate::prepare::docked("home-docks", ws, Some(left), center, None)
+    crate::prepare::docked("home-docks", ws, Some(left), center, None, cx)
 }
 
 /// Тека дерева: підтеки за абеткою (ключ — назва в нижньому регістрі) і файли.
