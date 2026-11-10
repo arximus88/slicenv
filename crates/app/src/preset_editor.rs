@@ -943,7 +943,7 @@ impl Workspace {
                             .pt(px(10.))
                             .pb(px(8.))
                             .text_sm()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .font_weight(gpui::FontWeight::MEDIUM)
                             .text_color(z.text)
                             .children(crate::pattern_icons::section_icon(source_title).map(
                                 |path| {
@@ -955,7 +955,7 @@ impl Workspace {
                                 },
                             ))
                             .child(title.to_owned())
-                            .child(div().flex_1().h(px(1.)).bg(z.border)),
+                            .child(div().flex_1().h(px(1.)).bg(z.border_variant)),
                     )
                     .children(row_elements),
             );

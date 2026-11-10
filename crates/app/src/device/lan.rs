@@ -163,6 +163,10 @@ impl LanUi {
             other => Some(other),
         }
     }
+    /// Цей принтер у списку акаунта Bambu Cloud (незалежно від того, чи збережений він у LAN).
+    pub fn cloud_printer(&self, dev: &DeviceId) -> Option<&cloud::Printer> {
+        self.cloud_list.iter().find(|p| &p.dev_id == dev)
+    }
     pub fn set_cloud_list(&mut self, list: Vec<cloud::Printer>) {
         self.cloud_list = list;
     }

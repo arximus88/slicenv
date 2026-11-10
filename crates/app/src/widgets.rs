@@ -242,7 +242,7 @@ impl Render for Dropdown {
                         .border_color(if self.open {
                             z.border_focused
                         } else {
-                            z.border_variant
+                            z.field_border
                         })
                         .hover(|s| s.bg(z.element_hover))
                         .on_click(cx.listener(|this, _: &ClickEvent, window, cx| {
@@ -805,7 +805,7 @@ pub fn field(state: &Entity<InputState>, input: Input, window: &Window, cx: &App
         .border_color(if focused {
             z.border_focused
         } else {
-            z.border_variant
+            z.field_border
         })
         .child(input.appearance(false).xsmall())
 }

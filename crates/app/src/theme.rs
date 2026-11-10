@@ -33,6 +33,8 @@ pub struct Zed {
     pub border: Hsla,
     pub border_variant: Hsla,
     pub border_focused: Hsla,
+    /// Рамка полів вводу й списків, що розкриваються (у світлій темі помітніша за роздільники).
+    pub field_border: Hsla,
     /// Фон контролів (полів, списків) — `element.background`.
     pub element: Hsla,
     pub element_hover: Hsla,
@@ -60,6 +62,7 @@ pub struct Swatch {
     pub border: Rgb,
     pub border_variant: Rgb,
     pub border_focused: Rgb,
+    pub field_border: Rgb,
     pub element: Rgb,
     pub element_hover: Rgb,
     pub element_selected: Rgb,
@@ -88,6 +91,7 @@ pub const ONE_DARK_SWATCH: Swatch = Swatch {
     border: h(0x464b57),
     border_variant: h(0x363c46),
     border_focused: h(0x47679e),
+    field_border: h(0x363c46),
     element: h(0x2e343e),
     element_hover: h(0x363c46),
     element_selected: h(0x454a56),
@@ -104,21 +108,24 @@ pub const ONE_DARK_SWATCH: Swatch = Swatch {
     printer_green: h(0x00ae42),
 };
 
+/// Світла: помірний контраст, погоджений з користувачем (макет «середній»): панель трохи
+/// темніша за поля, м’які рамки 1 px, чіткіший текст, без білих прямокутників і чорних обводок.
 pub const ONE_LIGHT_SWATCH: Swatch = Swatch {
-    background: h(0xf1f3f6),
-    panel: h(0xe8ebf0),
+    background: h(0xf7f8fa),
+    panel: h(0xeef0f4),
     editor: h(0xffffff),
-    border: h(0xcbd1db),
-    border_variant: h(0xdde1e8),
-    border_focused: h(0x3974ba),
-    element: h(0xe9edf2),
-    element_hover: h(0xdce3ec),
-    element_selected: h(0xcbd7e6),
-    text: h(0x202733),
-    text_muted: h(0x586474),
-    text_placeholder: h(0x788494),
-    accent: h(0x2869ad),
-    accent_border: h(0x9ab9dc),
+    border: h(0xc7cdd7),
+    border_variant: h(0xd3d8e1),
+    border_focused: h(0x2867be),
+    field_border: h(0xc7cdd7),
+    element: h(0xf6f7fa),
+    element_hover: h(0xe6e9ef),
+    element_selected: h(0xdce5f2),
+    text: h(0x29394d),
+    text_muted: h(0x5a6a81),
+    text_placeholder: h(0x778395),
+    accent: h(0x2867be),
+    accent_border: h(0xa9c1e3),
     success: h(0x34764a),
     warning: h(0x93620a),
     error: h(0xb33b43),
@@ -137,6 +144,7 @@ impl Swatch {
             border: c(self.border),
             border_variant: c(self.border_variant),
             border_focused: c(self.border_focused),
+            field_border: c(self.field_border),
             element: c(self.element),
             element_hover: c(self.element_hover),
             element_selected: c(self.element_selected),
@@ -221,6 +229,7 @@ impl Swatch {
             border: bg.mix(fg, 0.22),
             border_variant: bg.mix(fg, 0.12),
             border_focused: base.border_focused,
+            field_border: bg.mix(fg, 0.12),
             element,
             element_hover,
             element_selected,
@@ -456,46 +465,10 @@ const ONE_DARK: &str = r##"{
   }
 }"##;
 
-// Keep the same complete component theme schema as One Dark, with a deliberate
-// light surface/ink mapping so popovers, tables, fields and hover states switch too.
+/// Світла тема компонентів — з тих самих токенів [`ONE_LIGHT_SWATCH`], що й власні елементи:
+/// поля, списки, popover і кнопки gpui-component перемикаються разом із доками.
 fn light_theme_json() -> String {
-    let mut json = ONE_DARK
-        .replace("Zed One Dark", "Zed One Light")
-        .replace("\"dark\"", "\"light\"");
-    for (dark, light) in [
-        ("#282c33", "#ffffff"),
-        ("#2f343e", "#e8ebf0"),
-        ("#3b414d", "#f1f3f6"),
-        ("#363c46", "#dde1e8"),
-        ("#464b57", "#cbd1db"),
-        ("#2e343e", "#e9edf2"),
-        ("#454a56", "#cbd7e6"),
-        ("#dce0e5", "#202733"),
-        ("#a9afbc", "#586474"),
-        ("#878a98", "#788494"),
-        ("#74ade8", "#2869ad"),
-        ("#8bbcee", "#397bbd"),
-        ("#5f9be0", "#205b99"),
-        ("#1b2029", "#ffffff"),
-        ("#47679e", "#3974ba"),
-        ("#293b5b", "#9ab9dc"),
-        ("#a1c181", "#34764a"),
-        ("#b0cc94", "#43855a"),
-        ("#8fb36d", "#28613b"),
-        ("#dec184", "#93620a"),
-        ("#e5cd99", "#a97612"),
-        ("#d4b36d", "#7c5100"),
-        ("#d07277", "#b33b43"),
-        ("#d98589", "#c24b53"),
-        ("#c25f64", "#982c34"),
-        ("#b477cf", "#8651a6"),
-        ("#6eb4bf", "#287c88"),
-        ("#c8ccd4", "#596575"),
-        ("#0d0f12", "#202733"),
-    ] {
-        json = json.replace(dark, light);
-    }
-    json
+    theme_json(&ONE_LIGHT_SWATCH, true, "Zed One Light")
 }
 
 /// Один прохід по `#rrggbb` у JSON: послідовні `replace` могли б перефарбувати вже замінене.
@@ -610,6 +583,18 @@ pub struct Resolved {
     pub omarchy: bool,
     pub mono_font: Option<String>,
     pub label: String,
+    pub source: Source,
+}
+
+/// Звідки взялася застосована тема — для підпису в налаштуваннях.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Source {
+    /// Тема Omarchy (назва).
+    Omarchy(String),
+    /// Світла чи темна з теми ОС (портал або gpui); `accent` — узято системний акцент.
+    System { accent: bool },
+    /// Явний вибір користувача; тема ОС не впливає.
+    Manual,
 }
 
 pub fn resolve(choice: ThemeChoice, omarchy_font: bool, sys: &SystemState) -> Resolved {
@@ -622,6 +607,7 @@ pub fn resolve(choice: ThemeChoice, omarchy_font: bool, sys: &SystemState) -> Re
             light: t.light,
             omarchy: true,
             mono_font: omarchy_font.then(|| t.mono_font.clone()).flatten(),
+            source: Source::Omarchy(t.name.clone()),
             label: format!(
                 "Omarchy «{}» ({})",
                 t.name,
@@ -663,7 +649,26 @@ pub fn resolve(choice: ThemeChoice, omarchy_font: bool, sys: &SystemState) -> Re
         omarchy: false,
         mono_font: None,
         label,
+        source: if system {
+            Source::System { accent: accent.is_some() }
+        } else {
+            Source::Manual
+        },
     }
+}
+
+/// Підпис для налаштувань: яка тема реально застосована і звідки (перекладений).
+pub fn applied_description() -> Option<String> {
+    let applied = APPLIED.lock().ok()?.clone()?;
+    let mode = crate::i18n::tr(if applied.light { "світла" } else { "темна" });
+    Some(match applied.source {
+        Source::Omarchy(name) => crate::tr_format!("Застосовано: Omarchy «{name}», {mode}"),
+        Source::System { accent: true } => {
+            crate::tr_format!("Застосовано: {mode} з теми ОС, з системним акцентом")
+        }
+        Source::System { accent: false } => crate::tr_format!("Застосовано: {mode} з теми ОС"),
+        Source::Manual => crate::tr_format!("Застосовано: {mode}, вибрано вручну"),
+    })
 }
 
 static APPLIED: Mutex<Option<Resolved>> = Mutex::new(None);
@@ -861,6 +866,50 @@ mod tests {
                 .is_none()
         );
         assert!(!resolve(ThemeChoice::Light, true, &sys).omarchy);
+    }
+
+    #[test]
+    fn light_palette_is_the_approved_moderate_contrast() {
+        let l = ONE_LIGHT_SWATCH;
+        // Погоджений макет: панель #eef0f4, поле #f6f7fa, текст #29394d, рамка поля #c7cdd7.
+        assert_eq!((l.panel, l.element, l.text), (h(0xeef0f4), h(0xf6f7fa), h(0x29394d)));
+        assert_eq!((l.field_border, l.border_variant, l.accent), (h(0xc7cdd7), h(0xd3d8e1), h(0x2867be)));
+        let lum = |c: Rgb| c.luminance();
+        // Поле трохи світліше за панель, але не білосніжне; рамка поля помітніша за роздільник.
+        assert!(lum(l.element) > lum(l.panel) && l.element != WHITE);
+        assert!(lum(l.field_border) < lum(l.border_variant));
+        // Без чорних обводок і різкого контрасту рамок (≈1.5:1 до поля).
+        let edge = contrast(l.field_border, l.element);
+        assert!((1.3..2.0).contains(&edge), "{edge}");
+        // Фокус і вибір видимі на полі.
+        assert!(contrast(l.border_focused, l.element) >= AA_UI);
+        assert!(contrast(l.element_selected, l.element) > 1.1);
+        // Темна й Omarchy не змінились: рамка поля = колишній роздільник.
+        assert_eq!(ONE_DARK_SWATCH.field_border, ONE_DARK_SWATCH.border_variant);
+        let o = Swatch::from_omarchy(&fixture("catppuccin-latte"));
+        assert_eq!(o.field_border, o.border_variant);
+        // Компоненти gpui-component беруть ті самі токени.
+        let v: serde_json::Value = serde_json::from_str(&light_theme_json()).unwrap();
+        assert_eq!(v["mode"], "light");
+        assert_eq!(v["colors"]["input.border"], l.border.hex());
+        assert_eq!(v["colors"]["muted.background"], l.element.hex());
+        assert_eq!(v["colors"]["foreground"], l.text.hex());
+    }
+
+    #[test]
+    fn source_names_what_is_applied_and_manual_choice_wins() {
+        let mut sys = SystemState::default();
+        sys.portal.color_scheme = Some(1);
+        sys.portal.accent = Some(h(0x3584e4));
+        assert_eq!(resolve(ThemeChoice::System, false, &sys).source, Source::System { accent: true });
+        sys.omarchy = Some(fixture("tokyo-night"));
+        let r = resolve(ThemeChoice::System, false, &sys);
+        assert!(matches!(r.source, Source::Omarchy(_)));
+        // Явна світла лишається світлою з погодженою палітрою, хоч ОС темна й є Omarchy.
+        let r = resolve(ThemeChoice::Light, false, &sys);
+        assert_eq!((r.source, r.light, r.swatch), (Source::Manual, true, ONE_LIGHT_SWATCH));
+        let r = resolve(ThemeChoice::Dark, false, &sys);
+        assert_eq!((r.source, r.light, r.swatch), (Source::Manual, false, ONE_DARK_SWATCH));
     }
 
     #[test]

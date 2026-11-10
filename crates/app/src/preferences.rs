@@ -133,7 +133,7 @@ fn pref_title(title: &str) -> gpui::Div {
 /// Режими теми для перемикача; «Omarchy» — лише коли його тему знайдено.
 fn theme_choices() -> Vec<(theme::ThemeChoice, &'static str)> {
     let mut out = vec![
-        (theme::ThemeChoice::System, "Системна"),
+        (theme::ThemeChoice::System, "Наслідувати системну"),
         (theme::ThemeChoice::Light, "Світла"),
         (theme::ThemeChoice::Dark, "Темна"),
     ];
@@ -383,11 +383,12 @@ impl Workspace {
                     .child(hint("Назви параметрів рушія нарізки теж перекладаються, якщо рушій має переклад."))
                     .child(section_gap())
                     .child(pref_title("Вигляд"))
-                    .child(row("Тема", Some("«Системна» стежить за світлою чи темною темою ОС."),
+                    .child(row("Тема", Some("«Наслідувати системну» бере тему Omarchy, якщо вона є, інакше світлу чи темну тему ОС. Вибір «Світла» чи «Темна» тема ОС не змінює."),
                         div().flex().gap(px(4.)).children(theme_choices().into_iter().enumerate().map(|(i,(choice,label))|{
                             ui::ghost_button(("preferences-theme",i),None,label).toggled(self.preferences.theme==choice)
                                 .on_click(cx.listener(move|this,_,window,cx|{this.preferences.theme=choice;this.update_preferences(window,cx);} ))
                         }))))
+                    .children(theme::applied_description().map(|text| div().pb(px(4.)).text_xs().text_color(theme::zed().text_muted).child(text)))
                     .children(theme::omarchy_detected().then(|| row("Моноширинний шрифт Omarchy в інтерфейсі", None,
                         widgets::switch("omarchy-font",self.preferences.omarchy_font).on_click(cx.listener(|this,_,window,cx|{
                             this.preferences.omarchy_font=!this.preferences.omarchy_font;this.update_preferences(window,cx);
