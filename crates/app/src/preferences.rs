@@ -460,6 +460,21 @@ impl Workspace {
                     .child(section_gap())
                     .child(pref_title("Хмара Bambu"))
                     .child(hint("Вхід в обліковий запис Bambu і друк через хмару — на сторінці «Пристрій». Мережевий плагін Bambu завантажується під час першого входу."));
+                if cloud::obn::SUPPORTED {
+                    let status = match cloud::obn::choice() {
+                        Some(c) if cloud::obn::active().is_some() => crate::tr_format!(
+                            "Підключено ({source}). Хмара: {cloud}",
+                            source = c.source.label(),
+                            cloud = if c.cloud { crate::i18n::tr("увімкнена") } else { crate::i18n::tr("вимкнена, лише LAN") }
+                        ),
+                        _ => crate::i18n::tr("Не вибрано"),
+                    };
+                    body = body.child(section_gap())
+                        .child(pref_title("Відкритий плагін (Open Bamboo Networking)"))
+                        .child(row_owned(status, Some("Сторонній плагін за вашим вибором: друк на Bambu з Linux без Developer Mode. Не від Bambu Lab, ризик блокування."),
+                            ui::ghost_button("prefs-open-plugin", Some(IconName::Plug), "Налаштувати…").border_1().border_color(z.border_variant)
+                                .on_click(cx.listener(|this,_,window,cx| { this.close_modal(cx); this.open_open_plugin(window, cx); }))));
+                }
             }
             Section::Printers => {
                 let printer = self.selection.machine.clone();

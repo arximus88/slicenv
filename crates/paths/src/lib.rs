@@ -314,6 +314,16 @@ pub fn config_dir() -> PathBuf {
 pub fn data_dir() -> PathBuf {
     data_home().join(PRODUCT)
 }
+/// Відкритий мережевий плагін (Open Bamboo Networking), який користувач сам вибрав:
+/// копії бібліотек `<корінь>/<джерело-версія>/`. Окремо від `bambu-plugin/` закритого плагіна.
+pub fn open_plugin_root() -> PathBuf {
+    data_dir().join("open-plugin")
+}
+/// Тека конфігурації відкритого плагіна (`set_config_dir`): `obn.conf`, сесія
+/// `obn.auth.json`, ключі `slicer_*.pem`, `certs/`. Права 0700 ставить `cloud::obn`.
+pub fn open_plugin_config_dir() -> PathBuf {
+    data_dir().join("cloud/obn")
+}
 /// На Windows кеш і дані ділять `%LOCALAPPDATA%\slicenv`, тож кеш — у підкаталозі `cache`.
 pub fn cache_dir() -> PathBuf {
     #[cfg(windows)]

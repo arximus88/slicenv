@@ -70,8 +70,10 @@ unsafe extern "C" {
     pub fn cloud_print(
         handle: *mut c_void,
         fields: *const *const c_char,
+        count: i32,
         plate: i32,
         flags: u32,
+        mode: i32,
     ) -> i32;
 }
 
@@ -131,8 +133,10 @@ mod unsupported {
     pub unsafe fn cloud_print(
         handle: *mut c_void,
         fields: *const *const c_char,
+        count: i32,
         plate: i32,
         flags: u32,
+        mode: i32,
     ) -> i32 {
         UNAVAILABLE
     }

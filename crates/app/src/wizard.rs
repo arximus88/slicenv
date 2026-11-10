@@ -618,7 +618,7 @@ impl Workspace {
 
     // ---- хмара ----
 
-    fn wizard_check_cloud(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn wizard_check_cloud(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(w) = &mut self.wizard else { return };
         w.cloud.stage = CloudStage::Checking;
         w.cloud.error = None;
@@ -2984,6 +2984,37 @@ fn cloud_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspac
             };
             body = body.child(note(IconName::CircleCheck, z.success, who));
         }
+    }
+    // Linux: другий шлях — відкритий плагін, лише за явним вибором (окрема модалка з
+    // попередженням).
+    if cloud::obn::SUPPORTED && c.stage != CloudStage::Checking {
+        let chosen = cloud::obn::active().is_some();
+        body = body.child(
+            card()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(ui::icon(IconName::Plug).text_color(if chosen { z.success } else { z.text_muted }))
+                        .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(tr("Відкритий плагін (Open Bamboo Networking)")))
+                        .child(div().flex_1())
+                        .child(badge(if chosen { "Вибрано" } else { "Сторонній" }, if chosen { z.success } else { z.warning })),
+                )
+                .child(small(if chosen {
+                    "Друк по локальній мережі без Developer Mode; хмара — за перемикачем у налаштуваннях плагіна. Вхід в акаунт — тут, через браузер."
+                } else {
+                    "Замість закритого плагіна Bambu: друк з Linux без Developer Mode. Сторонній код із вшитим ключем Bambu — на ваш розсуд, можливе блокування."
+                }))
+                .child(
+                    div().flex().child(
+                        ui::ghost_button("wizard-open-plugin", Some(IconName::Settings), if chosen { "Налаштувати…" } else { "Детальніше й вибрати…" })
+                            .border_1()
+                            .border_color(z.border_variant)
+                            .on_click(cx.listener(|ws, _, window, cx| ws.open_open_plugin(window, cx))),
+                    ),
+                ),
+        );
     }
     body.into_any_element()
 }

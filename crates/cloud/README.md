@@ -1,7 +1,9 @@
 # cloud
 
 > Схема публічного релізу (менеджер плагіна за згодою, ABI 02.08.04, власний вхід) — у
-> [docs/CLOUD.md](../../docs/CLOUD.md). Нижче — історичний опис першої версії (02.06).
+> [docs/CLOUD.md](../../docs/CLOUD.md). Відкритий плагін Open Bamboo Networking за вибором
+> користувача (`obn.rs`, `Client::start_local_print`) — [docs/OPEN-PLUGIN.md](../../docs/OPEN-PLUGIN.md).
+> Нижче — історичний опис першої версії (02.06).
 
 Linux x86_64 Rust wrapper around the user's installed Bambu networking plugin. It
 restores the existing Studio session into a private temporary directory, lists bound

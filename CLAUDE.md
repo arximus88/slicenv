@@ -44,7 +44,7 @@ grep "^test result" /tmp/t.log | awk '{p+=$4; f+=$6} END {print "passed", p, "fa
 - Тести, рушії й GUI — лише з тимчасовими HOME/XDG_*. Не змінювати `~/.config/BambuStudio`, `~/.config/OrcaSlicer`, `~/.config/slicenv`, `~/.local/share/slicenv`. `slicenv <файл>` відкриває вікно зі справжньою конфігурацією. Як запускати безпечно — skill `real-engine-test`.
 - Жодних команд на справжні принтери (друк, стоп, пауза, світло, рух, завантаження файлів, MQTT) без людини. Жодних звернень до Bambu Cloud у тестах. Для UI — `SLICENV_FAKE_PRINTER=1`, `SLICENV_CLOUD_OFF=1`, `SLICENV_LAN_OFF=1`.
 - Не друкувати, не логувати й не комітати токени, access codes, паролі, email, повні серійні номери. Access code не вгадувати.
-- Не використовувати сторонні форки плагіна чи вшиті секрети Bambu.
+- Сторонній форк плагіна (Open Bamboo Networking від persano) — лише як **явний вибір користувача**: він сам бере вже встановлений в OrcaSlicer / Bambu Studio або погоджується завантажити реліз persano з GitHub ([docs/OPEN-PLUGIN.md](docs/OPEN-PLUGIN.md)). Бінарники форку й вшитий у них секрет ніколи не потрапляють у репозиторій, наш бінарник, zip чи пакунки; без вибору OBN не підхоплювати. Власних вшитих секретів Bambu не додавати.
 - Процеси зупиняти за PID (`kill <pid>`), ніколи `pkill -f` — збігається із самою командою й чужими процесами.
 
 ## Інструменти
@@ -59,7 +59,7 @@ grep "^test result" /tmp/t.log | awk '{p+=$4; f+=$6} END {print "passed", p, "fa
 - `crates/app/locales/en.json`: нові ключі лише в кінець, не сортувати — інакше конфлікт на весь файл. Деталі — skill `add-ui-string`.
 
 ## Пастки рушіїв і принтера
-- Друк через Bambu Cloud з плагіна завжди дає **-26** (`BAMBU_NETWORK_SIGNED_ERROR`, `cloud::PluginError::UNSIGNED_SOFTWARE`): лише програми з підписом Bambu Lab. Друк через інтернет — Bambu Connect (`bambu-connect://import-file`, параметри тільки `path`, `name`, `version`), інакше LAN.
+- Друк через Bambu Cloud із закритого плагіна завжди дає **-26** (`BAMBU_NETWORK_SIGNED_ERROR`, `cloud::PluginError::UNSIGNED_SOFTWARE`): лише програми з підписом Bambu Lab. Друк через інтернет — Bambu Connect (`bambu-connect://import-file`, параметри тільки `path`, `name`, `version`), інакше LAN. На Linux, якщо користувач вибрав відкритий плагін (`cloud::obn`), LAN-друк іде через `start_local_print` у дочірньому процесі `--obn-local-print`, а хмарний — лише з `block_cloud = 0`.
 - OrcaSlicer пише лог у `00000.log` у робочій теці. Прогрес і номер шару — з `--debug 4` (`default_status_callback: percent=…, message=Generating G-code: layer N`), не з `--pipe` (`crates/slicer/src/cli.rs`).
 - Рушій падає на 3MF (OrcaSlicer 2.3.0 CLI на Windows — 0xC0000005 на багатьох файлах) → сумісний режим зі стадіями (`cli.rs`, `safe_mode.rs`), запам’ятовується в `engine-compat.json` у кеші.
 - Батьківський пресет шукається в тому самому вендорі, потім в `OrcaFilamentLibrary` (`presets.rs`). Пошук по всіх вендорах підмінював однойменних службових батьків (Anker).

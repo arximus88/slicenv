@@ -91,6 +91,7 @@ BYPASS_ALLOWED = {
     # CloudState::phase stores the Ukrainian source; every view shows tr(&phase).
     "Підключення до Bambu Cloud…", "Підключено", "Хмару вимкнено (SLICENV_CLOUD_OFF)",
     "Запуск…", "Хмара недоступна",
+    "Відкритий плагін: хмару вимкнено, друк — по локальній мережі",
     # packages.status — shown as tr(&status).
     "Операцію не завершено",
     # migration Config::label — shown as scope_label() = tr(label).

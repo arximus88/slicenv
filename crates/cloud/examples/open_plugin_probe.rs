@@ -9,8 +9,12 @@
 //! T=$(mktemp -d); XDG_DATA_HOME=$T/d XDG_CONFIG_HOME=$T/c XDG_CACHE_HOME=$T/k \
 //!   unshare -rn target/debug/examples/open_plugin_probe /tmp/obn/libbambu_networking.so
 //! ```
-//! Плагін копіюється в тимчасову теку (чужі теки лише читаються). Звіт —
-//! docs/LINUX-CLOUD-PRINT.md.
+//! Плагін копіюється в тимчасову теку (чужі теки лише читаються).
+//!
+//! `open_plugin_probe --find <HOME>` — шлях Slicenv для відкритого плагіна: `cloud::obn`
+//! шукає OBN у `<HOME>` (Flatpak Orca, `~/.config/OrcaSlicer`, маркетплейс Orca — лише
+//! читання), копіює в тимчасовий `XDG_DATA_HOME`, пише `obn.conf` і завантажує через шим.
+//! Звіт — docs/OPEN-PLUGIN.md.
 // Лише приватний вивід.
 #[allow(dead_code)]
 mod common;
@@ -35,11 +39,9 @@ fn step<T>(out: &mut File, name: &str, f: impl FnOnce() -> Result<T>) -> Result<
 }
 
 fn run(out: &mut File) -> Result<()> {
-    let source = PathBuf::from(
-        std::env::args()
-            .nth(1)
-            .context("open_plugin_probe <шлях до libbambu_networking.so>")?,
-    );
+    let arg = std::env::args()
+        .nth(1)
+        .context("open_plugin_probe <шлях до libbambu_networking.so> | --find <HOME>")?;
     let temp = std::env::temp_dir();
     for dir in [paths::data_dir(), paths::config_dir(), paths::cache_dir()] {
         ensure!(
@@ -49,6 +51,10 @@ fn run(out: &mut File) -> Result<()> {
         );
     }
     unsafe { cloud::configure_tls_env() };
+    if arg == "--find" {
+        return find(out, PathBuf::from(std::env::args().nth(2).context("--find <HOME>")?));
+    }
+    let source = PathBuf::from(arg);
 
     // Копія плагіна поруч з тимчасовою сесією: dlopen не тримає чужу теку.
     let work = tempfile::tempdir()?;
@@ -87,6 +93,59 @@ fn run(out: &mut File) -> Result<()> {
         "Разом: {:.0} мс",
         total.elapsed().as_secs_f64() * 1000.0
     )?;
+    Ok(())
+}
+
+/// Пошук → копія → obn.conf → завантаження через Options відкритого плагіна, без входу.
+fn find(out: &mut File, home: PathBuf) -> Result<()> {
+    let found = cloud::obn::find_in(&home, &home.join(".config"));
+    for f in &found {
+        writeln!(
+            out,
+            "Знайдено: {:?} {:?} реліз {:?}, супутніх {} — {}",
+            f.source,
+            f.flavor,
+            f.release,
+            f.extras.len(),
+            f.library.strip_prefix(&home).unwrap_or(&f.library).display()
+        )?;
+    }
+    let first = found.first().context("OBN не знайдено")?;
+    let source_mtime = std::fs::metadata(&first.library)?.modified()?;
+    let choice = step(out, "install_found (копія в тимчасовий XDG_DATA_HOME)", || {
+        cloud::obn::install_found(first)
+    })?;
+    writeln!(out, "    → тека {}, хмара {}", choice.dir_name, choice.cloud)?;
+    let plugin = cloud::obn::active().context("active() порожній після установки")?;
+    let state = cloud::plugin::plugin_state();
+    writeln!(
+        out,
+        "    plugin_state: {:?}",
+        matches!(state, cloud::PluginState::Ready(ref p) if p.origin == cloud::PluginOrigin::OpenBamboo)
+    )?;
+    let options = cloud::obn::options(&plugin)?;
+    let config = options.studio_config_dir.clone();
+    let (client, _events) = step(out, "Client::load (наш obn.conf)", || Client::load(options))?;
+    writeln!(out, "    get_version {}", client.plugin_version()?)?;
+    step(out, "start", || client.start())?;
+    std::thread::sleep(Duration::from_millis(300));
+    writeln!(out, "    is_user_login {}", client.is_user_login()?)?;
+    step(out, "destroy_agent", || client.shutdown())?;
+    let conf = cloud::obn::Conf::parse(&std::fs::read_to_string(config.join("obn.conf"))?);
+    for key in ["block_cloud", "client_name", "cloud_print", "log_stderr", "log_to_file"] {
+        writeln!(out, "    obn.conf {key} = {}", conf.get(key).unwrap_or("—"))?;
+    }
+    let mut names: Vec<String> = std::fs::read_dir(&config)?
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    writeln!(out, "    файли теки конфігурації: {}", names.join(", "))?;
+    ensure!(
+        std::fs::metadata(&first.library)?.modified()? == source_mtime,
+        "чужий файл змінився"
+    );
+    writeln!(out, "    чужий файл не змінено (mtime той самий)")?;
     Ok(())
 }
 

@@ -85,6 +85,39 @@ fn current_generation_prints_logs_in_and_out_through_the_shim() {
     }
     assert_eq!(progress, Some(7));
 
+    // Друк по LAN (шлях відкритого плагіна): той самий PrintParams, поля LAN заповнені.
+    let mut local = request.clone();
+    local.plate_index = 3;
+    local.use_ams = false;
+    local.bed_leveling = true;
+    local.ams_mapping = "[-1]".into();
+    let lan = cloud::LanTarget {
+        ip: "192.0.2.7".into(),
+        access_code: "syn-code".into(),
+        name: "syn-printer".into(),
+    };
+    assert!(!format!("{lan:?}").contains("syn-code"));
+    client.start_local_print(&local, &lan).unwrap();
+    let mut stages = Vec::new();
+    while let Ok(event) = events.recv_timeout(Duration::from_millis(200)) {
+        if let Event::PrintProgress { stage, code } = event {
+            stages.push((stage, code));
+        }
+    }
+    assert_eq!(stages, vec![(1, 100), (6, 0)]);
+    let wrong = cloud::LanTarget {
+        access_code: "other".into(),
+        ..lan.clone()
+    };
+    let err = client.start_local_print(&local, &wrong).unwrap_err();
+    assert_eq!(cloud::PluginError::code_of(&err), Some(-96));
+    assert!(!format!("{err:#}").contains("other"));
+    let empty = cloud::LanTarget {
+        access_code: String::new(),
+        ..lan
+    };
+    assert!(client.start_local_print(&local, &empty).is_err());
+
     client.logout().unwrap();
     assert!(!client.is_user_login().unwrap());
     client.shutdown().unwrap();

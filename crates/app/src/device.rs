@@ -438,7 +438,15 @@ fn save_cache(list: &[cloud::Printer]) {
 /// Відбиток налаштування хмари: плагін і файл сесії. Зміна (вхід у майстрі записав сесію,
 /// встановлено плагін) — привід підключитися знову без перезапуску.
 fn setup_stamp() -> String {
-    match cloud::setup() {
+    let open = cloud::obn::choice().map(|c| format!("obn:{}:{}:", c.dir_name, c.cloud)).unwrap_or_default();
+    open + &match cloud::setup() {
+        // Відкритий плагін сам пише в теку стан (obn.state.json, obn.env): стежимо лише за сесією.
+        cloud::CloudSetup::Ready { session, plugin } if plugin.origin == cloud::PluginOrigin::OpenBamboo => {
+            let modified = std::fs::metadata(session.dir.join(cloud::obn::SESSION_FILE))
+                .and_then(|m| m.modified())
+                .ok();
+            format!("ready:{}:{modified:?}", session.dir.display())
+        }
         cloud::CloudSetup::Ready { session, .. } => {
             let modified = std::fs::read_dir(&session.dir)
                 .into_iter()
@@ -503,6 +511,14 @@ fn session(
     };
     let result = (|| -> anyhow::Result<()> {
         if stopping.load(std::sync::atomic::Ordering::Acquire) {
+            return Ok(());
+        }
+        // Відкритий плагін без хмари (block_cloud = 1): з’єднуватися нема з чим — стан і друк
+        // ідуть по LAN. Чекаємо Reconnect (увімкнули хмару) або зміну налаштування.
+        if cloud::obn::active().is_some() && !cloud::obn::cloud_enabled() {
+            send(CloudMsg::Phase(
+                "Відкритий плагін: хмару вимкнено, друк — по локальній мережі".into(),
+            ));
             return Ok(());
         }
         let mut options = cloud_options()?;
@@ -1392,7 +1408,13 @@ impl Workspace {
                             CloudMsg::PrintUnsigned => {
                                 cloud.sending = false;
                                 cloud.cloud_print_works = false;
-                                this.open_unsigned_print_dialog(window, cx);
+                                // З відкритим плагіном -26 не буває; якщо раптом — не
+                                // відправляємо людину в Bambu Connect / Bambu Studio.
+                                if crate::open_plugin::active() {
+                                    this.toast(ToastKind::Error, tr("Друк не надіслано: плагін відмовив (-26)"), cx);
+                                } else {
+                                    this.open_unsigned_print_dialog(window, cx);
+                                }
                             }
                             CloudMsg::CloudPrintWorks => cloud.cloud_print_works = true,
                             CloudMsg::PrintSent(result) => {
@@ -2429,12 +2451,17 @@ impl Workspace {
         } else {
             print_paths::Lan::Absent
         };
+        // Відкритий плагін (вибір користувача): LAN-друк він підписує сам, а хмара — лише
+        // якщо її ввімкнено в його налаштуваннях. Попередження -26 тут не буває.
+        let open_plugin = crate::open_plugin::active();
         let paths = print_paths::choose(print_paths::Inputs {
             os: print_paths::Os::current(),
             connect_installed: crate::bambu_connect::installed(),
             lan: lan_state,
-            cloud_print_works: self.cloud.cloud_print_works
+            cloud_print_works: (open_plugin && cloud::obn::cloud_enabled())
+                || (!open_plugin && self.cloud.cloud_print_works)
                 || std::env::var_os("SLICENV_CLOUD_PRINT").is_some_and(|v| v == "1"),
+            open_plugin,
         });
         let connect_send = {
             let gcode_3mf = gcode_3mf.clone();
@@ -2575,8 +2602,14 @@ impl Workspace {
                             )
                         })
                         .map(|d| match primary {
+                            Some(print_paths::Action::LanSend) if open_plugin => d.child(note(
+                                "Через локальну мережу з відкритим плагіном: він підписує команду друку, Developer Mode не потрібен. Файл ляже на microSD принтера, і друк почнеться одразу.",
+                            )),
                             Some(print_paths::Action::LanSend) => d.child(note(
                                 "Через локальну мережу: файл буде завантажено на microSD принтера, і друк почнеться одразу.",
+                            )),
+                            Some(print_paths::Action::LanManual) if open_plugin => d.child(note(
+                                "Відкритий плагін друкує по локальній мережі: додайте принтер за IP і кодом доступу з його екрана. Друк через хмару вмикається в налаштуваннях відкритого плагіна.",
                             )),
                             Some(print_paths::Action::Connect) => d.child(note(
                                 "Файл відкриється в Bambu Connect — там виберіть принтер, калібрування й натисніть «Друк».",
@@ -2598,11 +2631,24 @@ impl Workspace {
                                         "Щоб друкувати через інтернет, потрібен Bambu Connect — безкоштовна програма Bambu Lab.",
                                     )))
                                     .map(|d| match notice {
-                                        print_paths::ConnectNotice::NoLinuxBuild => d.child(
-                                            div().text_xs().text_color(z.text_muted).child(tr(
+                                        print_paths::ConnectNotice::NoLinuxBuild => d
+                                            .child(div().text_xs().text_color(z.text_muted).child(tr(
                                                 "Версії Bambu Connect для Linux поки немає. Друкуйте по локальній мережі або експортуйте файл і відкрийте його на іншому комп’ютері.",
-                                            )),
-                                        ),
+                                            )))
+                                            .when(cloud::obn::SUPPORTED, |d| {
+                                                d.child(div().text_xs().text_color(z.text_muted).child(tr(
+                                                    "Інший шлях — відкритий плагін Open Bamboo Networking (сторонній, на ваш розсуд): друк без Developer Mode.",
+                                                )))
+                                                .child(div().flex().child(
+                                                    ui::ghost_button("print-open-plugin", Some(IconName::Plug), "Відкритий плагін…")
+                                                        .border_1()
+                                                        .border_color(z.border_variant)
+                                                        .on_click(cx.listener(|ws, _, window, cx| {
+                                                            ws.close_modal(cx);
+                                                            ws.open_open_plugin(window, cx);
+                                                        })),
+                                                ))
+                                            }),
                                         _ => d.child(
                                             div().flex().child(
                                                 ui::accent_button(

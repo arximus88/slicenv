@@ -350,7 +350,10 @@ extern "C" int cloud_call(void *handle, int op, const char *a, const char *b, in
 }
 
 namespace {
-template <class P> void fill(P &p, const char *const *f, int plate, uint32_t flags) {
+// Поля f[0..12] — як у хмарному друці; f[13..15] — лише для друку по LAN: IP, код доступу
+// (пароль FTPS/MQTT, у логи не йде), ім'я принтера.
+template <class P> void fill(P &p, const char *const *f, int count, int plate, uint32_t flags,
+                             bool local) {
     p.dev_id = f[0];
     p.task_name = f[1];
     p.project_name = f[2];
@@ -365,10 +368,17 @@ template <class P> void fill(P &p, const char *const *f, int plate, uint32_t fla
     p.nozzles_info = f[10];
     p.task_bed_type = f[11];
     p.extra_options = f[12];
-    p.connection_type = "cloud";
+    // Як PrintJob у Bambu Studio/Orca: "cloud" для start_print, "lan" для start_local_print.
+    p.connection_type = local ? "lan" : "cloud";
     p.print_type = "from_normal";
     p.use_ssl_for_ftp = true;
     p.use_ssl_for_mqtt = true;
+    if (local && count >= 16) {
+        p.dev_ip = f[13];
+        p.username = "bblp";
+        p.password = f[14];
+        p.dev_name = f[15];
+    }
     p.task_use_ams = flags & 1;
     p.task_record_timelapse = flags & 2;
     p.task_bed_leveling = flags & 4;
@@ -377,11 +387,27 @@ template <class P> void fill(P &p, const char *const *f, int plate, uint32_t fla
     p.task_layer_inspect = flags & 32;
     p.task_timelapse_use_internal = flags & 64;
 }
+
+template <class P>
+int dispatch(Agent &h, P &p, bool local, const Update &update, const std::function<bool()> &cancel,
+             const std::function<bool(int, std::string)> &wait) {
+    // start_local_print в обох поколіннях без OnWaitFn (Orca BBLNetworkPlugin.hpp,
+    // func_start_local_print).
+    if (local)
+        return h.call<int>("bambu_network_start_local_print", p, update, cancel);
+    return h.call<int>("bambu_network_start_print", p, update, cancel, wait);
+}
 }
 
-extern "C" int cloud_print(void *handle, const char *const *f, int plate, uint32_t flags) {
+extern "C" int cloud_print(void *handle, const char *const *f, int count, int plate, uint32_t flags,
+                           int mode) {
     auto &h = *static_cast<Agent *>(handle);
     try {
+        if (count < 13 || (mode != 0 && mode != 1))
+            return -10004;
+        const bool local = mode == 1;
+        if (local && count < 16)
+            return -10004;
         auto gate = h.gate;
         Update update([gate](int stage, int code, std::string msg) { gate->emit(4, {}, msg, stage, code); });
         std::function<bool()> cancel([] { return false; });
@@ -389,13 +415,13 @@ extern "C" int cloud_print(void *handle, const char *const *f, int plate, uint32
         // PrintParams передається за значенням: невірний макет псує стек, тому лише точне покоління.
         if (h.abi == V0208) {
             bambu_0208::PrintParams p{};
-            fill(p, f, plate, flags);
-            return h.call<int>("bambu_network_start_print", p, update, cancel, wait);
+            fill(p, f, count, plate, flags, local);
+            return dispatch(h, p, local, update, cancel, wait);
         }
         if (h.abi == V0206) {
             bambu_0206::PrintParams p{};
-            fill(p, f, plate, flags);
-            return h.call<int>("bambu_network_start_print", p, update, cancel, wait);
+            fill(p, f, count, plate, flags, local);
+            return dispatch(h, p, local, update, cancel, wait);
         }
         return -10002;
     } catch (...) {

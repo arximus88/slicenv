@@ -16,6 +16,7 @@ mod cover;
 mod ffi;
 pub mod http;
 mod modules;
+pub mod obn;
 pub mod plugin;
 mod session;
 mod status;
@@ -328,6 +329,13 @@ pub struct Options {
 impl Options {
     /// Знайдений плагін + сесія (власна — напряму, чужа — копією).
     pub fn for_session(plugin: &InstalledPlugin, session: &FoundSession) -> Self {
+        // Відкритий плагін: своя тека з актуальним obn.conf (сесія — obn.auth.json там же).
+        if plugin.origin == PluginOrigin::OpenBamboo
+            && let Ok(mut options) = obn::options(plugin)
+        {
+            options.country_code = session.country_code.clone();
+            return options;
+        }
         Self {
             plugin_path: plugin.library.clone(),
             studio_config_dir: session.dir.clone(),
@@ -343,7 +351,13 @@ impl Options {
     }
     /// Для першого входу через форму: порожня власна тека сесії.
     pub fn for_login(plugin: &InstalledPlugin, country_code: &str) -> Result<Self> {
-        let dir = account::prepare_own_session(country_code)?;
+        let dir = if plugin.origin == PluginOrigin::OpenBamboo {
+            let dir = obn::prepare_config_dir()?;
+            account::prepare_session_in(&dir, country_code)?;
+            dir
+        } else {
+            account::prepare_own_session(country_code)?
+        };
         Ok(Self::for_session(
             plugin,
             &FoundSession {
@@ -439,6 +453,8 @@ pub struct Client {
     persistent: bool,
     allow_control: bool,
     has_certificate: bool,
+    /// Завантажено відкритий плагін (OBN), а не закритий Bambu.
+    open_plugin: bool,
     source_path: PathBuf,
     started: Cell<bool>,
     sequence: Cell<u64>,
@@ -541,6 +557,7 @@ impl Client {
             session,
             allow_control: options.allow_control,
             has_certificate: options.certificate.is_some(),
+            open_plugin: options.plugin_path.starts_with(paths::open_plugin_root()),
             source_path: options.plugin_path.with_file_name(plugin::SOURCE_LIBRARY),
             started: Cell::new(false),
             sequence: Cell::new(0),
@@ -759,51 +776,52 @@ impl Client {
     /// Успіх означає результат плагіна, а не підтвердження фактичного початку друку.
     pub fn start_print(&self, request: &PrintRequest) -> Result<()> {
         self.control_allowed()?;
+        ensure!(self.started.get(), "start the agent before printing");
+        if !self.is_server_connected()? {
+            // Відкритий плагін з block_cloud = 1 хмари не з’єднує взагалі: друк — лише LAN.
+            ensure!(
+                !self.open_plugin || obn::cloud_enabled(),
+                "Хмару для відкритого плагіна вимкнено: друкуйте по локальній мережі або увімкніть «Друк і стан через хмару» в налаштуваннях відкритого плагіна"
+            );
+            anyhow::bail!("cloud server is not connected");
+        }
+        self.dispatch_print(request, None)
+    }
+    /// Друк по локальній мережі через плагін (`start_local_print`, як Orca для LAN-принтера):
+    /// плагін сам вивантажує файл FTPS і надсилає `project_file` по MQTT принтера. Хмара не
+    /// потрібна. Відкритий плагін persano при цьому сам підписує команду, тож Developer Mode
+    /// не потрібен; закритий плагін Bambu підпису для Slicenv не дає.
+    pub fn start_local_print(&self, request: &PrintRequest, lan: &LanTarget) -> Result<()> {
+        self.control_allowed()?;
+        ensure!(self.started.get(), "start the agent before printing");
         ensure!(
-            self.started.get() && self.is_server_connected()?,
-            "cloud server is not connected"
+            !lan.ip.is_empty() && !lan.access_code.is_empty(),
+            "LAN print needs the printer IP and access code"
         );
-        ensure!(request.plate_index > 0, "plate_index is 1-based");
-        ensure!(
-            !request.bed_type.is_empty(),
-            "bed_type must be selected explicitly"
-        );
-        ensure!(
-            request.gcode_3mf.is_file() && request.config_3mf.is_file(),
-            "print archives do not exist"
-        );
-        ensure!(
-            path_string(&request.gcode_3mf)?.ends_with(".gcode.3mf"),
-            "expected a .gcode.3mf archive"
-        );
-        let fields = [
-            request.dev_id.as_str(),
-            &request.task_name,
-            &request.project_name,
-            &request.preset_name,
-            path_string(&request.gcode_3mf)?,
-            path_string(&request.config_3mf)?,
-            &request.ams_mapping,
-            &request.ams_mapping2,
-            &request.ams_mapping_info,
-            &request.nozzle_mapping,
-            &request.nozzles_info,
-            &request.bed_type,
-            &request.extra_options,
-        ];
+        self.dispatch_print(request, Some(lan))
+    }
+    fn dispatch_print(&self, request: &PrintRequest, lan: Option<&LanTarget>) -> Result<()> {
+        let fields = print_fields(request, lan)?;
         let fields: Vec<CString> = fields.iter().map(|s| cstring(s)).collect::<Result<_>>()?;
         let pointers: Vec<_> = fields.iter().map(|s| s.as_ptr()).collect();
-        let flags = u32::from(request.use_ams)
-            | (u32::from(request.timelapse) << 1)
-            | (u32::from(request.bed_leveling) << 2)
-            | (u32::from(request.flow_cali) << 3)
-            | (u32::from(request.vibration_cali) << 4)
-            | (u32::from(request.layer_inspect) << 5)
-            | (u32::from(request.timelapse_use_internal) << 6);
+        let (mode, operation) = if lan.is_some() {
+            (1, "start_local_print")
+        } else {
+            (0, "start_print")
+        };
         // Всі C-рядки живуть до повернення синхронного C++ виклику.
         checked(
-            unsafe { ffi::cloud_print(self.handle, pointers.as_ptr(), request.plate_index, flags) },
-            "start_print",
+            unsafe {
+                ffi::cloud_print(
+                    self.handle,
+                    pointers.as_ptr(),
+                    pointers.len() as i32,
+                    request.plate_index,
+                    request.flags(),
+                    mode,
+                )
+            },
+            operation,
         )
     }
     /// Явне завершення з перевіркою результату плагіна; Drop також закриває агент.
@@ -882,6 +900,69 @@ impl PrintRequest {
             extra_options: String::new(),
         }
     }
+}
+
+impl PrintRequest {
+    fn flags(&self) -> u32 {
+        u32::from(self.use_ams)
+            | (u32::from(self.timelapse) << 1)
+            | (u32::from(self.bed_leveling) << 2)
+            | (u32::from(self.flow_cali) << 3)
+            | (u32::from(self.vibration_cali) << 4)
+            | (u32::from(self.layer_inspect) << 5)
+            | (u32::from(self.timelapse_use_internal) << 6)
+    }
+}
+
+/// Принтер у локальній мережі для [`Client::start_local_print`]. Debug не показує ні IP,
+/// ні код доступу.
+#[derive(Clone)]
+pub struct LanTarget {
+    pub ip: String,
+    /// Код доступу з екрана принтера (пароль FTPS і MQTT `bblp`).
+    pub access_code: String,
+    pub name: String,
+}
+impl fmt::Debug for LanTarget {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("LanTarget([redacted])")
+    }
+}
+
+/// Поля в порядку шима (`fill` у `native/shim.cpp`): 0..12 — спільні, 13..15 — лише LAN.
+fn print_fields(request: &PrintRequest, lan: Option<&LanTarget>) -> Result<Vec<String>> {
+    ensure!(request.plate_index > 0, "plate_index is 1-based");
+    ensure!(
+        !request.bed_type.is_empty(),
+        "bed_type must be selected explicitly"
+    );
+    ensure!(
+        request.gcode_3mf.is_file() && request.config_3mf.is_file(),
+        "print archives do not exist"
+    );
+    ensure!(
+        path_string(&request.gcode_3mf)?.ends_with(".gcode.3mf"),
+        "expected a .gcode.3mf archive"
+    );
+    let mut fields = vec![
+        request.dev_id.as_str().to_owned(),
+        request.task_name.clone(),
+        request.project_name.clone(),
+        request.preset_name.clone(),
+        path_string(&request.gcode_3mf)?.to_owned(),
+        path_string(&request.config_3mf)?.to_owned(),
+        request.ams_mapping.clone(),
+        request.ams_mapping2.clone(),
+        request.ams_mapping_info.clone(),
+        request.nozzle_mapping.clone(),
+        request.nozzles_info.clone(),
+        request.bed_type.clone(),
+        request.extra_options.clone(),
+    ];
+    if let Some(lan) = lan {
+        fields.extend([lan.ip.clone(), lan.access_code.clone(), lan.name.clone()]);
+    }
+    Ok(fields)
 }
 
 #[cfg(test)]

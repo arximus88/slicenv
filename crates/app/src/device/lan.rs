@@ -519,6 +519,11 @@ impl Worker {
         let Some(printer) = self.printer(req.dev_id.as_str()).cloned() else {
             return fail(self, tr("принтер не збережений як LAN"));
         };
+        // Відкритий плагін, вибраний користувачем, підписує project_file сам — друк без
+        // Developer Mode. Наш чистий Rust-шлях підпису не має (ключа Bambu в Slicenv немає).
+        if crate::open_plugin::active() {
+            return self.print_open_plugin(req, printer);
+        }
         let job = lan::PrintJob {
             plate: req.plate_index.max(1) as u32,
             remote_name: lan::print::remote_name(&req.project_name),
@@ -562,6 +567,45 @@ impl Worker {
                 crate::tr_format!("Завдання «{name}» надіслано на принтер")
             })
             .map_err(|e| format!("{}: {}", tr("Друк не надіслано"), error_text(&e)));
+            internal.send(Internal::Printed(result)).ok();
+        });
+    }
+
+    /// Друк по LAN через відкритий плагін у дочірньому процесі (`open_plugin::local_print`).
+    fn print_open_plugin(&mut self, req: Box<cloud::PrintRequest>, printer: LanPrinter) {
+        let job = cloud::obn::LocalJob {
+            serial: printer.serial.clone(),
+            ip: printer.ip.to_string(),
+            access_code: printer.access_code.expose().to_owned(),
+            name: printer.name.clone(),
+            gcode_3mf: req.gcode_3mf.clone(),
+            plate: req.plate_index.max(1),
+            task_name: req.task_name.clone(),
+            project_name: req.project_name.clone(),
+            bed_type: req.bed_type.clone(),
+            ams_mapping: req.ams_mapping.clone(),
+            ams_mapping2: req.ams_mapping2.clone(),
+            use_ams: req.use_ams,
+            bed_leveling: req.bed_leveling,
+            flow_cali: req.flow_cali,
+            vibration_cali: req.vibration_cali,
+            layer_inspect: req.layer_inspect,
+            timelapse: req.timelapse,
+        };
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.printing = Some(cancel.clone());
+        let internal = self.internal.clone();
+        let ui = self.ui.clone();
+        thread::spawn(move || {
+            let mut progress = |part: f32| {
+                ui.unbounded_send(CloudMsg::Lan(LanMsg::Upload(Some(part)))).ok();
+            };
+            let result = crate::open_plugin::local_print(&job, &mut progress, &cancel)
+                .map(|_| {
+                    let name = &req.task_name;
+                    crate::tr_format!("Завдання «{name}» надіслано на принтер")
+                })
+                .map_err(|e| format!("{}: {e}", tr("Друк не надіслано")));
             internal.send(Internal::Printed(result)).ok();
         });
     }
