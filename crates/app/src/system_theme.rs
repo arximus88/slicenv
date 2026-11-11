@@ -362,8 +362,21 @@ pub struct Portal {
     pub accent: Option<Rgb>,
 }
 
+/// Налаштування заголовка вікна GNOME (`org.gnome.desktop.wm.preferences`), як їх віддає
+/// портал: розкладка кнопок і дії подвійного, середнього та правого кліку. `None` — ключа немає.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TitlebarPrefs {
+    pub button_layout: Option<String>,
+    pub double_click: Option<String>,
+    pub middle_click: Option<String>,
+    pub right_click: Option<String>,
+}
+
 pub enum Event {
     Omarchy(Option<OmarchyTheme>),
+    /// Змінилися налаштування заголовка вікна (GNOME Tweaks) — без перезапуску.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    Titlebar(TitlebarPrefs),
     /// Лише Linux (xdg-desktop-portal); на macOS/Windows тему ОС дає gpui
     /// (`observe_window_appearance` у `preferences.rs`).
     #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
@@ -425,6 +438,20 @@ async fn read_portal(settings: &ashpd::desktop::settings::Settings) -> Portal {
     }
 }
 
+#[cfg(target_os = "linux")]
+const WM_PREFERENCES: &str = "org.gnome.desktop.wm.preferences";
+
+#[cfg(target_os = "linux")]
+async fn read_titlebar(settings: &ashpd::desktop::settings::Settings) -> TitlebarPrefs {
+    let read = async |key: &str| settings.read::<String>(WM_PREFERENCES, key).await.ok();
+    TitlebarPrefs {
+        button_layout: read("button-layout").await,
+        double_click: read("action-double-click-titlebar").await,
+        middle_click: read("action-middle-click-titlebar").await,
+        right_click: read("action-right-click-titlebar").await,
+    }
+}
+
 /// Одноразове читання порталу — для живої перевірки (`live_portal_read`).
 #[cfg(all(test, target_os = "linux"))]
 pub fn read_portal_blocking() -> anyhow::Result<Portal> {
@@ -448,10 +475,24 @@ async fn portal_loop(tx: async_channel::Sender<Event>) {
     if tx.send(Event::Portal(last)).await.is_err() {
         return;
     }
+    let mut titlebar = read_titlebar(&settings).await;
+    if tx.send(Event::Titlebar(titlebar.clone())).await.is_err() {
+        return;
+    }
     let Ok(mut changes) = settings.receive_setting_changed().await else {
         return;
     };
     while let Some(setting) = changes.next().await {
+        if setting.namespace() == WM_PREFERENCES {
+            let now = read_titlebar(&settings).await;
+            if now != titlebar {
+                titlebar = now.clone();
+                if tx.send(Event::Titlebar(now)).await.is_err() {
+                    return;
+                }
+            }
+            continue;
+        }
         if setting.namespace() != "org.freedesktop.appearance" {
             continue;
         }

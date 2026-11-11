@@ -285,6 +285,19 @@ impl Workspace {
                         );
                         theme::update_system(|s| s.portal = p);
                     }
+                    crate::system_theme::Event::Titlebar(prefs) => {
+                        // Кнопки й дії заголовка: тема не міняється, лише перемальовується вікно.
+                        if theme::update_titlebar(&prefs) {
+                            let alive = this.update_in(cx, |_, window, cx| {
+                                window.refresh();
+                                cx.notify();
+                            });
+                            if alive.is_err() {
+                                return;
+                            }
+                        }
+                        continue;
+                    }
                 }
                 let alive = this.update_in(cx, |ws, window, cx| {
                     if ws.refresh_theme(cx) {
