@@ -878,21 +878,9 @@ impl SliceAttempt<'_> {
         warnings.extend(archive_warnings);
         for name in ["slicer.log", "slicer.err.log", "00000.log"] {
             if let Ok(log) = fs::read_to_string(work.join(name)) {
-                for line in log.lines() {
-                    let lower = line.to_ascii_lowercase();
-                    if [
-                        "unknown option",
-                        "unrecognized",
-                        "substitut",
-                        "out of range",
-                    ]
-                    .iter()
-                    .any(|s| lower.contains(s))
-                    {
-                        let message: String = line.chars().take(500).collect();
-                        if !warnings.contains(&message) && warnings.len() < 20 {
-                            warnings.push(message);
-                        }
+                for message in log.lines().filter_map(log_warning) {
+                    if !warnings.contains(&message) && warnings.len() < 20 {
+                        warnings.push(message);
                     }
                 }
             }
@@ -1157,8 +1145,32 @@ pub fn cache_dir() -> PathBuf {
     paths::cache_dir().join("sliced")
 }
 
+/// Рядок журналу рушія, вартий показу як попередження. «No substitutions performed» —
+/// звіт про те, що нічого не замінено, а не попередження.
+fn log_warning(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    if lower.contains("no substitutions") {
+        return None;
+    }
+    ["unknown option", "unrecognized", "substitut", "out of range"]
+        .iter()
+        .any(|s| lower.contains(s))
+        .then(|| line.chars().take(500).collect())
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn log_warning_skips_reports_of_no_substitutions() {
+        assert_eq!(log_warning("no substitutions performed from file machine.json"), None);
+        assert_eq!(log_warning("[info] loading model"), None);
+        assert_eq!(
+            log_warning("substituted value of layer_height").as_deref(),
+            Some("substituted value of layer_height")
+        );
+        assert!(log_warning("Unknown option --foo").is_some());
+    }
+
     use super::*;
 
     #[test]
