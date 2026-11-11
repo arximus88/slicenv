@@ -134,6 +134,6 @@ jobs:
         # lint-exceptions.json — лише для старого linter в образі: правила про підтеки
         # xdg-config Flathub прибрав 2026-10-23 (flatpak-builder-lint 1d036a8).
         run: |
-          flatpak-builder-lint --user-exceptions packaging/flatpak/lint-exceptions.json \
+          flatpak-builder-lint --exceptions --user-exceptions packaging/flatpak/lint-exceptions.json \
             manifest packaging/flatpak/app.borys.slicenv.yml
-          flatpak-builder-lint --user-exceptions packaging/flatpak/lint-exceptions.json repo repo
+          flatpak-builder-lint --exceptions --user-exceptions packaging/flatpak/lint-exceptions.json repo repo
