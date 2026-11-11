@@ -1801,5 +1801,8 @@
   "Немає рушія нарізки": "No slicing engine",
   "Slicenv нарізає через OrcaSlicer або Bambu Studio. Встанови один із них кнопкою «Встановити рушій» угорі.": "Slicenv slices with OrcaSlicer or Bambu Studio. Install one of them with the “Install engine” button above.",
   "Рушій нарізки не встановлено — без нього немає профілів принтера й нарізки.": "No slicing engine is installed — without one there are no printer profiles and no slicing.",
-  "Не встановлено": "Not installed"
+  "Не встановлено": "Not installed",
+  "{name} встановлено": "{name} installed",
+  "Встановлення рушія…": "Installing engine…",
+  "Встановлення рушія · {}": "Installing engine · {}"
 }
