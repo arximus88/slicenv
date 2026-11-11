@@ -177,7 +177,7 @@ Open Bamboo Networking (OBN) від persano. Цей форк друкує з **D
   - `get_version 02.08.04.99`, покоління V0208;
   - `dlopen` + `create_agent` + `set_config_dir` + `init_log` — 1 мс;
   - `is_user_login false`.
-- `open_plugin_probe --find /home/arx` — повний шлях Slicenv:
+- `open_plugin_probe --find "$HOME"` — повний шлях Slicenv:
   - знайдено дві копії у Flatpak Orca (`plugins/` і колесо маркетплейсу 0.2.48), обидві persano;
   - `install_found` у тимчасовий XDG — 29 мс;
   - `plugin_state` → OpenBamboo;

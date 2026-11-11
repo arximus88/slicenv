@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn search_reply_lowercase_headers_and_source_fallback() {
-        let reply = "HTTP/1.1 200 OK\nst: urn:bambulab-com:device:3dprinter:1\nusn: 01P00A391800001\nlocation: not-an-ip\ndevconnect.bambu.com: lan\ndevmodel.bambu.com: C12\n";
+        let reply = "HTTP/1.1 200 OK\nst: urn:bambulab-com:device:3dprinter:1\nusn: 01P00A000000000\nlocation: not-an-ip\ndevconnect.bambu.com: lan\ndevmodel.bambu.com: C12\n";
         let d = parse_notify(reply, "192.168.0.50".parse().unwrap()).unwrap();
         assert_eq!(d.ip, "192.168.0.50".parse::<IpAddr>().unwrap());
         assert_eq!(d.model, "C12");

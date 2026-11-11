@@ -3,7 +3,7 @@
 Скільки CPU, пам’яті й GPU бере Slicenv на холодному старті, при відкритті файлів, нарізці
 й роботі з камерою, і як це виглядає поруч з оригінальними Bambu Studio та OrcaSlicer.
 
-- Прогін: 2026-11-08, arx-pc: Ryzen 7 7840HS (16 потоків), Radeon 780M (RADV / radeonsi),
+- Прогін: 2026-11-08, машина розробника: Ryzen 7 7840HS (16 потоків), Radeon 780M (RADV / radeonsi),
   64 ГБ, CachyOS, ядро 7.3.1, GNOME 51.
 - Сирі дані (кожен прогін, ряд CPU/RSS/PSS/GPU кожні 0,5 с, події-маркери, підсумок
   «медіана / min / max / n») у репозиторій не входять — `tools/bench/compare.py` пише їх
@@ -527,7 +527,7 @@ SLICENV_PROFILE=1 SLICENV_PROFILE_ALL=1 cargo run --release -p perf --bin slice-
 Потрібні `mutter`, `dbus-run-session`, `xdotool`, `xprop`, `python3` (stdlib), для знімків —
 ImageMagick; для Secret Service — `gnome-keyring-daemon`. Нічого глобально не встановлюється.
 
-### Windows (hometop) — як повторити вручну
+### Windows — як повторити вручну
 
 `compare.py` прив’язаний до Linux (`/proc`, mutter, xdotool) і на Windows не запуститься.
 Переносні частини:
@@ -540,7 +540,7 @@ ImageMagick; для Secret Service — `gnome-keyring-daemon`. Нічого гл
   і `(Get-Process).MainWindowHandle -ne 0` як «вікно з’явилось»;
 - **GPU**: `Get-Counter '\GPU Engine(pid_<PID>*engtype_3D)\Utilization Percentage'` і
   `'\GPU Process Memory(pid_<PID>*)\Dedicated Usage'`;
-- запуск через `ssh hometop` — без інтерактивного робочого столу GUI не матиме вікна; GUI-частину
+- запуск через ssh — без інтерактивного робочого столу GUI не матиме вікна; GUI-частину
   виконувати в сесії користувача (Планувальник завдань з «Run only when user is logged on»).
 
-Ці кроки не запускались: на hometop у цей час працював інший агент.
+Ці кроки не запускались: на Windows-машині в цей час працював інший агент.

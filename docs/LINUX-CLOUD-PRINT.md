@@ -3,7 +3,7 @@
 Стан на 2026-11-09. Експеримент для рішення дизайнера: як Slicenv на Linux має друкувати на
 принтер Bambu не з локальної мережі. Інтерфейс не змінювався. Код експерименту:
 `tools/studio-handoff-probe.sh` (варіант 1), `crates/cloud/examples/open_plugin_probe.rs`
-(варіант 2). Знімки екрана — у `/tmp/linux-studio-handoff/` на arx-pc (поза git).
+(варіант 2). Знімки екрана — у `/tmp/linux-studio-handoff/` на машині розробника (поза git).
 
 **Умови.** Усі запуски: тимчасовий HOME / XDG_*, без мережі (`unshare -rn`, у Flatpak
 `--unshare=network`), Xvfb `:77` з програмним рендерингом (llvmpipe), Ryzen 7 7840HS. Вхід в

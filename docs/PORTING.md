@@ -1,6 +1,6 @@
 # Перенесення на macOS і Windows
 
-Стан на 2026-11-08. Windows 11 перевірено на справжній машині (hometop, розділ «Windows: перевірка
+Стан на 2026-11-08. Windows 11 перевірено на справжній машині (розділ «Windows: перевірка
 на залізі» нижче). Машини з macOS немає: усе, що нижче позначено «лише CI»,
 перевіриться тільки запуском `.github/workflows/package-cross.yml` (workflow_dispatch).
 
@@ -11,10 +11,10 @@
 | `cargo clippy --workspace --all-targets` з allow-list CI | ✅ локально, 1.97.1 | — | — | — |
 | `cargo clippy` lib/bins/tests усього workspace | ✅ | ✅ локально, 1.97.1 (1) | ✅ локально, 1.99.1 (1)(2)(3) | — |
 | `cargo check` lib/bins/tests усього workspace | ✅ | ✅ локально, 1.99.1 (1) | ✅ локально, 1.99.1 (1)(2) | ✅ локально, 1.99.1 (1)(2) |
-| `cargo build --release`, лінкування | ✅ локально | ✅ hometop, 1.99.1 + VS Build Tools 2022 | лише CI | лише CI |
-| `cargo test` headless-крейтів | ✅ локально (тимчасовий HOME/XDG) | ✅ `slicer` на hometop, решта — CI | лише CI | лише CI |
+| `cargo build --release`, лінкування | ✅ локально | ✅ Windows-машина, 1.99.1 + VS Build Tools 2022 | лише CI | лише CI |
+| `cargo test` headless-крейтів | ✅ локально (тимчасовий HOME/XDG) | ✅ `slicer` на Windows-машині, решта — CI | лише CI | лише CI |
 | Пакет | tar/AppImage/deb/rpm (`package.yml`) | zip + Inno Setup, лише CI | .app → zip/dmg, лише CI | те саме |
-| Запуск GUI | ✅ (раніше) | ✅ hometop (RX 6800 XT, Vulkan, 115 %) | ніколи | ніколи |
+| Запуск GUI | ✅ (раніше) | ✅ Windows-машина (RX 6800 XT, Vulkan, 115 %) | ніколи | ніколи |
 
 (1) Крос-перевірка з Linux без SDK цілі: C/C++ build-скрипти `ring` і `manifold-csg-sys`
 замінено заглушками (`--config 'target.<T>.ring_core_0_17_14_.rustc-link-lib=[]'`,
@@ -55,7 +55,7 @@ clippy не запускає.
 | Тема: портал (колір, акцент) | ✅ GNOME/KDE | — | — | xdg-desktop-portal |
 | Тема: світла/темна ОС наживо | через портал | `observe_window_appearance` | `observe_window_appearance` | gpui дає appearance вікна |
 | «Показати у теці» | FileManager1 / xdg-open | `open -R` | `explorer /select,` | `file_menu::reveal` |
-| MCP stdio (`slicenv-mcp`) | ✅ | ✅ hometop (open_project, slice_plate) | лише CI | ізоляція stdout через `dup2` — лише Unix (на Windows плагін не вантажиться) |
+| MCP stdio (`slicenv-mcp`) | ✅ | ✅ Windows-машина (open_project, slice_plate) | лише CI | ізоляція stdout через `dup2` — лише Unix (на Windows плагін не вантажиться) |
 | Support Fins | ✅ | лише CI | лише CI | `curl`, `tar`, Node є в macOS і Windows 10+ |
 
 ## Каталоги
@@ -130,7 +130,7 @@ Studio й OrcaSlicer кладуть свій `data_dir`. Перевірено з
   `PrintParams` має лише `std::string`/`int`/`bool`, макет однаковий. Завантаження —
   `native/dl.hpp` (`dlopen` / `LoadLibraryExW` з UTF-16 шляхом і закріпленням модуля).
   macOS (libc++) — ще ні: там `cfg(bambu_plugin)` вимкнено і FFI — заглушки.
-- Перевірено на hometop (Windows 11): `tests/bridge.rs` і `tests/abi0208.rs` з фейковими
+- Перевірено на Windows 11: `tests/bridge.rs` і `tests/abi0208.rs` з фейковими
   плагінами, зібраними `cl.exe`; справжній плагін 02.08.04.60 для Windows (47,9 МБ) —
   завантаження, `create_agent`/`set_config_dir`/`init_log`/`start`/`destroy_agent` без входу
   (`examples/plugin_probe.rs`), вихід з кодом 0; `get_version` плагіна Orca 2.3 — 01.10.01.09
@@ -222,7 +222,7 @@ Windows 11 10.0.26200, RX 6800 XT, 2560×1440 при 115 % (AppliedDPI 110), с�
     момент уже записано; `--min-save`, `--no-check`, без `--load-*` — те саме.
   Slicenv не вимагає оновлення: `slicer::safe_mode` після аварії нарізає копію без назв
   пластин, далі лише G-code (без `--export-3mf`) і сам збирає `.gcode.3mf`; стадія
-  запам’ятовується для рушія (`cache/sliced/engine-compat.json`). На hometop: Spider (3MF
+  запам’ятовується для рушія (`cache/sliced/engine-compat.json`). На Windows-машині: Spider (3MF
   Bambu 2.7) — 3MF від Orca без назв пластин; куб STL — лише G-code (19 хв 45 с, 4,13 г).
 - **OrcaSlicer 1.9.1 і 2.0.0 (портативні) на Windows** падають у CLI на будь-якому вході, зокрема
   на кубі без профілів, одразу після `PartPlateList::init` — до читання налаштувань і моделі;

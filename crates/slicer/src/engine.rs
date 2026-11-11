@@ -746,7 +746,7 @@ mod version_tests {
 
     #[test]
     fn windows_uninstall_entry_is_matched_by_install_directory() {
-        // Вивід `reg query` з hometop (OrcaSlicer 2.3.0, інсталятор NSIS).
+        // Вивід `reg query` з Windows-машини (OrcaSlicer 2.3.0, інсталятор NSIS).
         let output = concat!(
             "\r\nHKEY_LOCAL_MACHINE\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\OrcaSlicer\r\n",
             "    DisplayName    REG_SZ    OrcaSlicer\r\n",
