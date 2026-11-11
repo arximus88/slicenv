@@ -194,6 +194,7 @@ Xwayland). Скриншоти для Flathub знято саме з цього �
 |---|---|
 | `manifest packaging/flatpak/app.borys.slicenv.yml` | ✅ без зауважень |
 | `repo dist/flatpak/repo` | ⚠️ `appstream-missing-screenshots`, `appstream-screenshots-not-mirrored-in-ostree` — скриншоти за URL `raw.githubusercontent.com/…/v0.1.0/…` недоступні, поки репозиторій приватний і тегу немає. Зникнуть після кроків 1–2 [docs/PUBLISHING.md](../docs/PUBLISHING.md); на інфраструктурі Flathub скриншоти дзеркаляться автоматично. |
+| `finish-args-unnecessary-xdg-config-*` (лише старий linter) | ⚠️ правило про підтеки `xdg-config` Flathub прибрав 2026-10-23; образ CI може мати старішу версію, тому CI передає `packaging/flatpak/lint-exceptions.json`. На Flathub виняток не потрібен. |
 | `appstream <metainfo>` | ⚠️ лише `url-not-reachable` / `screenshot-image-not-found` — та сама причина |
 | `appstreamcli validate --pedantic --no-net` | ✅ |
 
