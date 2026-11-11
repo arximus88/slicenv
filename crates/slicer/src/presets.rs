@@ -802,6 +802,20 @@ impl PresetStore {
         json.get("model_id")?.as_str().map(str::to_owned)
     }
 
+    /// Зображення моделі принтера з профілів рушія (`<вендор>/<модель>_cover.png`), якщо є.
+    /// Нічого не копіюється — лише шлях до файлу встановленого рушія.
+    pub fn printer_cover(&self, vendor: &str, model: &str) -> Option<PathBuf> {
+        if [vendor, model].iter().any(|p| p.is_empty() || p.contains(['/', '\\']) || *p == "." || *p == "..") {
+            return None;
+        }
+        let base = if self.root.join("system/BBL").is_dir() { self.root.join("system") } else { self.root.clone() };
+        let file = format!("{model}_cover.png");
+        // Каталог профілів буває копією без картинок — тоді з `resources` встановлених рушіїв.
+        std::iter::once(base.join(vendor).join(&file))
+            .chain(installed_resource_dirs().into_iter().map(|dir| dir.join("profiles").join(vendor).join(&file)))
+            .find(|path| path.is_file())
+    }
+
     /// Bed visuals declared by the upstream machine model (`bed_model`, `bed_texture`)
     /// and the engine's `images` directory with plate-type SVGs. Paths are only
     /// returned when the files exist; nothing is copied.

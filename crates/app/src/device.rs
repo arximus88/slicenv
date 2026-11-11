@@ -125,6 +125,8 @@ pub struct CloudState {
     pub selected: Option<DeviceId>,
     pub status: Option<PrinterStatus>,
     pub updated: Option<Instant>,
+    /// Випадний список принтерів у діалозі друку (живе, доки діалог відкрито).
+    pub printer_pick: Option<(gpui::Entity<crate::widgets::Dropdown>, gpui::Subscription)>,
     pub sending: bool,
     /// Хмарний друк плагіном хоч раз пройшов у цьому сеансі. За замовчуванням false:
     /// плагін Bambu відхиляє непідписані програми (-26), і пробувати наосліп не варто.
@@ -2941,16 +2943,43 @@ impl Workspace {
             .filter(|sliced| print_paths::model_mismatch(sliced, &model_id))
             .map(|sliced| (model_name(sliced).to_owned(), model_name(&model_id).to_owned()));
         let caps = print_paths::caps(&model_id);
-        // Інші принтери для вибору просто в діалозі (Klipper має власний діалог).
-        let others: Vec<(DeviceId, String, String, bool)> = self
-            .cloud
-            .printers
-            .iter()
-            .map(|p| {
-                let name = if p.name.is_empty() { format!("{} {}", tr("Принтер"), p.dev_id) } else { p.name.clone() };
-                (p.dev_id.clone(), name, model_name(&p.model).to_owned(), p.online || self.cloud.klipper.has(&p.dev_id))
-            })
-            .collect();
+        // Кілька принтерів — випадний список просто в діалозі (Klipper має власний діалог).
+        let state_of = |p: &cloud::Printer| p.online || self.cloud.klipper.has(&p.dev_id);
+        let online = self.cloud.printers.iter().find(|p| p.dev_id == dev).is_some_and(state_of);
+        self.cloud.printer_pick = (self.cloud.printers.len() > 1).then(|| {
+            let devs: Vec<DeviceId> = self.cloud.printers.iter().map(|p| p.dev_id.clone()).collect();
+            let labels: Vec<SharedString> = self
+                .cloud
+                .printers
+                .iter()
+                .map(|p| {
+                    let name = if p.name.is_empty() { format!("{} {}", tr("Принтер"), p.dev_id) } else { p.name.clone() };
+                    // Модель і стан вибраного — у другому рядку; у списку позначено лише офлайн.
+                    if state_of(p) { name } else { format!("{name} · {}", tr("Офлайн")) }.into()
+                })
+                .collect();
+            let current = devs.iter().position(|d| *d == dev);
+            let select = cx.new(|cx| crate::widgets::Dropdown::new(labels, current, cx));
+            let sub = cx.subscribe_in(&select, window, move |ws, state, _: &crate::widgets::DropdownEvent, window, cx| {
+                let Some(picked) = state.read(cx).selected_index().and_then(|i| devs.get(i)).cloned() else {
+                    return;
+                };
+                if ws.cloud.selected.as_ref() == Some(&picked) {
+                    return;
+                }
+                // Інший принтер — той самий діалог заново: маршрути й галочки його власні.
+                ws.close_modal(cx);
+                ws.cloud.select(Some(picked.clone()), window);
+                ws.cloud.send(CloudCmd::Select(picked));
+                ws.open_print_dialog(window, cx);
+            });
+            (select, sub)
+        });
+        // Фото моделі — з профілів рушія; немає файла — іконка.
+        let cover = self
+            .presets
+            .as_ref()
+            .and_then(|s| s.printer_cover("BBL", &format!("Bambu Lab {}", model_name(&model_id))));
         let material_warning = open_frame_warning(&model_id, &types);
         // Маршрут друку перераховується при кожному малюванні: хмара могла підключитися, LAN —
         // упасти. Свідомий вибір користувача (`print_route`) ніколи тихо не підміняється.
@@ -3178,71 +3207,58 @@ impl Workspace {
                     });
 
                 // Куди: принтер одним рядком.
-                // Куди: один принтер — рядок; кілька — вибір просто тут, зі станом кожного.
-                let printer_row = |name: String, model: String, picked: bool| {
-                    div()
-                        .flex()
-                        .flex_1()
-                        .min_w_0()
-                        .items_center()
-                        .gap(px(8.))
-                        .child(ui::icon(IconName::Printer).flex_none().text_color(if picked { z.accent } else { z.text_muted }))
-                        .child(
-                            div()
-                                .min_w_0()
-                                .truncate()
-                                .text_sm()
-                                .when(picked, |d| d.font_weight(gpui::FontWeight::MEDIUM))
-                                .child(name.clone()),
-                        )
-                        .when(!model.is_empty() && model != name, |d| {
-                            d.child(div().flex_none().text_xs().text_color(z.text_muted).child(model.clone()))
-                        })
+                // Куди: фото моделі й два рядки — назва (або випадний список, коли принтерів
+                // кілька) і модель зі станом. Висота стала, щоб діалог не стрибав.
+                let state_line = {
+                    let state = tr(if online { "У мережі" } else { "Офлайн" });
+                    match printer_model.as_ref() {
+                        Some(model) => format!("{model} · {state}"),
+                        None => state,
+                    }
                 };
-                let target = if others.len() > 1 {
-                    div()
-                        .id("print-printers")
-                        .flex()
-                        .flex_col()
-                        .max_h(px(132.))
-                        .overflow_y_scroll()
-                        .children(others.iter().enumerate().map(|(i, (dev, name, model, online))| {
-                            let picked = *dev == route_dev;
-                            let dev = dev.clone();
-                            div()
-                                .id(("print-printer", i))
-                                .flex()
-                                .flex_none()
-                                .items_center()
-                                .gap(px(8.))
-                                .h(px(32.))
-                                .px(px(8.))
-                                .rounded(crate::theme::radius())
-                                .when(picked, |d| d.bg(z.element_selected))
-                                .when(!picked, |d| d.cursor_pointer().hover(|h| h.bg(z.element_hover)))
-                                .child(crate::widgets::radio(("print-printer-radio", i), picked, false))
-                                .child(printer_row(name.clone(), model.clone(), picked))
-                                .child(
-                                    div()
-                                        .flex_none()
-                                        .text_xs()
-                                        .text_color(if *online { z.text_muted } else { z.text_placeholder })
-                                        .child(tr(if *online { "У мережі" } else { "Офлайн" })),
-                                )
-                                .when(!picked, |d| {
-                                    d.on_click(cx.listener(move |ws, _, window, cx| {
-                                        // Інший принтер — той самий діалог заново: маршрути й галочки його власні.
-                                        ws.close_modal(cx);
-                                        ws.cloud.select(Some(dev.clone()), window);
-                                        ws.cloud.send(CloudCmd::Select(dev.clone()));
-                                        ws.open_print_dialog(window, cx);
-                                    }))
-                                })
-                        }))
-                        .into_any_element()
-                } else {
-                    printer_row(printer.clone(), printer_model.clone().unwrap_or_default(), true).into_any_element()
-                };
+                let target = div()
+                    .flex()
+                    .items_center()
+                    .gap(px(10.))
+                    .h(px(56.))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_none()
+                            .items_center()
+                            .justify_center()
+                            .size(px(56.))
+                            .rounded(crate::theme::radius())
+                            .bg(z.editor)
+                            .border_1()
+                            .border_color(z.border_variant)
+                            .overflow_hidden()
+                            .child(match cover.clone() {
+                                Some(path) => gpui::img(path).size(px(52.)).object_fit(gpui::ObjectFit::Contain).into_any_element(),
+                                None => gpui_component::Icon::new(IconName::Printer)
+                                    .size(px(24.))
+                                    .text_color(z.text_muted)
+                                    .into_any_element(),
+                            }),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .gap(px(4.))
+                            .child(match ws.cloud.printer_pick.as_ref() {
+                                Some((select, _)) => select.clone().into_any_element(),
+                                None => div()
+                                    .truncate()
+                                    .text_sm()
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .child(printer.clone())
+                                    .into_any_element(),
+                            })
+                            .child(div().truncate().text_xs().text_color(z.text_muted).child(state_line)),
+                    );
                 let mismatch_note = mismatch.clone().map(|(sliced, target)| {
                     div()
                         .flex()
