@@ -125,7 +125,6 @@ pub struct CloudState {
     pub selected: Option<DeviceId>,
     pub status: Option<PrinterStatus>,
     pub updated: Option<Instant>,
-    pub print: PrintOptions,
     pub sending: bool,
     /// Хмарний друк плагіном хоч раз пройшов у цьому сеансі. За замовчуванням false:
     /// плагін Bambu відхиляє непідписані програми (-26), і пробувати наосліп не варто.
@@ -159,7 +158,8 @@ pub struct CloudState {
 }
 
 /// Галочки модалки «Надіслати на друк» (значення за замовчуванням як у Bambu Studio для A1).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct PrintOptions {
     pub bed_leveling: bool,
     pub flow_cali: bool,
@@ -2461,6 +2461,22 @@ fn print_failure(error: &anyhow::Error) -> String {
     format!("{}: {text}", tr("Друк не надіслано"))
 }
 
+/// Код моделі принтера, для якої нарізано файл (`printer_model_id` у slice_info), напр. `N2S`.
+fn sliced_model_id(gcode_3mf: &std::path::Path) -> Option<String> {
+    use std::io::Read as _;
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(gcode_3mf).ok()?).ok()?;
+    let mut text = String::new();
+    zip.by_name("Metadata/slice_info.config").ok()?.read_to_string(&mut text).ok()?;
+    slice_info_model(&text)
+}
+
+fn slice_info_model(text: &str) -> Option<String> {
+    let rest = &text[text.find(r#"key="printer_model_id""#)?..];
+    let rest = &rest[rest.find("value=\"")? + 7..];
+    let value = rest[..rest.find('"')?].trim();
+    (!value.is_empty()).then(|| value.to_owned())
+}
+
 /// Типи філаменту з нарізаного `.gcode.3mf` (`filament_type` у project_settings).
 fn filament_types(gcode_3mf: &std::path::Path) -> Vec<String> {
     use std::io::Read as _;
@@ -2536,13 +2552,8 @@ impl Workspace {
             && matches!(self.slice_state, crate::workspace::SliceState::Done(_))
             && self.cloud.selected.as_ref().is_some_and(|dev| {
                 let printer = self.cloud.printers.iter().find(|p| &p.dev_id == dev);
-                let profile_model = self
-                    .presets
-                    .as_ref()
-                    .and_then(|s| s.machine_model_id(&self.selection.machine));
-                printer
-                    .zip(profile_model.as_ref())
-                    .is_some_and(|(printer, model)| printer.model.eq_ignore_ascii_case(model))
+                // Профіль для іншої моделі не ховає діалог: там видно чому не можна й інші принтери.
+                printer.is_some_and(|printer| !printer.model.is_empty())
             })
             && !self.cloud.sending
     }
@@ -2917,6 +2928,29 @@ impl Workspace {
         let fake_abs = fake_route.as_deref().is_some_and(|v| v.ends_with("+abs"));
         let fake_route: Option<String> = fake_route.map(|v| v.trim_end_matches("+abs").to_owned());
         let types = if fake_abs { vec!["ABS".to_owned()] } else { filament_types(&gcode_3mf) };
+        // Нарізано для іншої моделі, ніж вибраний принтер: мережею й хмарою такий файл не
+        // надсилається — діалог каже чому й дає вибрати інший принтер. Bambu Connect лишається:
+        // принтер вибирають уже там. `SLICENV_FAKE_PRINT_MODEL=<код>` підставляє модель нарізки.
+        let sliced_model = paths::env("SLICENV_FAKE_PRINTER")
+            .and(paths::env("SLICENV_FAKE_PRINT_MODEL"))
+            .and_then(|v| v.to_str().map(str::to_owned))
+            .or_else(|| sliced_model_id(&gcode_3mf))
+            .or_else(|| self.presets.as_ref().and_then(|s| s.machine_model_id(&self.selection.machine)));
+        let mismatch = sliced_model
+            .as_deref()
+            .filter(|sliced| print_paths::model_mismatch(sliced, &model_id))
+            .map(|sliced| (model_name(sliced).to_owned(), model_name(&model_id).to_owned()));
+        let caps = print_paths::caps(&model_id);
+        // Інші принтери для вибору просто в діалозі (Klipper має власний діалог).
+        let others: Vec<(DeviceId, String, String, bool)> = self
+            .cloud
+            .printers
+            .iter()
+            .map(|p| {
+                let name = if p.name.is_empty() { format!("{} {}", tr("Принтер"), p.dev_id) } else { p.name.clone() };
+                (p.dev_id.clone(), name, model_name(&p.model).to_owned(), p.online || self.cloud.klipper.has(&p.dev_id))
+            })
+            .collect();
         let material_warning = open_frame_warning(&model_id, &types);
         // Маршрут друку перераховується при кожному малюванні: хмара могла підключитися, LAN —
         // упасти. Свідомий вибір користувача (`print_route`) ніколи тихо не підміняється.
@@ -2943,7 +2977,7 @@ impl Workspace {
         };
         let route_dev = dev.clone();
         let send = Rc::new(move |ws: &mut Workspace, via_cloud: bool, cx: &mut Context<Workspace>| {
-            let o = ws.cloud.print;
+            let o = ws.preferences.print_options_for(dev.as_str());
             let slots = filament_slots(&gcode_3mf);
             let mut req = cloud::PrintRequest::new(
                 dev.clone(),
@@ -2955,7 +2989,7 @@ impl Workspace {
             req.preset_name = format!("{project}_plate_{plate}");
             req.bed_type = bed_type.clone();
             req.bed_leveling = o.bed_leveling;
-            req.flow_cali = o.flow_cali;
+            req.flow_cali = o.flow_cali && caps.flow_cali;
             req.vibration_cali = o.vibration_cali;
             req.timelapse = o.timelapse;
             // A1 без AMS: усі слоти — зовнішня котушка.
@@ -2978,7 +3012,8 @@ impl Workspace {
         self.open_modal(
             Rc::new(move |ws, _, cx| {
                 let z = zed();
-                let opts = ws.cloud.print;
+                let opts = ws.preferences.print_options_for(route_dev.as_str());
+                let opts_dev = route_dev.clone();
                 let toggle = |id: &'static str,
                               label: &'static str,
                               checked: bool,
@@ -2987,10 +3022,17 @@ impl Workspace {
                     crate::widgets::checkbox(id, checked, false)
                         .h(px(28.))
                         .child(tr(label))
-                        .on_click(cx.listener(move |ws, _, _, cx| {
-                            set(&mut ws.cloud.print, !checked);
-                            cx.notify();
-                        }))
+                        .on_click({
+                            let dev = opts_dev.clone();
+                            cx.listener(move |ws, _, _, cx| {
+                                // Вибір запам’ятовується окремо для кожного принтера.
+                                let mut o = ws.preferences.print_options_for(dev.as_str());
+                                set(&mut o, !checked);
+                                ws.preferences.print_options.insert(dev.as_str().to_owned(), o);
+                                ws.save_preferences(cx);
+                                cx.notify();
+                            })
+                        })
                 };
                 let cloud_print = obn_cloud || (!open_plugin && ws.cloud.cloud_print_works) || env_cloud;
                 let inputs = {
@@ -3136,22 +3178,85 @@ impl Workspace {
                     });
 
                 // Куди: принтер одним рядком.
-                let target = div()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.))
-                    .child(ui::icon(IconName::Printer).flex_none().text_color(z.accent))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_sm()
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .child(printer.clone()),
-                    )
-                    .when_some(printer_model.clone(), |d, model| {
-                        d.child(div().flex_none().text_xs().text_color(z.text_muted).child(model))
-                    });
+                // Куди: один принтер — рядок; кілька — вибір просто тут, зі станом кожного.
+                let printer_row = |name: String, model: String, picked: bool| {
+                    div()
+                        .flex()
+                        .flex_1()
+                        .min_w_0()
+                        .items_center()
+                        .gap(px(8.))
+                        .child(ui::icon(IconName::Printer).flex_none().text_color(if picked { z.accent } else { z.text_muted }))
+                        .child(
+                            div()
+                                .min_w_0()
+                                .truncate()
+                                .text_sm()
+                                .when(picked, |d| d.font_weight(gpui::FontWeight::MEDIUM))
+                                .child(name.clone()),
+                        )
+                        .when(!model.is_empty() && model != name, |d| {
+                            d.child(div().flex_none().text_xs().text_color(z.text_muted).child(model.clone()))
+                        })
+                };
+                let target = if others.len() > 1 {
+                    div()
+                        .id("print-printers")
+                        .flex()
+                        .flex_col()
+                        .max_h(px(132.))
+                        .overflow_y_scroll()
+                        .children(others.iter().enumerate().map(|(i, (dev, name, model, online))| {
+                            let picked = *dev == route_dev;
+                            let dev = dev.clone();
+                            div()
+                                .id(("print-printer", i))
+                                .flex()
+                                .flex_none()
+                                .items_center()
+                                .gap(px(8.))
+                                .h(px(32.))
+                                .px(px(8.))
+                                .rounded(crate::theme::radius())
+                                .when(picked, |d| d.bg(z.element_selected))
+                                .when(!picked, |d| d.cursor_pointer().hover(|h| h.bg(z.element_hover)))
+                                .child(crate::widgets::radio(("print-printer-radio", i), picked, false))
+                                .child(printer_row(name.clone(), model.clone(), picked))
+                                .child(
+                                    div()
+                                        .flex_none()
+                                        .text_xs()
+                                        .text_color(if *online { z.text_muted } else { z.text_placeholder })
+                                        .child(tr(if *online { "У мережі" } else { "Офлайн" })),
+                                )
+                                .when(!picked, |d| {
+                                    d.on_click(cx.listener(move |ws, _, window, cx| {
+                                        // Інший принтер — той самий діалог заново: маршрути й галочки його власні.
+                                        ws.close_modal(cx);
+                                        ws.cloud.select(Some(dev.clone()), window);
+                                        ws.cloud.send(CloudCmd::Select(dev.clone()));
+                                        ws.open_print_dialog(window, cx);
+                                    }))
+                                })
+                        }))
+                        .into_any_element()
+                } else {
+                    printer_row(printer.clone(), printer_model.clone().unwrap_or_default(), true).into_any_element()
+                };
+                let mismatch_note = mismatch.clone().map(|(sliced, target)| {
+                    div()
+                        .flex()
+                        .items_start()
+                        .gap(px(6.))
+                        .p(px(8.))
+                        .rounded(crate::theme::radius())
+                        .border_1()
+                        .border_color(z.warning)
+                        .child(ui::icon(IconName::TriangleAlert).flex_none().text_color(z.warning))
+                        .child(div().min_w_0().text_xs().whitespace_normal().child(crate::tr_format!(
+                            "Файл нарізано для {sliced}, а вибрано {target}. Виберіть інший принтер або наріжте заново з профілем цього принтера — напряму такий файл не надсилається."
+                        )))
+                });
 
                 // Як: усі маршрути видно одразу, кожен зі станом. Вибраний розгорнуто: що
                 // станеться або чого бракує й одна дія. Порядок рядків не змінюється.
@@ -3322,6 +3427,7 @@ impl Workspace {
                         .child(job)
                         .child(section("Принтер"))
                         .child(target)
+                        .children(mismatch_note)
                         .child(section("Як надіслати"))
                         .children(rows)
                         .children(notice)
@@ -3330,13 +3436,19 @@ impl Workspace {
                                 div()
                                     .flex()
                                     .flex_wrap()
-                                    .children([
-                                        toggle("opt-level", "Вирівнювання столу", opts.bed_leveling, |o, v| o.bed_leveling = v, cx),
-                                        toggle("opt-flow", "Калібрування потоку", opts.flow_cali, |o, v| o.flow_cali = v, cx),
-                                        toggle("opt-vib", "Калібрування вібрацій", opts.vibration_cali, |o, v| o.vibration_cali = v, cx),
-                                        toggle("opt-timelapse", "Таймлапс", opts.timelapse, |o, v| o.timelapse = v, cx),
-                                    ]
-                                    .map(|t| div().w_1_2().min_w_0().child(t))),
+                                    .children(
+                                        [
+                                            Some(toggle("opt-level", "Вирівнювання столу", opts.bed_leveling, |o, v| o.bed_leveling = v, cx)),
+                                            // Лише моделі, які це вміють (P1P і P1S — ні).
+                                            caps.flow_cali
+                                                .then(|| toggle("opt-flow", "Калібрування потоку", opts.flow_cali, |o, v| o.flow_cali = v, cx)),
+                                            Some(toggle("opt-vib", "Калібрування вібрацій", opts.vibration_cali, |o, v| o.vibration_cali = v, cx)),
+                                            Some(toggle("opt-timelapse", "Таймлапс", opts.timelapse, |o, v| o.timelapse = v, cx)),
+                                        ]
+                                        .into_iter()
+                                        .flatten()
+                                        .map(|t| div().w_1_2().min_w_0().child(t)),
+                                    ),
                             )
                         }),
                     Some(
@@ -3362,7 +3474,9 @@ impl Workspace {
                                     .on_click(cx.listener(|ws, _, _, cx| ws.close_modal(cx))),
                             )
                             .child({
-                                let ready = plan.ready();
+                                // Інша модель: мережею й хмарою не надсилаємо; Bambu Connect сам питає принтер.
+                                let direct = matches!(plan.route, Some(print_paths::Route::Lan | print_paths::Route::Cloud));
+                                let ready = plan.ready() && !(direct && mismatch.is_some());
                                 let route = plan.route;
                                 let send = send.clone();
                                 let connect_send = connect_send.clone();
@@ -3390,6 +3504,14 @@ impl Workspace {
 #[cfg(test)]
 mod print_dialog_tests {
     use super::*;
+
+    #[test]
+    fn sliced_model_comes_from_slice_info() {
+        let text = r#"<config><header/><plate><metadata key="index" value="1"/><metadata key="printer_model_id" value="N2S"/></plate></config>"#;
+        assert_eq!(slice_info_model(text).as_deref(), Some("N2S"));
+        assert_eq!(slice_info_model(r#"<metadata key="printer_model_id" value=""/>"#), None);
+        assert_eq!(slice_info_model("<config/>"), None);
+    }
 
     #[test]
     fn bed_type_reads_like_the_plate_picker() {

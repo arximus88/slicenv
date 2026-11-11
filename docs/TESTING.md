@@ -205,6 +205,7 @@ PNG без вікна: `cargo run --release -p viewer --example gcode_preview --
 | Змінна | Що дає |
 |---|---|
 | `SLICENV_FAKE_PRINTER=1` (`=idle`) | один хмарний принтер зі статусом, історією, мініатюрою |
+| `SLICENV_FAKE_PRINT_MODEL=<код>` | разом із `SLICENV_FAKE_PRINTER`: діалог друку вважає, що файл нарізано для цієї моделі (`N7`, `C12`…) — попередження про іншу модель |
 | `SLICENV_FAKE_PRINTERS=N` | ще N−1 фіктивних принтерів (масштаб списку доку) |
 | `SLICENV_FAKE_FOUND=N` | N «знайдених у мережі» Bambu (LAN вимкнено) |
 | `SLICENV_FAKE_CLOUD=cloud-off\|login\|no-server\|connecting` | стан рядка Bambu Cloud |

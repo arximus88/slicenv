@@ -256,9 +256,50 @@ pub fn plan(i: Inputs) -> Plan {
     }
 }
 
+/// Що модель уміє перед друком — за `resources/printers/<код>.json` Bambu Studio
+/// (`support_flow_calibration`). Вирівнювання столу й таймлапс там є в усіх моделей; невідома
+/// модель — усе доступно, як і раніше.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Caps {
+    pub flow_cali: bool,
+}
+
+pub fn caps(model: &str) -> Caps {
+    Caps { flow_cali: !matches!(model.trim().to_ascii_uppercase().as_str(), "C11" | "C12") }
+}
+
+/// Файл нарізано для іншої моделі, ніж принтер-адресат. Порівнюються назви моделей, бо в однієї
+/// моделі буває кілька кодів (H2C: `O1C` і `O1C2`); невідоме з будь-якого боку — не розбіжність.
+pub fn model_mismatch(sliced: &str, target: &str) -> bool {
+    let (sliced, target) = (sliced.trim(), target.trim());
+    !sliced.is_empty()
+        && !target.is_empty()
+        && !::lan::model_name(&sliced.to_ascii_uppercase())
+            .eq_ignore_ascii_case(::lan::model_name(&target.to_ascii_uppercase()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flow_calibration_is_hidden_only_where_the_printer_lacks_it() {
+        for model in ["N2S", "N1", "N7", "BL-P001", "O1D", "", "unknown"] {
+            assert!(caps(model).flow_cali, "{model}");
+        }
+        for model in ["C11", "C12", "c12"] {
+            assert!(!caps(model).flow_cali, "{model}");
+        }
+    }
+
+    #[test]
+    fn mismatch_needs_two_known_different_models() {
+        assert!(model_mismatch("N2S", "N7"));
+        assert!(!model_mismatch("N2S", "n2s"));
+        assert!(!model_mismatch("O1C", "O1C2"), "one model, two codes");
+        assert!(!model_mismatch("", "N7"));
+        assert!(!model_mismatch("N2S", ""));
+    }
 
     fn inputs(lan: Lan, cloud: Cloud, cloud_print: bool) -> Inputs {
         Inputs {

@@ -1816,5 +1816,7 @@
   "Не додано": "Not added",
   "Як надіслати": "Send via",
   "Перед друком": "Before printing",
-  "Відкрити в Bambu Connect": "Open in Bambu Connect"
+  "Відкрити в Bambu Connect": "Open in Bambu Connect",
+  "У мережі": "Online",
+  "Файл нарізано для {sliced}, а вибрано {target}. Виберіть інший принтер або наріжте заново з профілем цього принтера — напряму такий файл не надсилається.": "The file was sliced for {sliced}, but {target} is selected. Pick another printer or slice again with this printer's profile — such a file is not sent directly."
 }
