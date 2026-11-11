@@ -1804,5 +1804,8 @@
   "Не встановлено": "Not installed",
   "{name} встановлено": "{name} installed",
   "Встановлення рушія…": "Installing engine…",
-  "Встановлення рушія · {}": "Installing engine · {}"
+  "Встановлення рушія · {}": "Installing engine · {}",
+  "Згорнути": "Minimize",
+  "Відновити розмір": "Restore",
+  "Розгорнути": "Maximize"
 }

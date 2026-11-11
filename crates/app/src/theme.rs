@@ -4,7 +4,8 @@
 //! а власні елементи (доки, вкладки, рядок стану) беруть кольори з [`zed()`].
 //!
 //! Палітра не фіксована: [`refresh`] вибирає вбудовану One Dark/One Light, палітру Omarchy
-//! або вбудовану з системним акцентом порталу — див. [`crate::system_theme`].
+//! або вбудовану з системним акцентом порталу — див. [`crate::system_theme`]. На GNOME вбудована
+//! палітра — Adwaita, а форми заголовка й плаваючих панелей задає [`Skin`].
 
 use std::{
     borrow::Cow,
@@ -45,6 +46,9 @@ pub struct Zed {
     pub accent: Hsla,
     pub accent_bg: Hsla,
     pub accent_border: Hsla,
+    /// Заливка головної кнопки у шкірі GNOME і текст на ній.
+    pub accent_fill: Hsla,
+    pub on_accent_fill: Hsla,
     pub success: Hsla,
     pub warning: Hsla,
     pub error: Hsla,
@@ -71,6 +75,8 @@ pub struct Swatch {
     pub text_placeholder: Rgb,
     pub accent: Rgb,
     pub accent_border: Rgb,
+    /// Акцент як заливка (кнопка головної дії в шкірі GNOME); у палітрах Zed — той самий акцент.
+    pub accent_fill: Rgb,
     pub success: Rgb,
     pub warning: Rgb,
     pub error: Rgb,
@@ -100,6 +106,7 @@ pub const ONE_DARK_SWATCH: Swatch = Swatch {
     text_placeholder: h(0x878a98),
     accent: h(0x74ade8),
     accent_border: h(0x293b5b),
+    accent_fill: h(0x74ade8),
     success: h(0xa1c181),
     warning: h(0xdec184),
     error: h(0xd07277),
@@ -126,6 +133,7 @@ pub const ONE_LIGHT_SWATCH: Swatch = Swatch {
     text_placeholder: h(0x778395),
     accent: h(0x2867be),
     accent_border: h(0xa9c1e3),
+    accent_fill: h(0x2867be),
     success: h(0x34764a),
     warning: h(0x93620a),
     error: h(0xb33b43),
@@ -133,6 +141,82 @@ pub const ONE_LIGHT_SWATCH: Swatch = Swatch {
     cyan: h(0x287c88),
     printer_green: h(0x008f38),
 };
+
+/// Adwaita (libadwaita 1.x), темна: нейтральні сірі поверхні, заголовок світліший за вікно.
+pub const ADWAITA_DARK_SWATCH: Swatch = Swatch {
+    background: h(0x2e2e32),
+    panel: h(0x222226),
+    editor: h(0x1d1d20),
+    border: h(0x3f3f44),
+    border_variant: h(0x36363a),
+    border_focused: h(0x2f5f9e),
+    field_border: h(0x47474c),
+    element: h(0x303034),
+    element_hover: h(0x3a3a3f),
+    element_selected: h(0x48484d),
+    text: h(0xffffff),
+    text_muted: h(0xb8b8bd),
+    text_placeholder: h(0x8f8f95),
+    accent: h(0x78aeed),
+    accent_border: h(0x2b4467),
+    accent_fill: h(0x3584e4),
+    success: h(0x78e9ab),
+    warning: h(0xffc252),
+    error: h(0xff938c),
+    magenta: h(0xdc8add),
+    cyan: h(0x5bc8d8),
+    printer_green: h(0x00ae42),
+};
+
+/// Adwaita, світла: білий заголовок, сірі бічні панелі, майже біла робоча область.
+pub const ADWAITA_LIGHT_SWATCH: Swatch = Swatch {
+    background: h(0xffffff),
+    panel: h(0xebebed),
+    editor: h(0xfafafb),
+    border: h(0xcfcfd3),
+    border_variant: h(0xdadade),
+    border_focused: h(0x1c71d8),
+    field_border: h(0xc4c4c9),
+    element: h(0xffffff),
+    element_hover: h(0xe0e0e4),
+    element_selected: h(0xd3d3d8),
+    text: h(0x242428),
+    text_muted: h(0x57575d),
+    text_placeholder: h(0x77777e),
+    accent: h(0x1a62c0),
+    accent_border: h(0xa8c4ea),
+    accent_fill: h(0x3584e4),
+    success: h(0x00713a),
+    warning: h(0x8a5000),
+    error: h(0xc01c28),
+    magenta: h(0x8d3aa8),
+    cyan: h(0x0b6f80),
+    printer_green: h(0x008f38),
+};
+
+/// Мова форм: кольори задає [`Swatch`], а заокруглення, заголовок вікна й плаваючі
+/// панелі — шкіра. Zed — щільний плаский вигляд; GNOME — рамка й вкладки як у libadwaita.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Skin {
+    #[default]
+    Zed,
+    Gnome,
+}
+
+impl Skin {
+    /// `SLICENV_SKIN=zed|gnome` перекриває все; інакше GNOME — за `XDG_CURRENT_DESKTOP`.
+    pub fn detect(forced: Option<&str>, desktop: Option<&str>) -> Self {
+        match forced.map(str::to_ascii_lowercase).as_deref() {
+            Some("gnome") => return Self::Gnome,
+            Some("zed") => return Self::Zed,
+            _ => {}
+        }
+        let gnome = desktop.is_some_and(|d| {
+            d.split(':').any(|part| part.eq_ignore_ascii_case("gnome"))
+        });
+        if gnome { Self::Gnome } else { Self::Zed }
+    }
+}
 
 impl Swatch {
     pub fn zed(&self) -> Zed {
@@ -154,6 +238,8 @@ impl Swatch {
             accent: c(self.accent),
             accent_bg: self.accent.hsla(0x1a),
             accent_border: c(self.accent_border),
+            accent_fill: c(self.accent_fill),
+            on_accent_fill: c(self.on_fill()),
             success: c(self.success),
             warning: c(self.warning),
             error: c(self.error),
@@ -197,6 +283,7 @@ impl Swatch {
 
     /// Системний акцент (портал): акцент, рамка фокуса й акцентна межа; контраст тексту ≥ AA.
     pub fn with_accent(mut self, accent: Rgb) -> Self {
+        self.accent_fill = accent;
         self.accent = ensure_contrast(accent, &self.accent_surfaces(), AA_TEXT);
         self.border_focused = self.accent.mix(self.editor, 0.35);
         self.accent_border = self.accent.mix(self.editor, 0.65);
@@ -238,6 +325,7 @@ impl Swatch {
             text_placeholder: fg.mix(bg, 0.45),
             accent: t.accent,
             accent_border: base.accent_border,
+            accent_fill: t.accent,
             success: t.green,
             warning: t.yellow,
             error: t.red,
@@ -256,6 +344,15 @@ impl Swatch {
         s.with_accent(t.accent)
     }
 
+    /// Текст на заливці [`Swatch::accent_fill`]: білий, як у libadwaita, поки його видно.
+    fn on_fill(&self) -> Rgb {
+        if contrast(WHITE, self.accent_fill) >= AA_UI {
+            WHITE
+        } else {
+            h(0x1b1b1f)
+        }
+    }
+
     /// Текст на заливці акцентом (кнопки primary, бейджі).
     fn on_accent(&self) -> Rgb {
         let dark = self.editor.mix(BLACK, 0.5).mix(h(0x1b2029), 0.5);
@@ -268,6 +365,7 @@ impl Swatch {
 
 /// Поточна палітра (і чи вона світла). `None` — ще не застосована: One Dark.
 static CURRENT: RwLock<Option<(Swatch, bool, bool)>> = RwLock::new(None);
+static SKIN: RwLock<Skin> = RwLock::new(Skin::Zed);
 
 fn current() -> (Swatch, bool, bool) {
     CURRENT
@@ -275,6 +373,81 @@ fn current() -> (Swatch, bool, bool) {
         .ok()
         .and_then(|c| *c)
         .unwrap_or((ONE_DARK_SWATCH, false, false))
+}
+
+pub fn skin() -> Skin {
+    SKIN.read().map(|s| *s).unwrap_or_default()
+}
+
+/// Шкіра GNOME: заголовок і плаваючі панелі малюються у формах libadwaita.
+pub fn gnome() -> bool {
+    skin() == Skin::Gnome
+}
+
+/// Кнопка керування вікном у заголовку шкіри GNOME.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WindowButton {
+    Minimize,
+    Maximize,
+    Close,
+}
+
+/// Кнопки ліворуч і праворуч від вмісту заголовка.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WindowButtons {
+    pub left: Vec<WindowButton>,
+    pub right: Vec<WindowButton>,
+}
+
+impl WindowButtons {
+    /// Розбирає `org.gnome.desktop.wm.preferences button-layout`, наприклад
+    /// `'appmenu:minimize,maximize,close'` чи `'close,minimize:'`. Нерозпізнане — лише
+    /// «закрити» праворуч, як у типовому GNOME.
+    pub fn parse(layout: &str) -> Self {
+        let side = |part: &str| -> Vec<WindowButton> {
+            part.split(',')
+                .filter_map(|name| match name.trim() {
+                    "minimize" => Some(WindowButton::Minimize),
+                    "maximize" => Some(WindowButton::Maximize),
+                    "close" => Some(WindowButton::Close),
+                    _ => None,
+                })
+                .collect()
+        };
+        let layout = layout.trim().trim_matches(|c| c == '\'' || c == '"');
+        match layout.split_once(':') {
+            Some((left, right)) => Self { left: side(left), right: side(right) },
+            None => Self { left: Vec::new(), right: vec![WindowButton::Close] },
+        }
+    }
+}
+
+static WINDOW_BUTTONS: RwLock<Option<WindowButtons>> = RwLock::new(None);
+
+pub fn window_buttons() -> WindowButtons {
+    WINDOW_BUTTONS
+        .read()
+        .ok()
+        .and_then(|b| b.clone())
+        .unwrap_or_else(|| WindowButtons::parse(""))
+}
+
+/// Розкладка з налаштувань GNOME; без `gsettings` лишається типова.
+fn load_window_buttons() {
+    let output = std::process::Command::new("gsettings")
+        .args(["get", "org.gnome.desktop.wm.preferences", "button-layout"])
+        .output();
+    if let Ok(output) = output
+        && output.status.success()
+        && let Ok(mut slot) = WINDOW_BUTTONS.write()
+    {
+        *slot = Some(WindowButtons::parse(&String::from_utf8_lossy(&output.stdout)));
+    }
+}
+
+/// Заокруглення звичайних кнопок і полів.
+pub fn radius() -> gpui::Pixels {
+    gpui::px(if gnome() { 6. } else { 4. })
 }
 
 pub fn is_light() -> bool {
@@ -293,7 +466,8 @@ pub fn zed_hex_background() -> String {
 /// Фон 3D-сцени, коли його задає тема ОС (Omarchy); `None` — вбудовані фони рендерера.
 pub fn scene_background() -> Option<Rgb> {
     let (swatch, _, omarchy) = current();
-    omarchy.then_some(swatch.editor)
+    // Adwaita теж задає сцену: вбудований синюватий фон випадав би з нейтральної сірої палітри.
+    (omarchy || gnome()).then_some(swatch.editor)
 }
 
 pub const UI_FONT: &str = "IBM Plex Sans";
@@ -554,6 +728,8 @@ pub struct SystemState {
     pub omarchy: Option<OmarchyTheme>,
     /// Початкова підказка gpui (`window_appearance`), поки портал ще не відповів.
     pub appearance_dark: Option<bool>,
+    /// Форми й палітра середовища: на GNOME — Adwaita.
+    pub skin: Skin,
 }
 
 static SYSTEM: Mutex<SystemState> = Mutex::new(SystemState {
@@ -563,6 +739,7 @@ static SYSTEM: Mutex<SystemState> = Mutex::new(SystemState {
     },
     omarchy: None,
     appearance_dark: None,
+    skin: Skin::Zed,
 });
 
 pub fn update_system(update: impl FnOnce(&mut SystemState)) {
@@ -581,6 +758,7 @@ pub struct Resolved {
     pub swatch: Swatch,
     pub light: bool,
     pub omarchy: bool,
+    pub skin: Skin,
     pub mono_font: Option<String>,
     pub label: String,
     pub source: Source,
@@ -606,6 +784,7 @@ pub fn resolve(choice: ThemeChoice, omarchy_font: bool, sys: &SystemState) -> Re
             swatch: Swatch::from_omarchy(t),
             light: t.light,
             omarchy: true,
+            skin: Skin::Zed,
             mono_font: omarchy_font.then(|| t.mono_font.clone()).flatten(),
             source: Source::Omarchy(t.name.clone()),
             label: format!(
@@ -628,10 +807,11 @@ pub fn resolve(choice: ThemeChoice, omarchy_font: bool, sys: &SystemState) -> Re
             None => sys.appearance_dark == Some(false),
         },
     };
-    let base = if light {
-        ONE_LIGHT_SWATCH
-    } else {
-        ONE_DARK_SWATCH
+    let base = match (sys.skin, light) {
+        (Skin::Gnome, true) => ADWAITA_LIGHT_SWATCH,
+        (Skin::Gnome, false) => ADWAITA_DARK_SWATCH,
+        (Skin::Zed, true) => ONE_LIGHT_SWATCH,
+        (Skin::Zed, false) => ONE_DARK_SWATCH,
     };
     // «Omarchy» без Omarchy поводиться як «Системна».
     let system = matches!(choice, ThemeChoice::System | ThemeChoice::Omarchy);
@@ -647,6 +827,7 @@ pub fn resolve(choice: ThemeChoice, omarchy_font: bool, sys: &SystemState) -> Re
         swatch: accent.map_or(base, |a| base.with_accent(a)),
         light,
         omarchy: false,
+        skin: sys.skin,
         mono_font: None,
         label,
         source: if system {
@@ -677,6 +858,9 @@ fn apply_resolved(r: &Resolved, cx: &mut App) {
     if let Ok(mut c) = CURRENT.write() {
         *c = Some((r.swatch, r.light, r.omarchy));
     }
+    if let Ok(mut skin) = SKIN.write() {
+        *skin = r.skin;
+    }
     let mode = if r.light {
         ThemeMode::Light
     } else {
@@ -689,6 +873,14 @@ fn apply_resolved(r: &Resolved, cx: &mut App) {
         light_theme_json()
     } else {
         theme_json(&r.swatch, r.light, &r.label)
+    };
+    // Форми компонентів бібліотеки (поля, списки, меню) — теж заокругленіші.
+    let source = if r.skin == Skin::Gnome {
+        source
+            .replacen("\"radius\": 4", "\"radius\": 6", 1)
+            .replacen("\"radius.lg\": 6", "\"radius.lg\": 10", 1)
+    } else {
+        source
     };
     let config: ThemeConfig = serde_json::from_str(&source).expect("тема — валідний JSON");
     let config = Rc::new(config);
@@ -726,9 +918,17 @@ pub fn apply(cx: &mut App) {
         gpui::WindowAppearance::Dark | gpui::WindowAppearance::VibrantDark
     );
     let omarchy = crate::system_theme::load_omarchy();
+    let skin = Skin::detect(
+        paths::env("SLICENV_SKIN").as_deref().and_then(|v| v.to_str()),
+        std::env::var("XDG_CURRENT_DESKTOP").ok().as_deref(),
+    );
+    if skin == Skin::Gnome {
+        load_window_buttons();
+    }
     update_system(|s| {
         s.appearance_dark = Some(dark);
         s.omarchy = omarchy;
+        s.skin = skin;
     });
 }
 
@@ -812,6 +1012,8 @@ mod tests {
     fn builtin_palettes_and_portal_accents_stay_accessible() {
         assert_aa(&ONE_DARK_SWATCH, "one dark", false, false);
         assert_aa(&ONE_LIGHT_SWATCH, "one light", false, false);
+        assert_aa(&ADWAITA_DARK_SWATCH, "adwaita dark", true, true);
+        assert_aa(&ADWAITA_LIGHT_SWATCH, "adwaita light", true, true);
         // Типові акценти GNOME 47+: синій, жовтий (поганий на світлому), сланцевий.
         for accent in [
             h(0x3584e4),
@@ -832,6 +1034,8 @@ mod tests {
                 true,
                 false,
             );
+            assert_aa(&ADWAITA_DARK_SWATCH.with_accent(accent), "adwaita dark+accent", true, true);
+            assert_aa(&ADWAITA_LIGHT_SWATCH.with_accent(accent), "adwaita light+accent", true, true);
         }
     }
 
@@ -866,6 +1070,37 @@ mod tests {
                 .is_none()
         );
         assert!(!resolve(ThemeChoice::Light, true, &sys).omarchy);
+    }
+
+    #[test]
+    fn gnome_gets_adwaita_and_omarchy_keeps_its_own_look() {
+        assert_eq!(Skin::detect(None, Some("GNOME")), Skin::Gnome);
+        assert_eq!(Skin::detect(None, Some("ubuntu:GNOME")), Skin::Gnome);
+        assert_eq!(Skin::detect(None, Some("Hyprland")), Skin::Zed);
+        assert_eq!(Skin::detect(None, Some("GNOME-Flashback")), Skin::Zed);
+        assert_eq!(Skin::detect(None, None), Skin::Zed);
+        assert_eq!(Skin::detect(Some("zed"), Some("GNOME")), Skin::Zed);
+        assert_eq!(Skin::detect(Some("Gnome"), Some("KDE")), Skin::Gnome);
+
+        let mut sys = SystemState { skin: Skin::Gnome, ..Default::default() };
+        let dark = resolve(ThemeChoice::Dark, false, &sys);
+        assert_eq!((dark.swatch, dark.skin), (ADWAITA_DARK_SWATCH, Skin::Gnome));
+        assert_eq!(resolve(ThemeChoice::Light, false, &sys).swatch, ADWAITA_LIGHT_SWATCH);
+        // Системний акцент заливає головну кнопку як є, а текст акцентом лишається читабельним.
+        sys.portal.accent = Some(h(0xc88800));
+        let r = resolve(ThemeChoice::System, false, &sys);
+        assert_eq!(r.swatch.accent_fill, h(0xc88800));
+        assert_eq!(
+            WindowButtons::parse("'appmenu:minimize,maximize,close'\n").right,
+            [WindowButton::Minimize, WindowButton::Maximize, WindowButton::Close]
+        );
+        let mac_like = WindowButtons::parse("'close,minimize:'");
+        assert_eq!(mac_like.left, [WindowButton::Close, WindowButton::Minimize]);
+        assert!(mac_like.right.is_empty());
+        assert_eq!(WindowButtons::parse("").right, [WindowButton::Close]);
+        // Тема Omarchy сильніша за середовище.
+        sys.omarchy = Some(fixture("tokyo-night"));
+        assert_eq!(resolve(ThemeChoice::System, false, &sys).skin, Skin::Zed);
     }
 
     #[test]

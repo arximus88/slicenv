@@ -246,6 +246,7 @@ fn action_button(
     enabled: bool,
 ) -> Stateful<gpui::Div> {
     let z = zed();
+    let gnome = crate::theme::gnome();
     div()
         .id(id)
         .flex()
@@ -254,11 +255,19 @@ fn action_button(
         .gap(px(6.))
         .h(px(24.))
         .px(px(if label.is_some() { 10. } else { 6. }))
-        .rounded(px(4.))
+        .map(|d| if gnome { d.rounded_full() } else { d.rounded(px(4.)) })
         .border_1()
         .border_color(gpui::transparent_black())
         .text_sm()
         .map(|d| match (primary, enabled) {
+            // GNOME: головна дія залита акцентом, як suggested-action у libadwaita.
+            (true, true) if gnome => d
+                .cursor_pointer()
+                .font_weight(FontWeight::MEDIUM)
+                .bg(z.accent_fill)
+                .text_color(z.on_accent_fill)
+                .hover(|s| s.bg(z.accent_fill.opacity(0.88)))
+                .active(|s| s.bg(z.accent_fill.opacity(0.76))),
             (true, true) => d
                 .cursor_pointer()
                 .font_weight(FontWeight::MEDIUM)
@@ -375,6 +384,7 @@ impl Workspace {
                 ui::icon_button(("page", i), page.icon(), page.hint())
             };
             button
+                .when(crate::theme::gnome(), |d| d.rounded_full())
                 .toggled(active)
             .role(gpui::Role::Tab)
             .aria_label(crate::i18n::tr(page.title()))
@@ -429,7 +439,20 @@ impl Workspace {
         .when(running && !icons, |d| {
             d.child(ui::spinner("slice-btn-spin"))
         })
-        .when(!running && !no_engine && density == Density::Full, |d| d.child(ui::kbd("Ctrl+R")))
+        .when(!running && !no_engine && density == Density::Full, |d| {
+            // На залитій кнопці GNOME рамка клавіші зливається: лишається сам текст.
+            if crate::theme::gnome() && !print_primary {
+                d.child(
+                    div()
+                        .font_family(crate::theme::MONO_FONT)
+                        .text_xs()
+                        .opacity(0.8)
+                        .child("Ctrl+R"),
+                )
+            } else {
+                d.child(ui::kbd("Ctrl+R"))
+            }
+        })
         .when(no_engine, |d| {
             d.on_click(cx.listener(|this, _, window, cx| {
                 if this.packages.installing() {
@@ -537,7 +560,8 @@ impl Workspace {
                         }
                     })
                     .p(px(PADDING))
-                    .rounded(px(8.))
+                    // GNOME: плаваюча панель — «пігулка»; у два рядки лишаються великі кути.
+                    .rounded(px(if crate::theme::gnome() { 20. } else { 8. }))
                     .bg(z.panel.opacity(if scene { 0.94 } else { 1. }))
                     .border_1()
                     .border_color(z.border_variant)

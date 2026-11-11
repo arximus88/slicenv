@@ -1308,8 +1308,13 @@ impl Workspace {
 
     /// Заголовок як у Zed: «Головна» й вкладка проєкту ліворуч, глобальний стан принтера й
     /// налаштування праворуч. Режими й дії проєкту — у панелі над центром (`project_bar`).
-    fn title_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn title_bar(&self, window: &mut Window, cx: &mut Context<Self>) -> gpui::AnyElement {
         let z = zed();
+        let gnome = crate::theme::gnome();
+        // GNOME: кнопки заголовка 34 px із заокругленням 9 px, як у header bar libadwaita.
+        let roomy = move |d: gpui::Stateful<gpui::Div>| {
+            if gnome { d.size(px(34.)).rounded(px(9.)) } else { d }
+        };
         let (printer, printer_color, live) = self.cloud.summary();
         let separator = || {
             div()
@@ -1320,17 +1325,17 @@ impl Workspace {
                 .bg(z.border)
         };
 
-        TitleBar::new().child(
+        let content =
             div()
                 .flex()
                 .flex_1()
                 .min_w_0()
                 .items_center()
-                .gap(px(2.))
+                .gap(px(if gnome { 4. } else { 2. }))
                 .h_full()
                 .pr(px(6.))
                 .child(
-                    ui::icon_button("home-page", Page::Home.icon(), Page::Home.hint())
+                    roomy(ui::icon_button("home-page", Page::Home.icon(), Page::Home.hint()))
                         .no_window_drag()
                         .toggled(self.page == Page::Home)
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -1338,7 +1343,7 @@ impl Workspace {
                             cx.notify();
                         })),
                 )
-                .child(separator())
+                .when(!gnome, |d| d.child(separator()))
                 // Вкладки відкритих проєктів; без жодного — кнопка «Відкрити модель…».
                 .child(if self.tabs.is_empty() {
                     let tip: SharedString = crate::i18n::tr("Відкрити 3MF, STL чи G-code (Ctrl+O)").into();
@@ -1351,7 +1356,7 @@ impl Workspace {
                 } else {
                     self.tab_strip(cx).into_any_element()
                 })
-                .child(div().flex_1())
+                .when(!gnome || self.tabs.is_empty(), |d| d.child(div().flex_1()))
                 .child(
                     div()
                         .id("printer-pill")
@@ -1363,6 +1368,7 @@ impl Workspace {
                         .h(px(24.))
                         .px(px(8.))
                         .rounded(px(4.))
+                        .when(gnome, |d| d.h(px(34.)).px(px(10.)).rounded(px(9.)))
                         .cursor_pointer()
                         .text_sm()
                         .text_color(z.text_muted)
@@ -1384,15 +1390,19 @@ impl Workspace {
                         })),
                 )
                 .child(
-                    ui::icon_button(
+                    roomy(ui::icon_button(
                         "open-preferences",
                         IconName::Settings,
                         "Налаштування (Ctrl+,)",
-                    )
+                    ))
                     .no_window_drag()
                     .on_click(cx.listener(|this, _, window, cx| this.open_preferences(window, cx))),
-                ),
-        )
+                );
+        if gnome {
+            gnome_title_bar(content, window)
+        } else {
+            TitleBar::new().child(content).into_any_element()
+        }
     }
 
     /// Рядок стану Zed: перемикачі доків зліва, поточна дія, справа — сцена й хмара.
@@ -1789,7 +1799,7 @@ impl Render for Workspace {
                 .text_color(z.text)
                 .text_sm()
                 .font_family(crate::theme::UI_FONT)
-                .child(self.title_bar(cx))
+                .child(self.title_bar(window, cx))
                 .child(div().flex().flex_1().min_h_0().child(content))
                 .child(self.status_bar(cx))
                 .children(overlays)
@@ -2002,4 +2012,98 @@ mod package_tests {
             std::fs::copy(&out.gcode_3mf, target).unwrap();
         }
     }
+}
+
+/// Чи почато перетягування вікна за заголовок GNOME (між натисканням і першим рухом миші).
+static TITLE_DRAG: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Заголовок вікна у формах libadwaita: 46 px, круглі кнопки керування за розкладкою з
+/// налаштувань GNOME. `TitleBar` бібліотеки малює лише квадратні кнопки на всю висоту.
+fn gnome_title_bar(content: gpui::Div, window: &mut Window) -> gpui::AnyElement {
+    use crate::theme::WindowButton;
+    use std::sync::atomic::Ordering;
+    let z = zed();
+    // Із серверною рамкою кнопки вже малює композитор.
+    let client = matches!(window.window_decorations(), gpui::Decorations::Client { .. });
+    let layout = crate::theme::window_buttons();
+    let maximized = window.is_maximized();
+    let control = move |button: WindowButton| {
+        let (id, icon, tip) = match button {
+            WindowButton::Minimize => ("window-minimize", IconName::WindowMinimize, "Згорнути"),
+            WindowButton::Maximize if maximized => {
+                ("window-maximize", IconName::WindowRestore, "Відновити розмір")
+            }
+            WindowButton::Maximize => ("window-maximize", IconName::WindowMaximize, "Розгорнути"),
+            WindowButton::Close => ("window-close", IconName::WindowClose, "Закрити"),
+        };
+        let tip: SharedString = crate::i18n::tr(tip).into();
+        div()
+            .id(id)
+            .no_window_drag()
+            .flex()
+            .flex_none()
+            .items_center()
+            .justify_center()
+            .size(px(24.))
+            .rounded_full()
+            .bg(z.element_hover)
+            .text_color(z.text)
+            .hover(|s| s.bg(z.element_selected))
+            .active(|s| s.bg(z.border))
+            .child(ui::icon(icon).size(px(12.)))
+            .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
+            .on_click(move |_, window, cx| {
+                cx.stop_propagation();
+                match button {
+                    WindowButton::Minimize => window.minimize_window(),
+                    WindowButton::Maximize => window.zoom_window(),
+                    WindowButton::Close => window.remove_window(),
+                }
+            })
+    };
+    let group = |buttons: &[WindowButton]| {
+        (client && !buttons.is_empty()).then(|| {
+            div()
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap(px(8.))
+                .px(px(6.))
+                .children(buttons.iter().copied().map(control))
+        })
+    };
+    div()
+        .id("title-bar")
+        .flex()
+        .flex_none()
+        .items_center()
+        .h(px(46.))
+        .px(px(6.))
+        .bg(z.background)
+        .border_b_1()
+        .border_color(z.border_variant)
+        .on_mouse_down(gpui::MouseButton::Left, |_, _, _| {
+            TITLE_DRAG.store(true, Ordering::Release);
+        })
+        .on_mouse_up(gpui::MouseButton::Left, |_, _, _| {
+            TITLE_DRAG.store(false, Ordering::Release);
+        })
+        .on_mouse_down_out(|_, _, _| TITLE_DRAG.store(false, Ordering::Release))
+        .on_mouse_move(|_, window, _| {
+            if TITLE_DRAG.swap(false, Ordering::AcqRel) {
+                window.start_window_move();
+            }
+        })
+        .on_mouse_down(gpui::MouseButton::Right, |event, window, _| {
+            window.show_window_menu(event.position);
+        })
+        .on_click(|event, window, _| {
+            if event.click_count() == 2 {
+                window.zoom_window();
+            }
+        })
+        .children(group(&layout.left))
+        .child(content)
+        .children(group(&layout.right))
+        .into_any_element()
 }
