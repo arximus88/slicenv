@@ -422,26 +422,101 @@ impl WindowButtons {
     }
 }
 
-static WINDOW_BUTTONS: RwLock<Option<WindowButtons>> = RwLock::new(None);
-
-pub fn window_buttons() -> WindowButtons {
-    WINDOW_BUTTONS
-        .read()
-        .ok()
-        .and_then(|b| b.clone())
-        .unwrap_or_else(|| WindowButtons::parse(""))
+/// Дія над вікном за кліком по заголовку — як у GNOME Tweaks → Windows → Titlebar Actions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TitlebarAction {
+    ToggleMaximize,
+    Minimize,
+    Menu,
+    None,
 }
 
-/// Розкладка з налаштувань GNOME; без `gsettings` лишається типова.
+impl TitlebarAction {
+    /// Значення `action-*-titlebar`. Розгортання по одній осі зводиться до звичайного;
+    /// «опустити» й «згорнути в заголовок» застосунок сам зробити не може — без дії.
+    pub fn parse(value: &str) -> Option<Self> {
+        Some(match value.trim().trim_matches(|c| c == '\'' || c == '"') {
+            "toggle-maximize" | "toggle-maximize-horizontally" | "toggle-maximize-vertically" => {
+                Self::ToggleMaximize
+            }
+            "minimize" => Self::Minimize,
+            "menu" => Self::Menu,
+            "none" | "lower" | "toggle-shade" => Self::None,
+            _ => return None,
+        })
+    }
+}
+
+/// Поведінка заголовка у шкірі GNOME: кнопки й дії кліків із системних налаштувань.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Titlebar {
+    pub buttons: WindowButtons,
+    pub double_click: TitlebarAction,
+    pub middle_click: TitlebarAction,
+    pub right_click: TitlebarAction,
+}
+
+impl Default for Titlebar {
+    /// Типовий GNOME: лише «закрити», подвійний клік розгортає, правий відкриває меню.
+    fn default() -> Self {
+        Self {
+            buttons: WindowButtons::parse(""),
+            double_click: TitlebarAction::ToggleMaximize,
+            middle_click: TitlebarAction::None,
+            right_click: TitlebarAction::Menu,
+        }
+    }
+}
+
+impl Titlebar {
+    /// Накладає те, що відомо з порталу; відсутні й нерозпізнані ключі лишаються як були.
+    pub fn with(mut self, prefs: &crate::system_theme::TitlebarPrefs) -> Self {
+        if let Some(layout) = &prefs.button_layout {
+            self.buttons = WindowButtons::parse(layout);
+        }
+        let action = |value: &Option<String>, current: TitlebarAction| {
+            value.as_deref().and_then(TitlebarAction::parse).unwrap_or(current)
+        };
+        self.double_click = action(&prefs.double_click, self.double_click);
+        self.middle_click = action(&prefs.middle_click, self.middle_click);
+        self.right_click = action(&prefs.right_click, self.right_click);
+        self
+    }
+}
+
+static TITLEBAR: RwLock<Option<Titlebar>> = RwLock::new(None);
+
+pub fn titlebar() -> Titlebar {
+    TITLEBAR.read().ok().and_then(|t| t.clone()).unwrap_or_default()
+}
+
+/// Нові налаштування заголовка з порталу. `true` — щось змінилось і вікно треба перемалювати.
+pub fn update_titlebar(prefs: &crate::system_theme::TitlebarPrefs) -> bool {
+    let next = titlebar().with(prefs);
+    let Ok(mut slot) = TITLEBAR.write() else {
+        return false;
+    };
+    if slot.as_ref() == Some(&next) {
+        return false;
+    }
+    *slot = Some(next);
+    true
+}
+
+/// Розкладка кнопок до першої відповіді порталу, щоб заголовок не перемальовувався на
+/// старті; без `gsettings` лишається типова. Далі налаштування веде портал
+/// ([`update_titlebar`]), він же працює в пісочниці.
 fn load_window_buttons() {
     let output = std::process::Command::new("gsettings")
         .args(["get", "org.gnome.desktop.wm.preferences", "button-layout"])
         .output();
     if let Ok(output) = output
         && output.status.success()
-        && let Ok(mut slot) = WINDOW_BUTTONS.write()
     {
-        *slot = Some(WindowButtons::parse(&String::from_utf8_lossy(&output.stdout)));
+        update_titlebar(&crate::system_theme::TitlebarPrefs {
+            button_layout: Some(String::from_utf8_lossy(&output.stdout).into_owned()),
+            ..Default::default()
+        });
     }
 }
 
@@ -1098,6 +1173,20 @@ mod tests {
         assert_eq!(mac_like.left, [WindowButton::Close, WindowButton::Minimize]);
         assert!(mac_like.right.is_empty());
         assert_eq!(WindowButtons::parse("").right, [WindowButton::Close]);
+        // Налаштування з Tweaks накладаються на типові; невідоме значення нічого не міняє.
+        let prefs = crate::system_theme::TitlebarPrefs {
+            button_layout: Some("appmenu:minimize,maximize,close".into()),
+            double_click: Some("minimize".into()),
+            middle_click: Some("toggle-maximize-vertically".into()),
+            right_click: Some("щось нове".into()),
+        };
+        let bar = Titlebar::default().with(&prefs);
+        assert_eq!(bar.buttons.right.len(), 3);
+        assert_eq!(bar.double_click, TitlebarAction::Minimize);
+        assert_eq!(bar.middle_click, TitlebarAction::ToggleMaximize);
+        assert_eq!(bar.right_click, TitlebarAction::Menu);
+        assert_eq!(TitlebarAction::parse("'lower'"), Some(TitlebarAction::None));
+        assert_eq!(Titlebar::default().with(&Default::default()), Titlebar::default());
         // Тема Omarchy сильніша за середовище.
         sys.omarchy = Some(fixture("tokyo-night"));
         assert_eq!(resolve(ThemeChoice::System, false, &sys).skin, Skin::Zed);

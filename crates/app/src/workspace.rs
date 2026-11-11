@@ -2020,12 +2020,24 @@ static TITLE_DRAG: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool
 /// Заголовок вікна у формах libadwaita: 46 px, круглі кнопки керування за розкладкою з
 /// налаштувань GNOME. `TitleBar` бібліотеки малює лише квадратні кнопки на всю висоту.
 fn gnome_title_bar(content: gpui::Div, window: &mut Window) -> gpui::AnyElement {
-    use crate::theme::WindowButton;
+    use crate::theme::{TitlebarAction, WindowButton};
     use std::sync::atomic::Ordering;
     let z = zed();
     // Із серверною рамкою кнопки вже малює композитор.
     let client = matches!(window.window_decorations(), gpui::Decorations::Client { .. });
-    let layout = crate::theme::window_buttons();
+    let bar = crate::theme::titlebar();
+    let layout = bar.buttons;
+    let (double_click, middle_click, right_click) =
+        (bar.double_click, bar.middle_click, bar.right_click);
+    // Дії кліків по заголовку — з налаштувань GNOME (Tweaks → Windows → Titlebar Actions).
+    let perform = |action: TitlebarAction, at: gpui::Point<gpui::Pixels>, window: &mut Window| {
+        match action {
+            TitlebarAction::ToggleMaximize => window.zoom_window(),
+            TitlebarAction::Minimize => window.minimize_window(),
+            TitlebarAction::Menu => window.show_window_menu(at),
+            TitlebarAction::None => {}
+        }
+    };
     let maximized = window.is_maximized();
     let control = move |button: WindowButton| {
         let (id, icon, tip) = match button {
@@ -2094,12 +2106,15 @@ fn gnome_title_bar(content: gpui::Div, window: &mut Window) -> gpui::AnyElement 
                 window.start_window_move();
             }
         })
-        .on_mouse_down(gpui::MouseButton::Right, |event, window, _| {
-            window.show_window_menu(event.position);
+        .on_mouse_down(gpui::MouseButton::Right, move |event, window, _| {
+            perform(right_click, event.position, window);
         })
-        .on_click(|event, window, _| {
+        .on_mouse_down(gpui::MouseButton::Middle, move |event, window, _| {
+            perform(middle_click, event.position, window);
+        })
+        .on_click(move |event, window, _| {
             if event.click_count() == 2 {
-                window.zoom_window();
+                perform(double_click, event.position(), window);
             }
         })
         .children(group(&layout.left))
