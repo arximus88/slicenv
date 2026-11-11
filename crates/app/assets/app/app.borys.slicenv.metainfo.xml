@@ -157,6 +157,12 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.1.2" date="2026-11-11" type="stable">
+      <url type="details">https://github.com/arximus88/slicenv/releases/tag/v0.1.2</url>
+      <description>
+        <p>Slicing no longer shows a false engine warning about profile substitutions.</p>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-11-11" type="stable">
       <url type="details">https://github.com/arximus88/slicenv/releases/tag/v0.1.1</url>
       <description>

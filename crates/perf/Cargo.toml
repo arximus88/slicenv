@@ -4,6 +4,7 @@ edition.workspace = true
 version.workspace = true
 license.workspace = true
 publish = false
+default-run = "perf"
 
 # Бюджети продуктивності без вікна: `cargo run --release -p perf` (див. docs/TESTING.md).
 [[bin]]
