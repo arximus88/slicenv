@@ -328,6 +328,8 @@ impl Workspace {
     /// Вкладки відкритих проєктів у заголовку вікна.
     pub(crate) fn tab_strip(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let z = zed();
+        // GNOME: вкладки як у AdwTabBar — вищі, заокруглені, назва по центру, хрестик у колі.
+        let gnome = crate::theme::gnome();
         let on_project = Page::PROJECT_TABS.contains(&self.page);
         let tabs = self.tab_infos();
         // Однакові назви розрізняє тека файлу.
@@ -358,12 +360,28 @@ impl Workspace {
                     .max_w(px(220.))
                     .overflow_hidden()
                     .pr(px(2.))
+                    .when(gnome, |d| {
+                        d.flex_1()
+                            .h(px(34.))
+                            .min_w(px(96.))
+                            .max_w(px(240.))
+                            .pl(px(10.))
+                            .pr(px(6.))
+                            .rounded(px(9.))
+                            .when(shown, |d| d.font_weight(gpui::FontWeight::MEDIUM))
+                    })
                     .role(gpui::Role::Tab)
                     .aria_label(tab.name.clone())
                     .aria_selected(shown)
                     .toggled(shown)
                     .when(!shown, |d| d.text_color(z.text_muted))
-                    .child(div().min_w_0().truncate().child(tab.name.clone()))
+                    .child(
+                        div()
+                            .min_w_0()
+                            .truncate()
+                            .when(gnome, |d| d.flex_1().text_center())
+                            .child(tab.name.clone()),
+                    )
                     .children(folder.map(|f| {
                         div()
                             .flex_shrink(1.)
@@ -383,6 +401,7 @@ impl Workspace {
                             .justify_center()
                             .size(px(16.))
                             .rounded(px(3.))
+                            .when(gnome, |d| d.size(px(22.)).rounded_full())
                             .text_color(z.text_muted)
                             .hover(|s| s.bg(z.element_hover).text_color(z.text))
                             .child(
@@ -435,6 +454,7 @@ impl Workspace {
             .min_w_0()
             .items_center()
             .gap(px(2.))
+            .when(gnome, |d| d.flex_1().gap(px(4.)))
             .overflow_hidden()
             .children(elements)
     }

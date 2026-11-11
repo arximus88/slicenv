@@ -209,6 +209,7 @@ PNG без вікна: `cargo run --release -p viewer --example gcode_preview --
 | `SLICENV_FAKE_FOUND=N` | N «знайдених у мережі» Bambu (LAN вимкнено) |
 | `SLICENV_FAKE_CLOUD=cloud-off\|login\|no-server\|connecting` | стан рядка Bambu Cloud |
 | `SLICENV_WIZARD_DEMO=login\|session\|plugin` | стани форми входу в майстрі |
+| `SLICENV_SKIN=gnome\|zed` | форми й палітра незалежно від середовища: `gnome` — заголовок, вкладки й плаваючі панелі як у libadwaita з палітрою Adwaita (типово лише коли `XDG_CURRENT_DESKTOP` містить `GNOME`), `zed` — щільний вигляд Zed |
 
 ## Порівняння G-code з оригінальним рушієм
 

@@ -719,7 +719,7 @@ pub fn toolbar(ws: &Workspace, cx: &mut Context<Workspace>) -> impl IntoElement 
         .justify_center()
         .gap(px(3.))
         .p(px(6.))
-        .rounded(px(10.))
+        .rounded(px(if crate::theme::gnome() { 20. } else { 10. }))
         .bg(z.panel.opacity(0.97))
         .border_1()
         .border_color(z.border)
