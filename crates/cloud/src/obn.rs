@@ -1338,6 +1338,9 @@ mod tests {
         assert_eq!(plugin.origin, PluginOrigin::OpenBamboo);
         assert_eq!(plugin.version.as_deref(), Some(PLUGIN_VERSION));
         assert!(plugin.library.ends_with("orca-flatpak-0.2.48/libbambu_networking.so"));
+        // Відкритий плагін існує лише для Linux, і його бібліотека камери зветься `.so`;
+        // `source_library()` на macOS і Windows шукає назву закритого плагіна тієї ОС.
+        #[cfg(target_os = "linux")]
         assert!(plugin.source_library().is_file());
         let conf = Conf::parse(&fs::read_to_string(places.config.join(CONF_FILE)).unwrap());
         assert_eq!(conf.get("block_cloud"), Some("1"));

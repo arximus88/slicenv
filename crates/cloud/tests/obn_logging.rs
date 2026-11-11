@@ -81,7 +81,11 @@ fn obn_logs_never_reach_stderr_or_files() {
         (String::from_utf8_lossy(&out.stderr).into_owned(), stdout)
     };
 
-    for mode in ["seeded", "env"] {
+    // Режим `env` спирається на те, що плагін бачить змінні, виставлені після старту процесу.
+    // У Windows CRT бібліотеки тримає власну копію оточення й `SetEnvironmentVariable` з Rust
+    // туди не доходить; відкритого плагіна для Windows немає, тож там перевіряється лише конфіг.
+    let modes: &[&str] = if cfg!(windows) { &["seeded"] } else { &["seeded", "env"] };
+    for &mode in modes {
         let (stderr, stdout) = run(mode);
         for secret in SECRETS {
             assert!(!stderr.contains(secret), "{mode}: stderr містить вигаданий ідентифікатор");

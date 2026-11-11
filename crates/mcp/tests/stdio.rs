@@ -259,7 +259,15 @@ fn fake_managed_orca(data: &std::path::Path, version: &str) -> std::path::PathBu
 fn sees_profiles_of_engine_installed_by_manager() {
     let home = tempfile::tempdir().unwrap();
     let h = home.path();
-    let data = h.join("d");
+    // Корінь даних там, де його шукає `paths::data_home` на цій ОС: `$XDG_DATA_HOME` на Linux,
+    // `~/Library/Application Support` на macOS, `%LOCALAPPDATA%` на Windows.
+    let data = if cfg!(target_os = "macos") {
+        h.join("Library/Application Support")
+    } else if cfg!(windows) {
+        h.join("Local")
+    } else {
+        h.join("d")
+    };
     fake_managed_orca(&data, "2.5.0");
     let empty_path = h.join("empty-bin");
     std::fs::create_dir_all(&empty_path).unwrap();
@@ -269,6 +277,9 @@ fn sees_profiles_of_engine_installed_by_manager() {
         ("XDG_DATA_HOME", data.to_str().unwrap().to_owned()),
         ("XDG_CACHE_HOME", h.join("k").to_str().unwrap().to_owned()),
         ("XDG_STATE_HOME", h.join("s").to_str().unwrap().to_owned()),
+        ("USERPROFILE", h.to_str().unwrap().to_owned()),
+        ("APPDATA", h.join("Roaming").to_str().unwrap().to_owned()),
+        ("LOCALAPPDATA", h.join("Local").to_str().unwrap().to_owned()),
         // Без системних рушіїв з PATH (на машині розробника є /usr/bin/bambustudio).
         ("PATH", empty_path.to_str().unwrap().to_owned()),
         ("SLICENV_CLOUD_OFF", "1".into()),

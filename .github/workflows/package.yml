@@ -127,7 +127,13 @@ jobs:
           bundle: Slicenv-x86_64.flatpak
           cache-key: flatpak-builder-${{ github.sha }}
           upload-artifact: true
+          # Як на Flathub: скриншоти з metainfo дзеркаляться в ostree (гілка screenshots/<arch>),
+          # інакше linter дає appstream-screenshots-not-mirrored-in-ostree.
+          mirror-screenshots-url: https://dl.flathub.org/media
       - name: flatpak-builder-lint
+        # lint-exceptions.json — лише для старого linter в образі: правила про підтеки
+        # xdg-config Flathub прибрав 2026-10-23 (flatpak-builder-lint 1d036a8).
         run: |
-          flatpak-builder-lint manifest packaging/flatpak/app.borys.slicenv.yml || true
-          flatpak-builder-lint repo repo
+          flatpak-builder-lint --user-exceptions packaging/flatpak/lint-exceptions.json \
+            manifest packaging/flatpak/app.borys.slicenv.yml
+          flatpak-builder-lint --user-exceptions packaging/flatpak/lint-exceptions.json repo repo
