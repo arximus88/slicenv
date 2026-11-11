@@ -132,37 +132,55 @@ flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest packagin
 
 ## 5. AUR
 
-Один раз:
-1. Акаунт на https://aur.archlinux.org, у профілі — публічний SSH-ключ
-   (`ssh-keygen -t ed25519 -f ~/.ssh/aur`).
-2. `~/.ssh/config`:
-   ```
-   Host aur.archlinux.org
-     IdentityFile ~/.ssh/aur
-     User aur
-   ```
+Один раз: акаунт на https://aur.archlinux.org з публічним SSH-ключем у профілі. Якщо
+ключ, доданий у профіль, — типовий для ssh, окремого ключа й запису в `~/.ssh/config` не треба. Перевірка доступу: `ssh aur@aur.archlinux.org list-repos`.
+Пакет створюється першим push у ще не наявний репозиторій.
 
-`slicenv-bin` (після кроку 2, бо потрібен архів релізу):
+Push в AUR публічний і незворотний (видалити пакет можна лише запитом до Package
+Maintainers) — лише після явного «так» людини, якій показано diff PKGBUILD і вивід namcap.
+
+`slicenv-bin` (після кроку 2, бо потрібен архів релізу). У релізі немає окремих
+`*.sha256` — сума береться з `SHA256SUMS`:
 ```sh
-git clone ssh://aur@aur.archlinux.org/slicenv-bin.git /tmp/aur-bin   # порожній — це нормально
-cd <репозиторій slicenv>
-sum=$(curl -sL https://github.com/arximus88/slicenv/releases/download/v0.1.0/slicenv-0.1.0-x86_64-linux.tar.gz.sha256 | cut -d' ' -f1)
+v=0.1.1; rel=https://github.com/arximus88/slicenv/releases/download/v$v
+sum=$(curl -sL $rel/SHA256SUMS | awk -v f=slicenv-$v-x86_64-linux.tar.gz '$2==f{print $1}')
+curl -sL $rel/slicenv-$v-x86_64-linux.tar.gz | sha256sum        # має збігтися з $sum
 sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('$sum')/" packaging/aur/slicenv-bin/PKGBUILD
 tools/package.sh srcinfo
-cp packaging/aur/slicenv-bin/{PKGBUILD,.SRCINFO} /tmp/aur-bin/
-cd /tmp/aur-bin && makepkg -si && namcap PKGBUILD *.pkg.tar.zst   # перевірка перед push
-git add PKGBUILD .SRCINFO && git commit -m 'slicenv-bin 0.1.0-1' && git push
 ```
-Закомітити оновлений `sha256sums_x86_64` і `.SRCINFO` і в репозиторій slicenv.
-
-`slicenv-git` (після кроку 1 — потрібен публічний git):
+Перевірка — у контейнері з **публічного URL** (`tools/package.sh aur-bin` підставляє
+локальний tarball і реліз не перевіряє; `makepkg -si` на хості поставив би пакет у систему):
 ```sh
-git clone ssh://aur@aur.archlinux.org/slicenv-git.git /tmp/aur-git
-cp packaging/aur/slicenv-git/{PKGBUILD,.SRCINFO} /tmp/aur-git/
-cd /tmp/aur-git && makepkg -si && namcap PKGBUILD *.pkg.tar.zst
-git add PKGBUILD .SRCINFO && git commit -m 'Initial import' && git push
+podman run --rm -v $PWD/packaging/aur/slicenv-bin:/w:ro docker.io/library/archlinux:base-devel bash -c '
+  pacman -Syu --noconfirm --needed namcap
+  useradd -m b; echo "b ALL=(ALL) NOPASSWD: ALL" >/etc/sudoers.d/b; cp -r /w /home/b/w; chown -R b: /home/b/w
+  su b -c "cd /home/b/w && makepkg -sf --noconfirm && makepkg --printsrcinfo | diff - .SRCINFO"
+  cd /home/b/w && pacman -U --noconfirm *.pkg.tar.zst && slicenv --version && slicenv-mcp --version
+  namcap PKGBUILD *.pkg.tar.zst'
+```
+Публікація:
+```sh
+git clone ssh://aur@aur.archlinux.org/slicenv-bin.git /tmp/aur-slicenv-bin   # порожній — це нормально
+cp packaging/aur/slicenv-bin/{PKGBUILD,.SRCINFO} /tmp/aur-slicenv-bin/
+cd /tmp/aur-slicenv-bin && git branch -M master
+git add PKGBUILD .SRCINFO && git commit -m "slicenv-bin $v-1" && git push origin master
+```
+Закомітити оновлені PKGBUILD і `.SRCINFO` і в репозиторій slicenv.
+
+`slicenv-git` (після кроку 1 — потрібен публічний git): та сама перевірка в контейнері з
+`packaging/aur/slicenv-git` (збірка з `git+https://github.com/…`, не `git+file://`; повна
+збірка cargo), потім:
+```sh
+git clone ssh://aur@aur.archlinux.org/slicenv-git.git /tmp/aur-slicenv-git
+cp packaging/aur/slicenv-git/{PKGBUILD,.SRCINFO} /tmp/aur-slicenv-git/
+cd /tmp/aur-slicenv-git && git branch -M master
+git add PKGBUILD .SRCINFO && git commit -m 'Initial import' && git push origin master
 ```
 У `.SRCINFO` для `-git` — `pkgver` на момент генерації; AUR його не перераховує, це нормально.
+
+Після push: сторінки `https://aur.archlinux.org/packages/slicenv-bin` і `/slicenv-git`
+(версія, ліцензія, залежності) і
+`curl -s 'https://aur.archlinux.org/rpc/v5/info?arg[]=slicenv-bin'` — Maintainer `arximus88`.
 
 AUR вимагає, щоб у репозиторії пакета були лише `PKGBUILD`, `.SRCINFO` і потрібні
 локальні файли; гілка — `master`.

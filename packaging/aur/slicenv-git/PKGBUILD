@@ -1,8 +1,7 @@
 # Maintainer: Borys Kharchenko (https://github.com/arximus88)
-# Збірка з джерел. Локально: tools/package.sh aur-git підставляє git+file:// робочого
-# дерева й спільний CARGO_TARGET_DIR, лише збирає пакет.
+# Builds from the main branch of the upstream repository.
 pkgname=slicenv-git
-pkgver=0.1.1.r0.g0000000
+pkgver=0.1.1.r80.g7bf7230
 pkgrel=1
 pkgdesc='Fast native 3D printing slicer front-end for OrcaSlicer and Bambu Studio engines (git)'
 arch=('x86_64')
@@ -10,10 +9,10 @@ url='https://github.com/arximus88/slicenv'
 license=('AGPL-3.0-or-later')
 depends=('libgcc' 'libstdc++' 'glibc' 'libxkbcommon' 'libxkbcommon-x11' 'libxcb' 'wayland'
          'vulkan-icd-loader' 'hicolor-icon-theme' 'python' 'curl' 'tar' 'xdg-utils')
-# manifold-csg-sys клонує й збирає manifold3d (cmake, C++17) під час cargo build.
+# manifold-csg-sys clones and builds manifold3d (cmake, C++17) during cargo build.
 makedepends=('git' 'cargo' 'cmake' 'clang' 'pkgconf' 'librsvg' 'openssl' 'zstd' 'fontconfig' 'freetype2')
-optdepends=('squashfs-tools: швидше розпакування рушіїв-AppImage'
-            'vulkan-driver: GPU-рендеринг (mesa, nvidia-utils…)')
+optdepends=('squashfs-tools: faster unpacking of AppImage slicer engines'
+            'vulkan-driver: GPU rendering (mesa, nvidia-utils, ...)')
 provides=('slicenv')
 conflicts=('slicenv' 'slicenv-bin')
 options=('!lto' '!debug')
@@ -35,6 +34,8 @@ prepare() {
 build() {
   cd slicenv
   export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-target}
+  # Keep $srcdir out of the binaries (panic locations, debug paths).
+  export RUSTFLAGS="${RUSTFLAGS:-} --remap-path-prefix=$srcdir=/usr/src"
   cargo build --release --locked -p app -p mcp
 }
 

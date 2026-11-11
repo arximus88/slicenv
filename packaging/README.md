@@ -95,8 +95,8 @@ squashfs-tools.
 ### AUR
 
 - `slicenv-bin` розпаковує tar.gz релізу; `source_x86_64` вказує на
-  `https://github.com/arximus88/slicenv/releases/download/v$pkgver/…` — такого
-  релізу ще немає, `sha256sums` = `SKIP` до публікації.
+  `https://github.com/arximus88/slicenv/releases/download/v$pkgver/…`, `sha256sums_x86_64` —
+  сума tarball з `SHA256SUMS` релізу.
 - `slicenv-git` збирає `-p app -p mcp` з git; `manifold-csg-sys` під час збірки клонує
   manifold3d (потрібні мережа, cmake, C++17).
 - `tools/package.sh aur-bin aur-git` копіює PKGBUILD у `dist/aur/*`, підміняє джерело
@@ -112,7 +112,7 @@ squashfs-tools.
 - `pkgdesc` (обидва): «Fast native 3D printing slicer front-end for OrcaSlicer and Bambu
   Studio engines» (+ « (git)»). У джерелі `slicenv-bin` — `${CARCH}`, як радить namcap.
 - **Оновлення `slicenv-bin`**: `pkgver`, `pkgrel=1`, `sha256sums_x86_64` — з
-  `slicenv-<версія>-x86_64-linux.tar.gz.sha256` релізу, `tools/package.sh srcinfo`, push в AUR.
+  `SHA256SUMS` релізу (окремих `*.sha256` у релізі немає), `tools/package.sh srcinfo`, push в AUR.
   Без нової версії (лише PKGBUILD) — `pkgrel+1`. Деталі — [docs/PUBLISHING.md](../docs/PUBLISHING.md).
 
 ## Flatpak
