@@ -262,7 +262,7 @@ pub(crate) fn camera_url_error(code: i32, reply: &str) -> anyhow::Error {
         ),
         -10010 => {
             let detail = trailing_code(reply)
-                .map(|c| format!(" (код Bambu {c})"))
+                .map(|c| format!(" (Bambu {c})"))
                 .unwrap_or_default();
             anyhow::anyhow!(
                 "Камера через хмару недоступна{detail}. Перевірте, що принтер онлайн і камера на ньому ввімкнена. У локальній мережі камера показує відео напряму — додайте принтер на сторінці «Пристрій» → «Додати принтер у мережі»."
@@ -286,7 +286,7 @@ mod url_error_tests {
         assert_eq!(trailing_code("liveview failed [-2]"), Some(-2));
         assert_eq!(trailing_code("no code"), None);
         let text = camera_url_error(-10010, "secret-ish reply [7]").to_string();
-        assert!(text.contains("код Bambu 7") && !text.contains("secret"), "{text}");
+        assert!(text.contains("(Bambu 7)") && !text.contains("secret"), "{text}");
         assert!(camera_url_error(-10006, "").to_string().contains("20 с"));
         assert!(!camera_url_error(-10010, "").to_string().contains("plugin operation"));
     }

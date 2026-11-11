@@ -303,7 +303,7 @@ enum FieldAction {
 }
 
 /// «OrcaSlicer-2.4.2» → «2.4.2»: назву рушія вже показано поруч.
-fn version_text(version: &str) -> String {
+pub(crate) fn version_text(version: &str) -> String {
     let v = version.trim();
     ["OrcaSlicer", "BambuStudio", "Bambu Studio", "orca", "bambu"]
         .iter()
@@ -314,7 +314,7 @@ fn version_text(version: &str) -> String {
         .to_owned()
 }
 
-fn engine_title(kind: EngineKind) -> &'static str {
+pub(crate) fn engine_title(kind: EngineKind) -> &'static str {
     match kind {
         EngineKind::Bambu => "Bambu Studio",
         EngineKind::Orca => "OrcaSlicer",

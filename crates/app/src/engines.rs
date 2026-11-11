@@ -416,7 +416,15 @@ fn kind_title(kind: settings::PresetType) -> &'static str {
 /// Значення для показу в діалозі: перший елемент вектора, без лапок.
 fn shown(value: Option<&serde_json::Value>) -> String {
     match value {
-        Some(serde_json::Value::String(s)) => s.clone(),
+        // Значення на кшталт G-code — багаторядкові: у переліку змін лише початок першого рядка.
+        Some(serde_json::Value::String(s)) => {
+            let line = s.lines().next().unwrap_or_default().trim();
+            let mut short: String = line.chars().take(40).collect();
+            if short.len() < s.trim().len() {
+                short.push('…');
+            }
+            short
+        }
         Some(serde_json::Value::Array(items)) => shown(items.first()),
         Some(other) => other.to_string(),
         None => "—".into(),
@@ -478,9 +486,12 @@ impl Workspace {
     fn open_engine_switch_dialog(&mut self, engine: Engine, window: &mut Window, cx: &mut Context<Self>) {
         let edits = self.pending_edits();
         let lines: Vec<String> = edits.iter().map(|e| self.edit_line(e)).collect();
+        // Назва рушія, а не шлях до файлу: «OrcaSlicer 2.5.0».
+        let title = crate::wizard::engine_title(engine.kind);
         let target = known_version(&engine)
-            .map(|v| v.to_string())
-            .unwrap_or_else(|| engine.path.display().to_string());
+            .or_else(|| crate::engine_manager::manifest_version(&engine.path))
+            .filter(|v| !v.is_empty())
+            .map_or_else(|| title.to_owned(), |v| format!("{title} {}", crate::wizard::version_text(&v)));
         self.open_modal(
             Rc::new(move |_, _, cx| {
                 let z = zed();
