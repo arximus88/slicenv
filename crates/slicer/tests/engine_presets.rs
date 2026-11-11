@@ -126,6 +126,18 @@ fn profiles(target: &Target, version: &str, scratch: &Path) -> Option<PathBuf> {
             return Some(root);
         }
     }
+    // Пакет лише з бінарним кешем (OrcaSlicer ≥ 2.5): той самий шлях, що й у застосунку.
+    if packaged.join("BBL.opc").is_file() {
+        let library = scratch.join("library");
+        let family = kind_name(target.kind);
+        if slicer::opc::import_catalog(&packaged, &library, family, version, &["BBL"]).is_ok() {
+            let root = library.join(family).join(version);
+            if json_tree(&root) {
+                eprintln!("{} {version}: профілі з кешу .opc", target.label);
+                return Some(root);
+            }
+        }
+    }
     // AppImage без розпакованих ресурсів поруч (наприклад /usr/bin/bambustudio).
     let out = scratch.join("appimage");
     fs::create_dir_all(&out).ok()?;

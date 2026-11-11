@@ -3,6 +3,7 @@
 mod cli;
 mod engine;
 mod orca_compat;
+pub mod opc;
 mod presets;
 mod safe_mode;
 

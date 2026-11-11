@@ -251,7 +251,10 @@ confirmation and refreshes the row after completion. Cancellation is pending.
 
 Engine installation now imports package JSON profiles into the separate
 [profile library](PROFILE-LIBRARY.md), or fetches BBL JSON from the official
-release tag when package JSON is absent. Orca 2.5 `.opc` caches are not decoded.
+release tag when package JSON is absent. Orca 2.5 `.opc` caches are decoded first
+(no network); the release tag is fetched only when a cache cannot be read. The fetch
+probes raw.githubusercontent.com once and falls back to IPv4 when IPv6 accepts the
+connection but never completes TLS.
 Profile download failures do not roll back a usable binary installation; the
 settings panel offers a download-and-reload action when profiles are missing.
 Missing executable paths are ignored in the installed engine picker and pruned

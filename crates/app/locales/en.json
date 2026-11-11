@@ -1783,5 +1783,8 @@
   "Пристрій (Ctrl+5)": "Device (Ctrl+5)",
   "Іде нарізка цього проєкту — дочекайся її або зупини, щоб перейти до іншого": "This project is being sliced — wait for it or stop it to switch to another one",
   "{} — правий клік: дії з файлом": "{} — right-click for file actions",
-  "Закрити (Ctrl+W)": "Close (Ctrl+W)"
+  "Закрити (Ctrl+W)": "Close (Ctrl+W)",
+  "сервер профілів GitHub (raw.githubusercontent.com) не відповідає": "the GitHub profile server (raw.githubusercontent.com) is not responding",
+  "curl без stderr": "curl has no stderr",
+  "[engines] кеш профілів не прочитано, беру з GitHub: {e:#}": "[engines] the profile cache could not be read, fetching from GitHub: {e:#}"
 }

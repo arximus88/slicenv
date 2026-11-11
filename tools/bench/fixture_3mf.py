@@ -118,9 +118,10 @@ def project_settings(profiles):
     model = os.path.join(vendor, 'machine', f"{config.get('printer_model', '')}.json")
     if os.path.isfile(model):
         with open(model, encoding='utf-8') as f:
-            bed = json.load(f).get('default_bed_type')
-        if bed:
-            config['curr_bed_type'] = bed
+            # Каталог із кешу .opc не несе default_bed_type: тоді, як і Slicenv, перша зі
+            # стандартних пластин (у всіх моделей Bambu Lab це вона ж).
+            bed = json.load(f).get('default_bed_type') or 'Textured PEI Plate'
+        config['curr_bed_type'] = bed
     config.update({'name': 'project_settings', 'from': 'project', 'version': '01.10.00.00'})
     return json.dumps(config, indent=4, ensure_ascii=False, sort_keys=True)
 

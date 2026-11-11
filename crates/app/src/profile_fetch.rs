@@ -1,6 +1,7 @@
-//! Профілі принтерів для рушія без JSON-каталогу: OrcaSlicer ≥ 2.5 постачає системні профілі
-//! лише як бінарний кеш `<vendor>.opc` (cereal, `PresetCacheFormat.hpp`), який Slicenv не
-//! читає. Ті самі JSON беремо з офіційного git-тегу випуску: дерево — GitHub API, файли —
+//! Профілі принтерів для рушія без JSON-каталогу з мережі. OrcaSlicer ≥ 2.5 постачає
+//! системні профілі лише як бінарний кеш `<vendor>.opc`; зазвичай його читає
+//! `slicer::opc` без мережі, а цей модуль — запасний шлях (кеш невідомої версії) і
+//! довантаження з налаштувань. JSON беремо з офіційного git-тегу випуску: дерево — GitHub API, файли —
 //! raw.githubusercontent.com одним процесом `curl --parallel`, кожен перевіряється за git-SHA1
 //! з дерева. Каталог з’являється атомарно (`<library>/<family>/<version>`), як у
 //! `manage_engines.py install_profiles`, тож `PresetStore` знаходить його без змін.
@@ -271,6 +272,51 @@ fn publish(stage: &Path, target: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Аргументи curl, спільні для проби й основного завантаження.
+const CURL_BASE: [&str; 7] = [
+    "--silent",
+    "--fail",
+    "--proto",
+    "=https",
+    "--proto-redir",
+    "=https",
+    "--create-dirs",
+];
+
+/// Чи відповідає сервер файлів у цьому режимі (`extra` — наприклад `--ipv4`).
+fn reachable(url: &str, extra: &[&str]) -> bool {
+    paths::host::command("curl")
+        .args(CURL_BASE)
+        .args(extra)
+        .args(["--connect-timeout", "8", "--max-time", "20", "--output"])
+        .arg(if cfg!(windows) { "NUL" } else { "/dev/null" })
+        .arg(url)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success())
+}
+
+/// Режим мережі для основного завантаження. У частини мереж IPv6 до
+/// raw.githubusercontent.com приймає TCP, але TLS не завершується: curl обирає IPv6 і
+/// кожен із тисяч файлів чекає тайм-ауту. Одна проба вирішує це наперед.
+fn network_mode(probe_url: &str) -> Result<&'static [&'static str]> {
+    if reachable(probe_url, &[]) {
+        return Ok(&[]);
+    }
+    if reachable(probe_url, &["--ipv4"]) {
+        return Ok(&["--ipv4"]);
+    }
+    bail!("сервер профілів GitHub (raw.githubusercontent.com) не відповідає")
+}
+
+/// Рядок `--write-out`: код відповіді одного файлу. Пишеться в stderr, бо stdout у каналі
+/// буферизується й лічильник стояв би на нулі до першої тисячі файлів.
+fn is_transfer_code(line: &str) -> bool {
+    line.len() == 3 && line.bytes().all(|b| b.is_ascii_digit())
+}
+
 fn download(
     repo: &str,
     tag: &str,
@@ -281,48 +327,56 @@ fn download(
 ) -> Result<()> {
     let total = blobs.len();
     progress(0, total);
+    let Some(first) = blobs.first() else {
+        return Ok(());
+    };
+    let probe = format!(
+        "https://raw.githubusercontent.com/{repo}/{}/{}",
+        encode_path(tag),
+        encode_path(&first.path)
+    );
+    let mode = network_mode(&probe)?;
+    ensure!(!cancel.load(Ordering::Acquire), "завантаження профілів скасовано");
     let mut child = paths::host::command("curl")
+        .args(CURL_BASE)
+        .args(mode)
         .args([
-            "--silent",
-            "--show-error",
-            "--fail",
-            "--proto",
-            "=https",
-            "--proto-redir",
-            "=https",
             "--connect-timeout",
-            "15",
+            "10",
             "--max-time",
             "120",
             "--retry",
             "2",
-            "--create-dirs",
+            "--retry-max-time",
+            "60",
             "--parallel",
             "--parallel-max",
             "16",
             "--write-out",
-            "%{http_code}\\n",
+            "%{stderr}%{http_code}\\n",
             "-K",
             "-",
         ])
         .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()
         .context("не вдалося запустити curl")?;
     let cfg = curl_config(repo, tag, blobs, stage);
     let mut stdin = child.stdin.take().context("curl без stdin")?;
     // Конфіг великий (тисячі рядків): пишемо з окремого потоку, щоб не заблокуватися
-    // на заповненому stdout.
+    // на заповненому каналі.
     let writer = std::thread::spawn(move || {
         let _ = stdin.write_all(cfg.as_bytes());
     });
-    let stdout = child.stdout.take().context("curl без stdout")?;
+    let stderr = child.stderr.take().context("curl без stderr")?;
     let mut done = 0;
-    for line in BufReader::new(stdout).lines() {
-        let Ok(_) = line else { break };
-        done += 1;
-        progress(done.min(total), total);
+    for line in BufReader::new(stderr).lines() {
+        let Ok(line) = line else { break };
+        if is_transfer_code(line.trim()) {
+            done += 1;
+            progress(done.min(total), total);
+        }
         if cancel.load(Ordering::Acquire) {
             child.kill().ok();
             break;
@@ -408,6 +462,15 @@ mod tests {
     }
 
     #[test]
+    fn only_three_digit_lines_count_as_finished_files() {
+        assert!(is_transfer_code("200"));
+        assert!(is_transfer_code("404"));
+        assert!(!is_transfer_code("curl: (28) Connection timed out"));
+        assert!(!is_transfer_code("2000"));
+        assert!(!is_transfer_code(""));
+    }
+
+    #[test]
     fn versions_and_vendors_are_validated() {
         assert!(valid_version("2.5.0"));
         assert!(valid_version("02.03.00.62"));
@@ -424,16 +487,21 @@ mod tests {
     fn real_orca_tag_downloads_a_verified_bbl_catalog() {
         let cancel = AtomicBool::new(false);
         let mut last = (0, 0);
+        let mut steps = 0;
         let fetched = fetch(
             slicer::EngineKind::Orca,
             "2.5.0",
             &vendors_for(None),
-            &mut |d, t| last = (d, t),
+            &mut |d, t| {
+                steps += 1;
+                last = (d, t);
+            },
             &cancel,
         )
         .unwrap();
         assert!(fetched.files > 1000, "{}", fetched.files);
         assert_eq!(last.0, last.1);
+        assert!(steps > 100, "лічильник має рухатися під час завантаження: {steps}");
         let root = slicer::PresetStore::library_root().join("orca").join("2.5.0");
         assert!(root.join("BBL.json").is_file());
         assert!(root.join("catalog.json").is_file());
