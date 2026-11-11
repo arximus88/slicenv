@@ -100,6 +100,14 @@ impl Default for Packages {
     }
 }
 impl Packages {
+    /// Триває встановлення пакета (а не оновлення списку чи видалення).
+    pub(crate) fn installing(&self) -> bool {
+        self.busy && self.active_asset.is_some()
+    }
+    /// Підпис поточного кроку: для вікна пакетів і для кнопки в панелі проєкту.
+    pub(crate) fn progress_label(&self) -> String {
+        self.progress.as_ref().map(|p| p.label()).unwrap_or_else(|| crate::i18n::tr(&self.status))
+    }
     fn trace(&self) {
         if paths::env("SLICENV_UI_TRACE").is_some() {
             eprintln!(
@@ -338,6 +346,10 @@ impl Workspace {
         let cancel = self.packages.cancel.clone();
         self.packages.trace();
         let list_releases = matches!(op, crate::engine_manager::Op::ListReleases { .. });
+        let install_family = match &op {
+            crate::engine_manager::Op::Install { family, .. } => Some(family.clone()),
+            _ => None,
+        };
         let operation = self.packages.operation;
         self.packages.status = if list_releases {
             "Отримання випусків…"
@@ -398,16 +410,38 @@ impl Workspace {
                         }
                     }
                     Err(e) => {
-                        this.packages.status = "Операцію не завершено".into();
-                        this.packages.error = Some(format!("{e:#}"));
                         this.packages.pending_family = None;
-                        if !this.packages.cancel.load(std::sync::atomic::Ordering::Acquire) {
+                        // Скасування — не помилка: червоного рядка й тосту не треба.
+                        if this.packages.cancel.load(std::sync::atomic::Ordering::Acquire) {
+                            this.packages.status = "Скасовано".into();
+                        } else {
+                            this.packages.status = "Операцію не завершено".into();
+                            this.packages.error = Some(format!("{e:#}"));
                             this.toast(ToastKind::Error, crate::tr_format!("Пакети: {e:#}"), cx);
                         }
                     }
                 }
                 this.packages.trace();
                 this.wizard_packages_done(window, cx);
+                // Майстер закрито або ставили з вікна пакетів: рушій, якого бракувало, вмикається
+                // сам, а про завершення каже тост — вікна з прогресом на екрані вже може не бути.
+                if let (Some(path), Some(family)) =
+                    (this.packages.installed_executable.take(), install_family)
+                {
+                    this.toast(
+                        ToastKind::Success,
+                        crate::tr_format!("{name} встановлено", name = product_name(&family)),
+                        cx,
+                    );
+                    if this.engine_missing() {
+                        let kind = if family == "orca" {
+                            slicer::EngineKind::Orca
+                        } else {
+                            slicer::EngineKind::Bambu
+                        };
+                        this.activate_engine(Ok(slicer::Engine { kind, path }), window, cx);
+                    }
+                }
                 cx.notify();
             })
             .ok();
@@ -593,7 +627,9 @@ impl Workspace {
             let mut status=div().flex().flex_col().gap(px(6.));
             if ws.packages.busy {
                 status=status.child(div().flex().items_center().gap(px(8.)).child(ui::spinner("package-operation"))
-                    .child(div().text_sm().child(ws.packages.progress.as_ref().map(|p|p.label()).unwrap_or_else(||crate::i18n::tr(&ws.packages.status)))));
+                    .child(div().flex_1().text_sm().child(ws.packages.progress_label()))
+                    .when(ws.packages.installing(),|d|d.child(ui::ghost_button("package-cancel",Some(IconName::X),"Скасувати").border_1().border_color(z.border_variant)
+                        .on_click(cx.listener(|this,_,_,cx|this.cancel_packages(cx))))));
                 if let Some(percent)=ws.packages.progress.as_ref().and_then(|p|p.percent).filter(|_|ws.packages.progress.as_ref().is_some_and(|p|matches!(p.stage.as_str(),"download"|"profiles"))) {status=status.child(widgets::progress(percent));}
             } else {status=status.child(div().text_xs().text_color(z.text_muted).child(crate::i18n::tr(&ws.packages.status)));}
             let mut body=div().flex().flex_col().p(px(12.)).gap(px(10.))

@@ -324,6 +324,9 @@ impl Workspace {
 
         // Без рушія головна дія — встановити його: сіра «Нарізати» нічого не пояснює.
         let no_engine = self.engine_missing() && !running;
+        // Встановлення триває й після закриття майстра чи вікна пакетів: кнопка показує це
+        // і повертає до вікна, де є прогрес і скасування.
+        let installing = no_engine && self.packages.installing();
         let slice_short = crate::i18n::tr(if running {
             "Скасувати"
         } else if no_engine {
@@ -332,6 +335,7 @@ impl Workspace {
             "Нарізати"
         });
         let slice_long = match self.plate_to_slice() {
+            _ if installing => crate::i18n::tr("Встановлення рушія…"),
             _ if no_engine => crate::i18n::tr("Встановити рушій"),
             Some(n) if !running && self.plates.len() > 1 => {
                 crate::tr_format!("Нарізати пластину {n}")
@@ -384,6 +388,8 @@ impl Workspace {
 
         let slice_tip: SharedString = if running {
             crate::i18n::tr("Зупинити нарізку")
+        } else if installing {
+            self.packages.progress_label()
         } else if no_engine {
             crate::i18n::tr("Рушія нарізки немає — встановити OrcaSlicer або Bambu Studio")
         } else {
@@ -397,6 +403,8 @@ impl Workspace {
         let icons = density >= Density::Icons;
         let slice_icon = if running && icons {
             ui::spinner("slice-btn-spin")
+        } else if installing {
+            ui::spinner("slice-btn-install")
         } else if no_engine {
             ui::icon(IconName::Download).into_any_element()
         } else {
@@ -423,7 +431,13 @@ impl Workspace {
         })
         .when(!running && !no_engine && density == Density::Full, |d| d.child(ui::kbd("Ctrl+R")))
         .when(no_engine, |d| {
-            d.on_click(cx.listener(|this, _, window, cx| this.open_engine_setup(window, cx)))
+            d.on_click(cx.listener(|this, _, window, cx| {
+                if this.packages.installing() {
+                    this.open_packages(window, cx)
+                } else {
+                    this.open_engine_setup(window, cx)
+                }
+            }))
         })
         .when(running || can_slice, |d| {
             d.on_click(cx.listener(|this, _, window, cx| {

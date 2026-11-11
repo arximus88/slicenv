@@ -94,6 +94,7 @@ BYPASS_ALLOWED = {
     "Відкритий плагін: хмару вимкнено, друк — по локальній мережі",
     # packages.status — shown as tr(&status).
     "Операцію не завершено",
+    "Скасовано",
     # migration Config::label — shown as scope_label() = tr(label).
     "Проєкт",
     # SliceJob label — shown as tr(&title).

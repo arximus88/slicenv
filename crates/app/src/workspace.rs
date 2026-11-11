@@ -1402,6 +1402,29 @@ impl Workspace {
             || (self.page == Page::Preview && self.preview.is_some());
         let has_right = matches!(self.page, Page::Prepare | Page::Preview);
         let (activity, color): (Option<gpui::AnyElement>, gpui::Hsla) =
+            // Встановлення рушія триває й без майстра та вікна пакетів: тут його видно на
+            // кожній сторінці, клік повертає до вікна з прогресом і скасуванням.
+            if self.packages.installing() {
+                (
+                    Some(
+                        div()
+                            .id("engine-install-status")
+                            .flex()
+                            .items_center()
+                            .gap(px(6.))
+                            .cursor_pointer()
+                            .hover(|s| s.text_color(z.text))
+                            .child(ui::spinner("engine-install-spin"))
+                            .child(div().truncate().child(crate::tr_format!(
+                                "Встановлення рушія · {}",
+                                self.packages.progress_label()
+                            )))
+                            .on_click(cx.listener(|this, _, window, cx| this.open_packages(window, cx)))
+                            .into_any_element(),
+                    ),
+                    z.text_muted,
+                )
+            } else
             // Усі фонові задачі показуються однаково: спінер і текст із реєстру.
             if let Some(text) = self.jobs_activity() {
                 (
