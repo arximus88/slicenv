@@ -2515,6 +2515,12 @@ impl Workspace {
                 && matches!(self.slice_state, crate::workspace::SliceState::Done(_))
                 && !self.cloud.sending;
         }
+        // Без принтера нарізане можна передати далі: Bambu Connect, Bambu Studio, експорт.
+        if self.cloud.selected.is_none() {
+            return !self.engine_loading
+                && matches!(self.slice_state, crate::workspace::SliceState::Done(_))
+                && !self.cloud.sending;
+        }
         !self.engine_loading
             && matches!(self.slice_state, crate::workspace::SliceState::Done(_))
             && self.cloud.selected.as_ref().is_some_and(|dev| {
@@ -2539,12 +2545,10 @@ impl Workspace {
         if self.cloud.sending {
             return why("Попереднє завдання ще надсилається");
         }
-        let Some(dev) = &self.cloud.selected else {
-            return why("Принтер не вибрано — додайте його на сторінці «Пристрій»");
-        };
         if !matches!(self.slice_state, crate::workspace::SliceState::Done(_)) {
             return why("Спершу наріжте модель");
         }
+        let dev = self.cloud.selected.as_ref()?;
         let printer = self.cloud.printers.iter().find(|p| &p.dev_id == dev)?;
         if printer.model.is_empty() {
             return why(
@@ -2687,9 +2691,155 @@ impl Workspace {
         );
     }
 
+    /// Відкриває нарізаний файл у встановленому Bambu Studio: друк запускається вже там.
+    fn open_in_bambu_studio(
+        &mut self,
+        studio: &std::path::Path,
+        gcode_3mf: &std::path::Path,
+        name: &str,
+        cx: &mut Context<Self>,
+    ) {
+        // Копія в теці передачі: файл у кеші нарізки зникає з наступною нарізкою.
+        let launched = crate::bambu_connect::prepare(gcode_3mf, name).and_then(|(copy, _)| {
+            paths::host::command(studio)
+                .arg(copy)
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .map(drop)
+                .map_err(Into::into)
+        });
+        match launched {
+            Ok(()) => self.toast(
+                ToastKind::Info,
+                tr("Файл відкривається в Bambu Studio: натисніть там «Друк»."),
+                cx,
+            ),
+            Err(e) => self.toast(
+                ToastKind::Error,
+                crate::tr_format!("Не вдалося відкрити Bambu Studio: {e:#}"),
+                cx,
+            ),
+        }
+    }
+
+    /// Принтер не під’єднано: нарізаний файл передається програмі, яка вміє друкувати, —
+    /// Bambu Connect або встановленому Bambu Studio, — чи експортується.
+    fn open_handoff_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let crate::workspace::SliceState::Done(out) = &self.slice_state else {
+            return;
+        };
+        let sliced = out.gcode_3mf.clone();
+        let connect = crate::bambu_connect::installed();
+        let studio = slicer::Engine::discover(slicer::EngineKind::Bambu)
+            .ok()
+            .map(|engine| engine.path);
+        let name = format!(
+            "{} {}",
+            self.path
+                .as_ref()
+                .and_then(|p| p.file_stem())
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "model".into()),
+            self.plate_to_slice().unwrap_or(1)
+        );
+        self.open_modal(
+            Rc::new(move |_, _, cx| {
+                let z = zed();
+                let primary = if connect {
+                    let (sliced, name) = (sliced.clone(), name.clone());
+                    ui::accent_button("handoff-connect", IconName::Send, "Надіслати через Bambu Connect", true)
+                        .on_click(cx.listener(move |ws, _, _, cx| {
+                            ws.close_modal(cx);
+                            ws.send_via_bambu_connect(&sliced, &name, cx);
+                        }))
+                        .into_any_element()
+                } else {
+                    ui::ghost_button("handoff-get-connect", Some(IconName::ExternalLink), "Завантажити Bambu Connect")
+                        .border_1()
+                        .border_color(z.border_variant)
+                        .on_click(cx.listener(|_, _, _, cx| cx.open_url(crate::bambu_connect::DOWNLOAD_URL)))
+                        .into_any_element()
+                };
+                let studio_button = studio.clone().map(|studio| {
+                    let (sliced, name) = (sliced.clone(), name.clone());
+                    ui::ghost_button("handoff-studio", Some(IconName::ExternalLink), "Відкрити в Bambu Studio")
+                        .border_1()
+                        .border_color(z.border_variant)
+                        .on_click(cx.listener(move |ws, _, _, cx| {
+                            ws.close_modal(cx);
+                            ws.open_in_bambu_studio(&studio, &sliced, &name, cx);
+                        }))
+                });
+                crate::widgets::modal(
+                    "Принтер не під’єднано",
+                    540.,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .p(px(14.))
+                        .gap(px(10.))
+                        .child(div().text_sm().child(tr(
+                            "Slicenv ще не має зв’язку з принтером, але нарізаний файл можна передати програмі, яка надрукує його сама.",
+                        )))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap(px(6.))
+                                .pl(px(8.))
+                                .text_sm()
+                                .child(if connect {
+                                    tr("Bambu Connect — офіційна програма Bambu Lab для сторонніх слайсерів: файл відкриється в ній, там виберіть принтер і натисніть «Друк». Працює і через хмару, і в локальній мережі.")
+                                } else {
+                                    tr("Bambu Connect — безкоштовна програма Bambu Lab для сторонніх слайсерів. Встановіть її й увійдіть акаунтом Bambu — тут з’явиться кнопка «Надіслати через Bambu Connect».")
+                                })
+                                .when(studio.is_some(), |d| {
+                                    d.child(tr("Bambu Studio — файл відкриється в режимі перегляду, друк запускається звідти."))
+                                })
+                                .child(tr("Або під’єднайте принтер у локальній мережі за кодом доступу з його екрана — тоді Slicenv друкуватиме сам.")),
+                        ),
+                    Some(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap(px(6.))
+                            .child(
+                                ui::ghost_button("handoff-export", Some(IconName::Download), "Експортувати…")
+                                    .border_1()
+                                    .border_color(z.border_variant)
+                                    .on_click(cx.listener(|ws, _, window, cx| {
+                                        ws.close_modal(cx);
+                                        ws.prompt_export(window, cx);
+                                    })),
+                            )
+                            .child(
+                                ui::ghost_button("handoff-lan", Some(IconName::Wifi), "Додати принтер у мережі")
+                                    .border_1()
+                                    .border_color(z.border_variant)
+                                    .on_click(cx.listener(|ws, _, window, cx| {
+                                        ws.close_modal(cx);
+                                        ws.open_lan_dialog(None, window, cx);
+                                    })),
+                            )
+                            .children(studio_button)
+                            .child(primary)
+                            .into_any_element(),
+                    ),
+                )
+            }),
+            window,
+            cx,
+        );
+    }
+
     pub fn open_print_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if !self.can_send_print() {
             return;
+        }
+        if self.cloud.selected.is_none() {
+            return self.open_handoff_dialog(window, cx);
         }
         if self.cloud.selected.as_ref().is_some_and(|d| self.cloud.klipper.has(d)) {
             return self.open_klipper_print_dialog(window, cx);

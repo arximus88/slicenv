@@ -825,6 +825,7 @@ fn unsliced_center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::Any
     let z = zed();
     let can_slice = ws.can_slice();
     let stale = ws.active_slice_stale();
+    let no_engine = ws.engine_missing();
     let hint = match slice_progress(ws, cx) {
         Some(progress) => progress,
         None => div()
@@ -841,27 +842,38 @@ fn unsliced_center(ws: &mut Workspace, cx: &mut Context<Workspace>) -> gpui::Any
                         div()
                             .text_sm()
                             .font_weight(gpui::FontWeight::MEDIUM)
-                            .child(crate::i18n::tr(if stale { "Нарізка застаріла" } else { "Ще нічого не нарізано" })),
+                            .child(crate::i18n::tr(if no_engine {
+                                "Немає рушія нарізки"
+                            } else if stale {
+                                "Нарізка застаріла"
+                            } else {
+                                "Ще нічого не нарізано"
+                            })),
                     )
                     .child(
                         div()
                             .text_xs()
                             .text_color(z.text_muted)
                             .whitespace_normal()
-                            .child(crate::i18n::tr(if stale {
+                            .child(crate::i18n::tr(if no_engine {
+                                "Slicenv нарізає через OrcaSlicer або Bambu Studio. Встанови один із них кнопкою «Встановити рушій» угорі."
+                            } else if stale {
                                 "Пластину або параметри змінено після нарізки — наріж її знову."
                             } else {
                                 "Нарізай пластину — тут з’являться траєкторії по шарах, час і витрата філаменту."
                             })),
                     ),
             )
-            .child(
-                ui::accent_button("empty-slice", IconName::Scissors, "Нарізати", can_slice)
-                    .flex_none()
-                    .when(can_slice, |d| {
-                        d.on_click(cx.listener(|this, _, window, cx| this.start_slice(window, cx)))
-                    }),
-            ),
+            // Без рушія дія одна — на панелі вгорі; другої кнопки тут немає.
+            .when(!no_engine, |d| {
+                d.child(
+                    ui::accent_button("empty-slice", IconName::Scissors, "Нарізати", can_slice)
+                        .flex_none()
+                        .when(can_slice, |d| {
+                            d.on_click(cx.listener(|this, _, window, cx| this.start_slice(window, cx)))
+                        }),
+                )
+            }),
     };
     div()
         .flex()

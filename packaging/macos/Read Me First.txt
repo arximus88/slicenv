@@ -1,0 +1,44 @@
+Slicenv — first launch on macOS
+===============================
+
+Slicenv is not signed with an Apple Developer ID and is not notarized, so macOS
+blocks it on first launch ("cannot be opened" or "is damaged"). The app is fine;
+macOS just cannot verify who built it.
+
+1. Drag Slicenv to Applications.
+2. Open it once. macOS refuses; press Done.
+3. Open System Settings → Privacy & Security, scroll down and press
+   "Open Anyway" next to Slicenv. Confirm with your password.
+
+Or, in Terminal:
+
+    xattr -dr com.apple.quarantine /Applications/Slicenv.app
+
+Printing: the Bambu Lab network plugin is not available on macOS. Print over the
+local network (add the printer with the access code from its screen), or slice
+and press Print — Slicenv hands the file to Bambu Connect or Bambu Studio.
+
+Source and issues: https://github.com/arximus88/slicenv
+
+
+Slicenv — перший запуск на macOS
+================================
+
+Slicenv не підписано сертифікатом Apple Developer ID і не нотаризовано, тому
+macOS блокує перший запуск («неможливо відкрити» або «пошкоджено»). Із
+застосунком усе гаразд: система лише не може перевірити, хто його зібрав.
+
+1. Перетягніть Slicenv у «Програми».
+2. Відкрийте його один раз. macOS відмовить — натисніть «Готово».
+3. Відкрийте «Системні параметри» → «Приватність і безпека», прокрутіть униз і
+   натисніть «Відкрити попри це» біля Slicenv. Підтвердьте паролем.
+
+Або в Терміналі:
+
+    xattr -dr com.apple.quarantine /Applications/Slicenv.app
+
+Друк: мережевий плагін Bambu Lab на macOS недоступний. Друкуйте в локальній
+мережі (додайте принтер за кодом доступу з його екрана) або наріжте модель і
+натисніть «Друкувати» — Slicenv передасть файл у Bambu Connect чи Bambu Studio.
+
+Код і зауваження: https://github.com/arximus88/slicenv
