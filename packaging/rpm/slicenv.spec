@@ -3,7 +3,7 @@
 %global debug_package %{nil}
 %global __brp_strip %{nil}
 %global __brp_check_rpaths %{nil}
-%{!?pkgversion: %global pkgversion 0.1.2}
+%{!?pkgversion: %global pkgversion 0.1.3}
 %global _docdir_fmt %{name}
 
 Name:           slicenv
@@ -54,6 +54,9 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 %doc %{_docdir}/%{name}
 
 %changelog
+* Wed Nov 11 2026 Borys Kharchenko <7512615+arximus88@users.noreply.github.com> - 0.1.3-1
+- OrcaSlicer 2.5 profiles are read from the package cache; clearer no-engine and no-printer states.
+
 * Wed Nov 11 2026 Borys Kharchenko <7512615+arximus88@users.noreply.github.com> - 0.1.2-1
 - Engine log lines reporting no substitutions are no longer shown as warnings.
 

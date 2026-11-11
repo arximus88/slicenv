@@ -320,15 +320,37 @@ impl PresetStore {
                 }
             }
         }
-        let root = resolve_catalog(
-            None,
-            &package_candidates,
-            &Self::library_root(),
-            kind.name(),
-            &version,
-            &candidates[package_candidates.len()..],
-        )
-        .ok_or_else(|| ProfileCatalogMissing {
+        let resolve = || {
+            resolve_catalog(
+                None,
+                &package_candidates,
+                &Self::library_root(),
+                kind.name(),
+                &version,
+                &candidates[package_candidates.len()..],
+            )
+        };
+        // Пакет лише з бінарним кешем (.opc, OrcaSlicer ≥ 2.5): профілі читаються з нього
+        // в бібліотеку — без мережі. Невдача не фатальна: лишається завантаження з тегу.
+        let root = resolve().or_else(|| {
+            let package = package_candidates
+                .iter()
+                .find(|p| p.join("BBL.opc").is_file())?;
+            match crate::opc::import_catalog(
+                package,
+                &Self::library_root(),
+                kind.name(),
+                &version,
+                &["BBL"],
+            ) {
+                Ok(_) => resolve(),
+                Err(e) => {
+                    eprintln!("[presets] кеш профілів {} не прочитано: {e:#}", package.display());
+                    None
+                }
+            }
+        });
+        let root = root.ok_or_else(|| ProfileCatalogMissing {
             family: kind,
             version,
             opc_only: package_candidates

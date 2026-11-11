@@ -1290,6 +1290,12 @@ impl Workspace {
             .unwrap_or(([0.0, 0.0], [project::BED_SIZE, project::BED_SIZE]))
     }
 
+    /// Рушія нарізки немає й він не завантажується: нарізати нічим, наступний крок —
+    /// встановити його. Кнопка нарізки, картка Preview і панель профілів кажуть це однаково.
+    pub fn engine_missing(&self) -> bool {
+        self.engine.is_none() && self.pending_engine.is_none() && !self.engine_loading
+    }
+
     pub fn can_slice(&self) -> bool {
         self.plate_to_slice().is_some()
             && !self.selection.process.is_empty()

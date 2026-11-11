@@ -564,7 +564,12 @@ fn engine_button(ws: &Workspace, cx: &mut Context<Workspace>) -> impl IntoElemen
                 .overflow_hidden()
                 .text_ellipsis()
                 .whitespace_nowrap()
-                .child(ws.engine_label.clone()),
+                .when(ws.engine_missing(), |d| d.text_color(z.warning))
+                .child(if ws.engine_missing() {
+                    crate::i18n::tr("Не встановлено").into()
+                } else {
+                    ws.engine_label.clone()
+                }),
         )
         .child(ui::icon(IconName::ChevronsUpDown).size(px(12.)).text_color(z.text_muted))
         .tooltip(move |window, cx| gpui_component::tooltip::Tooltip::new(tip.clone()).build(window, cx))

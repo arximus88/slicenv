@@ -85,6 +85,8 @@ DMG_SRC=$DIST/macos/dmg
 mkdir -p "$DMG_SRC"
 cp -R "$APP" "$DMG_SRC/"
 ln -s /Applications "$DMG_SRC/Applications"
+# Gatekeeper блокує непідписану збірку мовчки: інструкція має лежати поруч із застосунком.
+cp "$ROOT/packaging/macos/Read Me First.txt" "$DMG_SRC/"
 hdiutil create -volname "Slicenv $VERSION" -srcfolder "$DMG_SRC" -ov -format UDZO "$DIST/$BASE.dmg"
 rm -rf "$DMG_SRC"
 

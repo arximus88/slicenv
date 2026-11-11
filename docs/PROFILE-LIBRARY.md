@@ -9,8 +9,14 @@ A catalog has `BBL.json`, `BBL/{machine,process,filament}/` and `catalog.json`:
 Resolution: `SLICENV_PROFILE_ROOT` / `ORCA_PROFILE_ROOT`, package JSON tree,
 family library (exact version, newest <= engine version, otherwise newest),
 then existing system fallbacks. A cover-only `BBL/` directory is insufficient.
-OrcaSlicer 2.5 uses private, unstable `.opc` vendor caches; we deliberately do
-not decode them. Official git-tag JSON remains the source of truth.
+OrcaSlicer 2.5 ships system profiles only as `.opc` vendor caches. Slicenv decodes
+them (`crates/slicer/src/opc.rs`, cache format version 2) into the same JSON tree,
+recorded as `source: engine-cache`: no network is needed and the engine is usable at
+once. A cache holds what OrcaSlicer itself understands: keys it does not define are
+absent and values are already normalised to its types (`"0"` → `"0%"`, legacy names),
+and the printer model has no `default_bed_type` (Slicenv falls back to the first
+standard plate, which is what every Bambu Lab model declares). An unknown cache
+version or a damaged file is rejected; the official git-tag JSON is then fetched.
 
 ```sh
 python3 crates/slicer/tools/manage_engines.py profiles fetch --family orca --ref v2.5.0-beta --vendor BBL

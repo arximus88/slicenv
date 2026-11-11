@@ -157,6 +157,14 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.1.3" date="2026-11-11" type="stable">
+      <url type="details">https://github.com/arximus88/slicenv/releases/tag/v0.1.3</url>
+      <description>
+        <p>OrcaSlicer 2.5 profiles are read from the installed engine, without a long download that could hang.</p>
+        <p>The app now says what is missing: an Install engine button instead of a disabled Slice, and Print hands the file to Bambu Connect or Bambu Studio when no printer is connected.</p>
+        <p>The model library no longer scans the whole home folder.</p>
+      </description>
+    </release>
     <release version="0.1.2" date="2026-11-11" type="stable">
       <url type="details">https://github.com/arximus88/slicenv/releases/tag/v0.1.2</url>
       <description>

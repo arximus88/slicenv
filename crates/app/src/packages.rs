@@ -214,7 +214,7 @@ pub(crate) fn recommended_asset(release: &Value) -> Option<&Value> {
     };
     assets
         .iter()
-        .find(|a| name(a).contains("ubuntu24") && name(a).ends_with("appimage"))
+        .find(|a| ubuntu_release(&name(a)) == Some("24") && name(a).ends_with("appimage"))
         .or_else(|| assets.iter().find(|a| name(a).ends_with("appimage")))
         .or_else(|| assets.first())
         .copied()
@@ -268,16 +268,23 @@ pub(crate) fn engine_logo(family: &str) -> gpui::AnyElement {
     .flex_none()
     .into_any_element()
 }
+/// Випуск Ubuntu в назві пакета без роздільників: і `ubuntu24`, і скорочене `ubu24`
+/// (так називає файли Bambu Studio 02.09).
+fn ubuntu_release(name: &str) -> Option<&'static str> {
+    ["20", "22", "24"]
+        .into_iter()
+        .find(|v| name.contains(&format!("ubuntu{v}")) || name.contains(&format!("ubu{v}")))
+}
 pub(crate) fn asset_label(asset: &Value) -> String {
     let name = asset["name"].as_str().unwrap_or("");
     let lower = name.to_lowercase();
     let platform_name = lower.replace(['-', '_', '.'], "");
-    let platform = if platform_name.contains("ubuntu22") {
-        "Ubuntu 22.04"
-    } else if platform_name.contains("ubuntu24") {
-        "Ubuntu 24.04"
-    } else if platform_name.contains("ubuntu20") {
-        "Ubuntu 20.04"
+    let platform = if let Some(release) = ubuntu_release(&platform_name) {
+        match release {
+            "20" => "Ubuntu 20.04",
+            "22" => "Ubuntu 22.04",
+            _ => "Ubuntu 24.04",
+        }
     } else if lower.ends_with(".zip") {
         if crate::engine_manager::asset_arch(name) == Some(crate::engine_manager::Arch::Arm64) {
             "Windows ARM64"
@@ -650,6 +657,8 @@ mod tests {
     fn asset_labels_distinguish_upstream_platform_spellings() {
         for (name, expected) in [
             ("BambuStudio_ubuntu22.04.AppImage", "Ubuntu 22.04"),
+            ("BambuStudio_ubu22_v02.09.01.70-20261103183404.AppImage", "Ubuntu 22.04"),
+            ("BambuStudio_ubu24-v02.09.01.70-20261103183404.AppImage", "Ubuntu 24.04"),
             ("BambuStudio_ubuntu-24.04.AppImage", "Ubuntu 24.04"),
             ("Orca_Ubuntu2404.AppImage", "Ubuntu 24.04"),
         ] {

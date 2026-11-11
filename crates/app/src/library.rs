@@ -46,11 +46,26 @@ const ENGINE_EXECUTABLES: &[&str] = &[
     "bambustudio",
 ];
 
-/// Тека за замовчуванням, якщо користувач ще не вибрав своїх.
+/// `~/Documents/3d-models`, якщо така тека є. На macOS не перевіряється: сам погляд у
+/// `Documents` викликає системний запит на доступ до теки.
+fn models_dir() -> Option<PathBuf> {
+    if cfg!(target_os = "macos") {
+        return None;
+    }
+    let models = paths::home_dir().join("Documents/3d-models");
+    models.is_dir().then_some(models)
+}
+
+/// Тека, з якої починаються діалоги відкриття й збереження, доки бібліотека порожня.
 pub fn default_dir() -> PathBuf {
-    let home = paths::home_dir();
-    let models = home.join("Documents/3d-models");
-    if models.is_dir() { models } else { home }
+    models_dir().unwrap_or_else(paths::home_dir)
+}
+
+/// Корені бібліотеки, доки користувач не вибрав своїх. Домашня тека сюди не входить:
+/// її обхід — це хвилини читання чужих файлів, а на macOS ще й запити на доступ до
+/// музики, фото й робочого столу. Без теки з моделями бібліотека порожня й пропонує вибрати.
+pub fn default_roots() -> Vec<PathBuf> {
+    models_dir().into_iter().collect()
 }
 
 /// Назва теки для заголовка: остання складова шляху (`C:\` і `/` — як є).

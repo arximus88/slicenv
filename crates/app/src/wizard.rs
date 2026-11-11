@@ -363,6 +363,16 @@ impl Workspace {
         cx.notify();
     }
 
+    /// Майстер одразу на кроці рушія: знайдені на комп’ютері й встановлення в один клік.
+    pub fn open_engine_setup(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_wizard(window, cx);
+        if let Some(w) = &mut self.wizard {
+            w.step = Step::Engine;
+        }
+        self.wizard_enter(window, cx);
+        cx.notify();
+    }
+
     /// Esc і «Пропустити»: майстер більше не з’являється сам.
     pub fn close_wizard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let finished = self
@@ -2935,7 +2945,27 @@ fn cloud_form(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspac
             );
         }
         CloudStage::UnsupportedOs => {
-            body = body.child(note(IconName::Info, z.warning, tr(cloud::UNSUPPORTED_OS)));
+            body = body
+                .child(note(IconName::Info, z.warning, tr(cloud::UNSUPPORTED_OS)))
+                .child(note(
+                    IconName::Send,
+                    z.text_muted,
+                    tr("Друкувати через хмару все одно можна: після нарізки кнопка «Друкувати» передає файл у Bambu Connect або відкриває його в Bambu Studio — принтер вибирається вже там."),
+                ))
+                .child(
+                    div().flex().child(
+                        ui::ghost_button(
+                            "wizard-get-connect",
+                            Some(IconName::ExternalLink),
+                            "Завантажити Bambu Connect",
+                        )
+                        .border_1()
+                        .border_color(z.border_variant)
+                        .on_click(cx.listener(|_, _, _, cx| {
+                            cx.open_url(crate::bambu_connect::DOWNLOAD_URL)
+                        })),
+                    ),
+                );
         }
         CloudStage::NeedPlugin(unsupported) => {
             let remote_line = match &c.remote {

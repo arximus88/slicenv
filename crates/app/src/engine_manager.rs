@@ -462,9 +462,40 @@ fn install_release(
         let mut wanted = vec!["BBL".to_owned()];
         wanted.extend(vendors.iter().cloned());
         wanted.dedup();
-        let mut on_progress = |done: usize, total: usize| reporter.emit("profiles", Some(done as u64), Some(total as u64));
-        if let Err(e) = crate::profile_fetch::fetch(kind, &version, &wanted, &mut on_progress, cancel) {
-            profile_error = format!("{e:#}").into();
+        // Спершу — бінарний кеш із самого пакета (OrcaSlicer ≥ 2.5): миттєво й без мережі.
+        // З git-тегу профілі тягнуться, лише якщо кеш не прочитався (новий формат).
+        let cached = manifest["profile_paths"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(Value::as_str)
+            .map(Path::new)
+            .find(|p| p.join("BBL.opc").is_file())
+            .map(|package| {
+                let present: Vec<&str> = wanted
+                    .iter()
+                    .map(String::as_str)
+                    .filter(|v| package.join(format!("{v}.opc")).is_file())
+                    .collect();
+                slicer::opc::import_catalog(
+                    package,
+                    &slicer::PresetStore::library_root(),
+                    kind.name(),
+                    &version,
+                    &present,
+                )
+            });
+        match cached {
+            Some(Ok(_)) => {}
+            other => {
+                if let Some(Err(e)) = other {
+                    eprintln!("[engines] кеш профілів не прочитано, беру з GitHub: {e:#}");
+                }
+                let mut on_progress = |done: usize, total: usize| reporter.emit("profiles", Some(done as u64), Some(total as u64));
+                if let Err(e) = crate::profile_fetch::fetch(kind, &version, &wanted, &mut on_progress, cancel) {
+                    profile_error = format!("{e:#}").into();
+                }
+            }
         }
     }
     reporter.emit("done", None, None);

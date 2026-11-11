@@ -596,6 +596,31 @@ impl Workspace {
     ) -> gpui::AnyElement {
         let _profile = paths::profile::Span::new("preset_editor::render");
         let Some(editor) = self.editor(kind) else {
+            if self.engine_missing() {
+                return div()
+                    .flex()
+                    .flex_col()
+                    .items_start()
+                    .gap(px(8.))
+                    .p(px(10.))
+                    .child(
+                        div()
+                            .text_sm()
+                            .whitespace_normal()
+                            .child(crate::i18n::tr(
+                                "Рушій нарізки не встановлено — без нього немає профілів принтера й нарізки.",
+                            )),
+                    )
+                    .child(
+                        crate::ui::ghost_button("editor-install-engine", Some(crate::ui::IconName::Download), "Встановити рушій")
+                            .border_1()
+                            .border_color(crate::theme::zed().border_variant)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_engine_setup(window, cx)
+                            })),
+                    )
+                    .into_any_element();
+            }
             return div()
                 .text_sm()
                 .child(crate::i18n::tr("Профілі ще завантажуються…"))

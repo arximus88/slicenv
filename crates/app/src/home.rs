@@ -53,7 +53,7 @@ impl Workspace {
             .preferences
             .library_roots
             .clone()
-            .unwrap_or_else(|| vec![library::default_dir()]);
+            .unwrap_or_else(library::default_roots);
         if let Some(dir) = arg
             && !roots.contains(&dir)
         {

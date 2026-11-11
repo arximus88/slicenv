@@ -322,8 +322,17 @@ impl Workspace {
         let print_primary = can_print && !running;
         let has_project = self.project.is_some();
 
-        let slice_short = crate::i18n::tr(if running { "Скасувати" } else { "Нарізати" });
+        // Без рушія головна дія — встановити його: сіра «Нарізати» нічого не пояснює.
+        let no_engine = self.engine_missing() && !running;
+        let slice_short = crate::i18n::tr(if running {
+            "Скасувати"
+        } else if no_engine {
+            "Рушій"
+        } else {
+            "Нарізати"
+        });
         let slice_long = match self.plate_to_slice() {
+            _ if no_engine => crate::i18n::tr("Встановити рушій"),
             Some(n) if !running && self.plates.len() > 1 => {
                 crate::tr_format!("Нарізати пластину {n}")
             }
@@ -375,6 +384,8 @@ impl Workspace {
 
         let slice_tip: SharedString = if running {
             crate::i18n::tr("Зупинити нарізку")
+        } else if no_engine {
+            crate::i18n::tr("Рушія нарізки немає — встановити OrcaSlicer або Bambu Studio")
         } else {
             crate::tr_format!(
                 "Нарізати активну пластину рушієм нарізки {} (Ctrl+R)",
@@ -386,6 +397,8 @@ impl Workspace {
         let icons = density >= Density::Icons;
         let slice_icon = if running && icons {
             ui::spinner("slice-btn-spin")
+        } else if no_engine {
+            ui::icon(IconName::Download).into_any_element()
         } else {
             ui::icon(IconName::Scissors).into_any_element()
         };
@@ -400,7 +413,7 @@ impl Workspace {
             slice_icon,
             slice_text,
             !print_primary,
-            print_primary || running || can_slice,
+            print_primary || running || can_slice || no_engine,
         )
         .role(gpui::Role::Button)
         .aria_label(slice_tip.clone())
@@ -408,7 +421,10 @@ impl Workspace {
         .when(running && !icons, |d| {
             d.child(ui::spinner("slice-btn-spin"))
         })
-        .when(!running && density == Density::Full, |d| d.child(ui::kbd("Ctrl+R")))
+        .when(!running && !no_engine && density == Density::Full, |d| d.child(ui::kbd("Ctrl+R")))
+        .when(no_engine, |d| {
+            d.on_click(cx.listener(|this, _, window, cx| this.open_engine_setup(window, cx)))
+        })
         .when(running || can_slice, |d| {
             d.on_click(cx.listener(|this, _, window, cx| {
                 if this.slicing() {
