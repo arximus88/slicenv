@@ -1,6 +1,6 @@
 # Скриншоти для Flathub / AppStream
 
-PNG 1600×900 (16:9), світла тема, англійський інтерфейс. На них посилається
+PNG 1600×900 (16:9), світла тема, шкіра GNOME, англійський інтерфейс. На них посилається
 `<screenshots>` у `crates/app/assets/app/app.borys.slicenv.metainfo.xml` за URL
 `https://raw.githubusercontent.com/arximus88/slicenv/v<версія>/packaging/screenshots/<файл>` —
 тож після зміни файлів потрібен новий тег, а URL у metainfo — на нього.
@@ -9,19 +9,20 @@ PNG 1600×900 (16:9), світла тема, англійський інтерф
 |---|---|---|
 | `01-home.png` | Головна: бібліотека моделей з мініатюрами | Home: model library… |
 | `02-prepare.png` | Підготовка: дві пластини, вибраний об’єкт, налаштування процесу | Prepare: objects on build plates… |
-| `03-preview-layers.png` | Preview «Шари» після нарізки, повзунок на шарі 77 | Preview: sliced layers… |
+| `03-preview-layers.png` | Preview «Шари» після нарізки, повзунок на шарі 79 | Preview: sliced layers… |
 | `04-preview-photo.png` | Preview «Фото» з матеріалом PLA | Photo view… |
 | `05-profile-editor.png` | Редактор профілю філаменту (Advanced) | Profile editor… |
-| `06-engines.png` | Меню «Рушій нарізки»: OrcaSlicer 2.5.0 і Bambu Studio 02.09.01.70 | Slicing engine menu… |
+| `06-engines.png` | Меню «Рушій нарізки»: OrcaSlicer 2.5.0 і Bambu Studio 02.07.01.62 | Slicing engine menu… |
 | `07-device.png` | Сторінка «Пристрій» з фіктивним принтером (`SLICENV_FAKE_PRINTER=1`) | Device: printer status… |
 
-## Як знято (2026-11-09)
+## Як знято (2026-11-12, для 0.1.5)
 
-Справжній застосунок — **Flatpak-бандл** з `packaging/flatpak/app.borys.slicenv.yml`
-(`tools/package.sh flatpak`), Radeon 780M (Vulkan) у headless mutter
-(`tools/screenshots/headless.sh`), тимчасовий HOME. Рушії встановлено менеджером рушіїв
-усередині пісочниці. Жодних особистих даних: моделі згенеровані, принтер фіктивний, хмара й
-LAN вимкнені, хостові конфіги не змонтовані.
+Справжній застосунок — нативна release-збірка з `main` (`cargo build --release -p app`),
+шкіра GNOME (`SLICENV_SKIN=gnome`), світла тема, Radeon 780M (Vulkan) у headless mutter,
+тимчасовий HOME. Рушії OrcaSlicer 2.5.0 і Bambu Studio 02.07.01.62 — копії керованих рушіїв
+у тимчасовій теці даних. Жодних особистих даних: моделі згенеровані, принтер фіктивний
+(`SLICENV_FAKE_PRINTER=1`), хмара й LAN вимкнені. Знімки 0.1.0 знято з Flatpak-бандла
+(`tools/screenshots/headless.sh flatpak`) — цей шлях теж робочий.
 
 Моделі власні, процедурні (без сторонніх ліцензій):
 ```sh

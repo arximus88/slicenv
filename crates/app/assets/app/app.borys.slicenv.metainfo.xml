@@ -84,37 +84,37 @@
 
   <screenshots>
     <screenshot type="default">
-      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/01-home.png</image>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.5/packaging/screenshots/01-home.png</image>
       <caption>Home: model library with thumbnails and recent projects</caption>
       <caption xml:lang="uk">Головна: бібліотека моделей з мініатюрами й недавні проєкти</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/02-prepare.png</image>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.5/packaging/screenshots/02-prepare.png</image>
       <caption>Prepare: objects on build plates with print settings</caption>
       <caption xml:lang="uk">Підготовка: об’єкти на пластинах і налаштування друку</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/03-preview-layers.png</image>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.5/packaging/screenshots/03-preview-layers.png</image>
       <caption>Preview: sliced layers, toolpaths and print statistics</caption>
       <caption xml:lang="uk">Перегляд: шари, траєкторії й статистика друку</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/04-preview-photo.png</image>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.5/packaging/screenshots/04-preview-photo.png</image>
       <caption>Photo view: the printed part rendered in the chosen filament</caption>
       <caption xml:lang="uk">Фото: надрукована деталь у вибраному філаменті</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/05-profile-editor.png</image>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.5/packaging/screenshots/05-profile-editor.png</image>
       <caption>Profile editor for process, filament and printer presets</caption>
       <caption xml:lang="uk">Редактор профілів процесу, філаменту й принтера</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/06-engines.png</image>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.5/packaging/screenshots/06-engines.png</image>
       <caption>Slicing engine menu: installed OrcaSlicer and Bambu Studio versions</caption>
       <caption xml:lang="uk">Меню рушія нарізки: встановлені версії OrcaSlicer і Bambu Studio</caption>
     </screenshot>
     <screenshot>
-      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.0/packaging/screenshots/07-device.png</image>
+      <image>https://raw.githubusercontent.com/arximus88/slicenv/v0.1.5/packaging/screenshots/07-device.png</image>
       <caption>Device: printer status, temperatures and AMS on the local network</caption>
       <caption xml:lang="uk">Пристрій: статус принтера, температури й AMS у локальній мережі</caption>
     </screenshot>
@@ -157,6 +157,13 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.1.5" date="2026-11-12" type="stable">
+      <url type="details">https://github.com/arximus88/slicenv/releases/tag/v0.1.5</url>
+      <description>
+        <p>On GNOME the window buttons and title bar click actions follow the system settings and change without a restart.</p>
+        <p>The camera error is shown in the interface language, and the unsaved preset changes dialog no longer overflows with long G-code values.</p>
+      </description>
+    </release>
     <release version="0.1.4" date="2026-11-11" type="stable">
       <url type="details">https://github.com/arximus88/slicenv/releases/tag/v0.1.4</url>
       <description>
