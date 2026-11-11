@@ -1768,9 +1768,6 @@
   "Цього принтера немає в акаунті Bambu Cloud.": "This printer is not in your Bambu Cloud account.",
   "Немає з’єднання з принтером у локальній мережі: перевірте, що він увімкнений і в тій самій мережі.": "No connection to the printer on the local network: check that it is on and on the same network.",
   "Додайте принтер у локальній мережі за IP, серійним номером і кодом доступу з його екрана.": "Add the printer on the local network by IP, serial number and the access code from its screen.",
-  "Маршрут:": "Route:",
-  "готово": "ready",
-  "недоступно зараз": "unavailable now",
   "Через Bambu Cloud: модель вивантажується в хмару Bambu, і принтер почне друк.": "Via Bambu Cloud: the model is uploaded to the Bambu cloud and the printer starts printing.",
   "Застосовано: Omarchy «{name}», {mode}": "Applied: Omarchy “{name}”, {mode}",
   "Застосовано: {mode} з теми ОС, з системним акцентом": "Applied: {mode} from the OS theme, with the system accent",
@@ -1807,5 +1804,17 @@
   "Встановлення рушія · {}": "Installing engine · {}",
   "Згорнути": "Minimize",
   "Відновити розмір": "Restore",
-  "Розгорнути": "Maximize"
+  "Розгорнути": "Maximize",
+  "Пластина {plate}": "Plate {plate}",
+  "Готово до друку": "Ready",
+  "Не підключено": "Not connected",
+  "Підключається…": "Connecting…",
+  "Офлайн": "Offline",
+  "Немає в акаунті": "Not in account",
+  "Немає з’єднання": "No connection",
+  "Потрібен код доступу": "Needs access code",
+  "Не додано": "Not added",
+  "Як надіслати": "Send via",
+  "Перед друком": "Before printing",
+  "Відкрити в Bambu Connect": "Open in Bambu Connect"
 }
