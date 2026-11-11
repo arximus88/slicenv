@@ -26,6 +26,6 @@ pkgbase = slicenv-bin
 	options = !strip
 	options = !debug
 	source_x86_64 = https://github.com/arximus88/slicenv/releases/download/v0.1.4/slicenv-0.1.4-x86_64-linux.tar.gz
-	sha256sums_x86_64 = SKIP
+	sha256sums_x86_64 = 7eb3d2e676480e266122cfbc10a0ff5c80c4b1646603246f55e83b6cc87c4695
 
 pkgname = slicenv-bin
