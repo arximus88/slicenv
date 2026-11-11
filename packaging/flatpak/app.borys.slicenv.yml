@@ -60,7 +60,7 @@ modules:
       - type: git
         url: https://github.com/plougher/squashfs-tools.git
         tag: 4.7.5
-        commit: 708c59ae80853b0845017c33b42e56061cc546cd
+        commit: 5d91b1be0a9721cb4989ebfbfabf2b8a8fd00729
 
   # libavcodec.so.61 / libavformat.so.61 / libavutil.so.59 / libswscale.so.8 (FFmpeg 7):
   # їх вимагають (DT_NEEDED) Bambu Studio 2.x і OrcaSlicer 2.5, а GNOME 51 має FFmpeg 8.
@@ -111,7 +111,7 @@ modules:
       - type: git
         url: https://github.com/AngusJohnson/Clipper2.git
         tag: Clipper2_1.5.4
-        commit: ef88ee97c0e759792e43a2b2d8072def6c9244e8
+        commit: 5d91b1be0a9721cb4989ebfbfabf2b8a8fd00729
   - name: manifold
     buildsystem: cmake-ninja
     config-opts:
@@ -130,7 +130,7 @@ modules:
       - type: git
         url: https://github.com/elalish/manifold.git
         tag: v3.5.3
-        commit: 0edd9d54876f3135e431575214dd6d8a72866fee
+        commit: 5d91b1be0a9721cb4989ebfbfabf2b8a8fd00729
 
   - name: slicenv
     buildsystem: simple
@@ -157,5 +157,5 @@ modules:
       # Джерела 0.1.2 закріплено комітом підготовки версії; тег створюється під час публікації.
       - type: git
         url: https://github.com/arximus88/slicenv.git
-        commit: ddbea45ee2741aef0bec67c8f71e7277831d4ad0
+        commit: 5d91b1be0a9721cb4989ebfbfabf2b8a8fd00729
       - cargo-sources.json
