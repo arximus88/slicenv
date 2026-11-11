@@ -213,13 +213,13 @@ mod tests {
     use super::*;
 
     /// Формат справжнього анонсу A1 (серійник і назва замінені).
-    const A1: &str = "NOTIFY * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nServer: UPnP/1.0\r\nLocation: 192.168.1.137\r\nNT: urn:bambulab-com:device:3dprinter:1\r\nUSN: 03919C000000000\r\nCache-Control: max-age=1800\r\nDevModel.bambu.com: N2S\r\nDevName.bambu.com: My A1\r\nDevSignal.bambu.com: -41\r\nDevConnect.bambu.com: cloud\r\nDevBind.bambu.com: occupied\r\nDevseclink.bambu.com: secure\r\nDevVersion.bambu.com: 01.04.60.02\r\nDevCap.bambu.com: 1\r\n\r\n";
+    const A1: &str = "NOTIFY * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nServer: UPnP/1.0\r\nLocation: 192.168.1.50\r\nNT: urn:bambulab-com:device:3dprinter:1\r\nUSN: 03919C000000000\r\nCache-Control: max-age=1800\r\nDevModel.bambu.com: N2S\r\nDevName.bambu.com: My A1\r\nDevSignal.bambu.com: -41\r\nDevConnect.bambu.com: cloud\r\nDevBind.bambu.com: occupied\r\nDevseclink.bambu.com: secure\r\nDevVersion.bambu.com: 01.04.60.02\r\nDevCap.bambu.com: 1\r\n\r\n";
 
     #[test]
     fn parses_real_a1_notify() {
         let d = parse_notify(A1, "10.0.0.9".parse().unwrap()).unwrap();
         assert_eq!(d.serial, "03919C000000000");
-        assert_eq!(d.ip, "192.168.1.137".parse::<IpAddr>().unwrap());
+        assert_eq!(d.ip, "192.168.1.50".parse::<IpAddr>().unwrap());
         assert_eq!(d.model, "N2S");
         assert_eq!(d.name, "My A1");
         assert_eq!(d.signal, Some(-41));

@@ -191,18 +191,18 @@ mod tests {
 
     #[test]
     fn manual_input_is_validated() {
-        let p = LanPrinter::new(" 03919c0000000 ", "192.168.1.137", "12345678").unwrap();
+        let p = LanPrinter::new(" 03919c0000000 ", "192.168.1.50", "12345678").unwrap();
         assert_eq!(p.serial, "03919C0000000");
-        assert!(LanPrinter::new("short", "192.168.1.137", "12345678").is_err());
+        assert!(LanPrinter::new("short", "192.168.1.50", "12345678").is_err());
         assert!(LanPrinter::new("03919C0000000", "192.168.1", "12345678").is_err());
         assert!(LanPrinter::new("03919C0000000", "0.0.0.0", "12345678").is_err());
-        assert!(LanPrinter::new("03919C0000000", "192.168.1.137", "12 4").is_err());
-        assert!(LanPrinter::new("03919C0000000", "192.168.1.137", "").is_err());
+        assert!(LanPrinter::new("03919C0000000", "192.168.1.50", "12 4").is_err());
+        assert!(LanPrinter::new("03919C0000000", "192.168.1.50", "").is_err());
     }
 
     #[test]
     fn secrets_never_appear_in_debug() {
-        let p = LanPrinter::new("03919C0000000", "192.168.1.137", "s3cr3tAB").unwrap();
+        let p = LanPrinter::new("03919C0000000", "192.168.1.50", "s3cr3tAB").unwrap();
         let text = format!("{p:?} {:?}", p.access_code);
         assert!(!text.contains("s3cr3tAB"));
         assert!(!text.contains("03919C0000000"));
