@@ -15,7 +15,7 @@ provides=('slicenv')
 conflicts=('slicenv' 'slicenv-git')
 options=('!strip' '!debug')
 source_x86_64=("https://github.com/arximus88/slicenv/releases/download/v${pkgver}/slicenv-${pkgver}-${CARCH}-linux.tar.gz")
-sha256sums_x86_64=('SKIP')
+sha256sums_x86_64=('a1cd9b4836d8584ea51068ea6df3ba60504659fd2ccb48bd1705b4832d031d6f')
 
 package() {
   cd "slicenv-${pkgver}-${CARCH}-linux"
