@@ -2895,17 +2895,15 @@ impl Workspace {
             .unwrap_or_default();
         let job_name = project.clone();
         let plate_label = crate::tr_format!("Пластина {plate}");
-        let job_facts: Vec<(IconName, String)> = vec![
-            (IconName::Clock, duration_text(minutes)),
+        // (іконка, виділене, решта): час і вага — цифри, за якими вирішують, чи друкувати.
+        let job_facts: Vec<(IconName, String, String)> = vec![
+            (IconName::Clock, duration_text(minutes), String::new()),
             (
                 IconName::Disc,
-                format!(
-                    "{} · {}",
-                    crate::tr_format!("{grams:.1} г", grams = out.filament_grams),
-                    self.selection.filament
-                ),
+                crate::tr_format!("{grams:.1} г", grams = out.filament_grams),
+                format!("· {}", self.selection.filament),
             ),
-            (IconName::Bed, bed_type_label(&bed_type).to_owned()),
+            (IconName::Bed, String::new(), bed_type_label(&bed_type).to_owned()),
         ];
         let printer_model = (!model_id.is_empty())
             .then(|| model_name(&model_id).to_owned())
@@ -3104,7 +3102,7 @@ impl Workspace {
                             .gap_y(px(4.))
                             .text_xs()
                             .text_color(z.text_muted)
-                            .children(job_facts.iter().map(|(icon, text)| {
+                            .children(job_facts.iter().map(|(icon, strong, rest)| {
                                 div()
                                     .flex()
                                     .items_center()
@@ -3112,7 +3110,17 @@ impl Workspace {
                                     .min_w_0()
                                     .max_w_full()
                                     .child(ui::icon(*icon).flex_none().text_color(z.text_placeholder))
-                                    .child(div().min_w_0().truncate().child(text.clone()))
+                                    .when(!strong.is_empty(), |d| {
+                                        d.child(
+                                            div()
+                                                .flex_none()
+                                                .text_sm()
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .text_color(z.text)
+                                                .child(strong.clone()),
+                                        )
+                                    })
+                                    .when(!rest.is_empty(), |d| d.child(div().min_w_0().truncate().child(rest.clone())))
                             })),
                     )
                     .when_some(material_warning.clone(), |d, text| {
