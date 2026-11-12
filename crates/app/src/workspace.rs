@@ -1349,6 +1349,8 @@ impl Workspace {
                     let tip: SharedString = crate::i18n::tr("Відкрити 3MF, STL чи G-code (Ctrl+O)").into();
                     ui::ghost_button("project-name", Some(IconName::FileBox), "Відкрити модель…")
                         .no_window_drag()
+                        // GNOME: та сама висота й заокруглення, що в кнопок заголовка й вкладок.
+                        .when(gnome, |d| d.h(px(34.)).px(px(10.)).rounded(px(9.)))
                         .text_color(z.text_muted)
                         .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
                         .on_click(cx.listener(|this, _, window, cx| this.prompt_open(window, cx)))

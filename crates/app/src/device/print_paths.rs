@@ -1,7 +1,7 @@
 //! Маршрут друку в діалозі «Надіслати на друк» — чиста логіка без gpui.
 //!
-//! Одна головна кнопка «Друкувати» і поруч поточний маршрут (Bambu Cloud, локальна мережа чи
-//! Bambu Connect). Маршрут — це свідомий вибір користувача для цього принтера, а без нього —
+//! Діалог показує всі маршрути (локальна мережа, Bambu Cloud, Bambu Connect) зі станом кожного,
+//! а головна кнопка діє вибраним. Маршрут — це свідомий вибір користувача для цього принтера, а без нього —
 //! з’єднання, яке зараз справді готове. Збережений LAN-принтер (IP і серійник) сам по собі не
 //! означає, що LAN-друк доступний: потрібне живе з’єднання. Вибраний маршрут ніколи тихо не
 //! підміняється іншим: не готовий — кнопка неактивна, а діалог називає, чого бракує.
@@ -105,17 +105,17 @@ pub struct Inputs {
     /// Користувач вибрав відкритий плагін (Open Bamboo Networking): LAN-друк підписує він,
     /// Bambu Connect не потрібен.
     pub open_plugin: bool,
-    /// Свідомий вибір маршруту для цього принтера («Змінити…»).
+    /// Свідомий вибір маршруту для цього принтера (рядок у списку маршрутів).
     pub chosen: Option<Route>,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Plan {
-    /// Поточний маршрут (показується поруч із «Друкувати»); `None` — маршруту немає.
+    /// Поточний (вибраний) маршрут; `None` — маршруту немає.
     pub route: Option<Route>,
     /// `None` — «Друкувати» активна.
     pub blocker: Option<Blocker>,
-    /// Інші маршрути для «Змінити…».
+    /// Інші маршрути, які можна вибрати.
     pub alternatives: Vec<Route>,
     pub notice: ConnectNotice,
     /// Чекбокси калібрувань і таймлапсу: лише коли файл іде з команди Slicenv (LAN чи хмара).
@@ -127,6 +127,59 @@ impl Plan {
     pub fn ready(&self) -> bool {
         self.route.is_some() && self.blocker.is_none()
     }
+
+    /// Усі маршрути для вибору в незмінному порядку (LAN, хмара, Bambu Connect): вибір іншого
+    /// не переставляє рядки під вказівником.
+    pub fn options(&self) -> Vec<Route> {
+        [Route::Lan, Route::Cloud, Route::Connect]
+            .into_iter()
+            .filter(|r| self.route == Some(*r) || self.alternatives.contains(r))
+            .collect()
+    }
+}
+
+/// Стани для `SLICENV_FAKE_PRINT_ROUTE` — діалог друку без принтера, хмари й Bambu Connect
+/// (лише перевірка інтерфейсу). Свідомий вибір `chosen` лишається справжнім.
+pub fn demo(name: &str, chosen: Option<Route>) -> Option<Inputs> {
+    let mut i = Inputs {
+        os: Os::Linux,
+        connect_installed: false,
+        lan: Lan::Absent,
+        cloud: Cloud::NeedsSetup,
+        cloud_print: false,
+        open_plugin: false,
+        chosen,
+    };
+    match name {
+        "connect" => {
+            i.os = Os::Windows;
+            i.connect_installed = true;
+        }
+        "lan" => i.lan = Lan::Saved { up: true },
+        "lan-offline" => i.lan = Lan::Saved { up: false },
+        "lan-found" => i.lan = Lan::Found,
+        "cloud" => {
+            i.os = Os::Windows;
+            i.connect_installed = true;
+            i.cloud = Cloud::Ready;
+            i.cloud_print = true;
+        }
+        "cloud-setup" => i.cloud_print = true,
+        "cloud-connecting" => {
+            i.cloud_print = true;
+            i.cloud = Cloud::Connecting;
+        }
+        "cloud-offline" => {
+            i.cloud_print = true;
+            i.cloud = Cloud::PrinterOffline;
+            i.lan = Lan::Found;
+        }
+        "open-plugin" => i.open_plugin = true,
+        "none" => {}
+        "none-download" => i.os = Os::Windows,
+        _ => return None,
+    }
+    Some(i)
 }
 
 /// Що заважає друкувати маршрутом `route` (`None` — готовий).
@@ -203,9 +256,50 @@ pub fn plan(i: Inputs) -> Plan {
     }
 }
 
+/// Що модель уміє перед друком — за `resources/printers/<код>.json` Bambu Studio
+/// (`support_flow_calibration`). Вирівнювання столу й таймлапс там є в усіх моделей; невідома
+/// модель — усе доступно, як і раніше.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Caps {
+    pub flow_cali: bool,
+}
+
+pub fn caps(model: &str) -> Caps {
+    Caps { flow_cali: !matches!(model.trim().to_ascii_uppercase().as_str(), "C11" | "C12") }
+}
+
+/// Файл нарізано для іншої моделі, ніж принтер-адресат. Порівнюються назви моделей, бо в однієї
+/// моделі буває кілька кодів (H2C: `O1C` і `O1C2`); невідоме з будь-якого боку — не розбіжність.
+pub fn model_mismatch(sliced: &str, target: &str) -> bool {
+    let (sliced, target) = (sliced.trim(), target.trim());
+    !sliced.is_empty()
+        && !target.is_empty()
+        && !::lan::model_name(&sliced.to_ascii_uppercase())
+            .eq_ignore_ascii_case(::lan::model_name(&target.to_ascii_uppercase()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn flow_calibration_is_hidden_only_where_the_printer_lacks_it() {
+        for model in ["N2S", "N1", "N7", "BL-P001", "O1D", "", "unknown"] {
+            assert!(caps(model).flow_cali, "{model}");
+        }
+        for model in ["C11", "C12", "c12"] {
+            assert!(!caps(model).flow_cali, "{model}");
+        }
+    }
+
+    #[test]
+    fn mismatch_needs_two_known_different_models() {
+        assert!(model_mismatch("N2S", "N7"));
+        assert!(!model_mismatch("N2S", "n2s"));
+        assert!(!model_mismatch("O1C", "O1C2"), "one model, two codes");
+        assert!(!model_mismatch("", "N7"));
+        assert!(!model_mismatch("N2S", ""));
+    }
 
     fn inputs(lan: Lan, cloud: Cloud, cloud_print: bool) -> Inputs {
         Inputs {
@@ -352,5 +446,38 @@ mod tests {
         assert_eq!(p.route, Some(Route::Lan));
         assert_eq!(p.blocker, Some(Blocker::LanAddFound));
         assert_eq!(p.notice, ConnectNotice::None);
+    }
+
+    #[test]
+    fn options_keep_their_order_whatever_is_chosen() {
+        let i = demo("cloud", None).unwrap();
+        for chosen in [None, Some(Route::Lan), Some(Route::Cloud), Some(Route::Connect)] {
+            let p = plan(Inputs { chosen, ..i });
+            assert_eq!(p.options(), vec![Route::Lan, Route::Cloud, Route::Connect], "{chosen:?}");
+        }
+        // Немає маршруту — LAN усе одно в списку: принтер можна додати.
+        let p = plan(demo("none", None).unwrap());
+        assert_eq!(p.route, None);
+        assert_eq!(p.options(), vec![Route::Lan]);
+    }
+
+    #[test]
+    fn demo_states_cover_every_dialog_state() {
+        let state = |name| {
+            let p = plan(demo(name, None).unwrap());
+            (p.route, p.blocker, p.notice)
+        };
+        assert_eq!(state("connect"), (Some(Route::Connect), None, ConnectNotice::None));
+        assert_eq!(state("lan"), (Some(Route::Lan), None, ConnectNotice::None));
+        assert_eq!(state("lan-offline"), (Some(Route::Lan), Some(Blocker::LanOffline), ConnectNotice::None));
+        assert_eq!(state("lan-found"), (Some(Route::Lan), Some(Blocker::LanAddFound), ConnectNotice::None));
+        assert_eq!(state("cloud"), (Some(Route::Cloud), None, ConnectNotice::None));
+        assert_eq!(state("cloud-setup"), (Some(Route::Cloud), Some(Blocker::CloudSetup), ConnectNotice::None));
+        assert_eq!(state("cloud-connecting").1, Some(Blocker::CloudConnecting));
+        assert_eq!(state("cloud-offline").1, Some(Blocker::CloudPrinterOffline));
+        assert_eq!(state("open-plugin"), (Some(Route::Lan), Some(Blocker::LanAddManual), ConnectNotice::None));
+        assert_eq!(state("none"), (None, Some(Blocker::NoRoute), ConnectNotice::NoLinuxBuild));
+        assert_eq!(state("none-download").2, ConnectNotice::Download);
+        assert!(demo("unknown", None).is_none());
     }
 }

@@ -84,3 +84,4 @@ grep "^test result" /tmp/t.log | awk '{p+=$4; f+=$6} END {print "passed", p, "fa
 | `add-ui-string` | новий чи змінений український рядок, впав check_translations.py |
 | `real-engine-test` | зміни в slicer/пресетах, запуск рушія чи GUI |
 | `merge-agent-branch` | злиття гілки агента в main (лише з дозволу) |
+| `ux-dialog-check` | новий чи перероблений діалог, модалка, форма з вибором варіантів |

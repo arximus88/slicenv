@@ -91,7 +91,7 @@ impl<'a> EditablePreset<'a> {
 
     pub fn set(&mut self, key: &str, value: Value) -> std::result::Result<(), ValidationError> {
         self.schema.validate(key, &value)?;
-        if self.base.get(key) == Some(&value) {
+        if self.base.get(key).is_some_and(|base| same_value(base, &value)) {
             self.edits.remove(key);
         } else {
             self.edits.insert(key.into(), value);
@@ -324,4 +324,38 @@ pub struct OptionView<'a> {
     pub metadata: Option<&'a OptionDef>,
     pub value: Option<&'a Value>,
     pub dirty: bool,
+}
+
+/// Те саме значення, навіть якщо число записане інакше: профіль рушія каже `"1"`, а проєкт,
+/// збережений іншим рушієм, — `"1.0"`. Це не правка користувача.
+fn same_value(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::String(x), Value::String(y)) => {
+            x == y
+                || matches!(
+                    (x.trim().parse::<f64>(), y.trim().parse::<f64>()),
+                    (Ok(x), Ok(y)) if x.is_finite() && x == y
+                )
+        }
+        (Value::Array(x), Value::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(x, y)| same_value(x, y))
+        }
+        _ => a == b,
+    }
+}
+
+#[cfg(test)]
+mod same_value_tests {
+    use super::same_value;
+    use serde_json::json;
+
+    #[test]
+    fn number_spelling_is_not_an_edit() {
+        assert!(same_value(&json!("1"), &json!("1.0")));
+        assert!(same_value(&json!(["0.20", "5"]), &json!(["0.2", "5.0"])));
+        assert!(!same_value(&json!("1"), &json!("1.5")));
+        assert!(!same_value(&json!("10%"), &json!("10")));
+        assert!(!same_value(&json!(["0"]), &json!([])));
+        assert!(!same_value(&json!("grid"), &json!("crosshatch")));
+    }
 }

@@ -362,12 +362,13 @@ impl Workspace {
                     .pr(px(2.))
                     .when(gnome, |d| {
                         d.flex_1()
-                            .h(px(30.))
+                            // Та сама висота, що й у кнопок заголовка (34 px у libadwaita).
+                            .h(px(34.))
                             .min_w(px(96.))
                             .max_w(px(240.))
                             .pl(px(10.))
                             .pr(px(6.))
-                            .rounded(px(8.))
+                            .rounded(px(9.))
                             .when(shown, |d| d.font_weight(gpui::FontWeight::MEDIUM))
                     })
                     .role(gpui::Role::Tab)
@@ -457,5 +458,13 @@ impl Workspace {
             .when(gnome, |d| d.flex_1().gap(px(4.)))
             .overflow_hidden()
             .children(elements)
+            // «+» одразу за останньою вкладкою, як у браузері: новий проєкт у новій вкладці.
+            .child(
+                ui::icon_button("new-tab", IconName::Plus, "Новий проєкт (Ctrl+N)")
+                    .no_window_drag()
+                    .flex_none()
+                    .when(gnome, |d| d.size(px(34.)).rounded(px(9.)))
+                    .on_click(cx.listener(|this, _, window, cx| this.new_project(window, cx))),
+            )
     }
 }

@@ -260,6 +260,11 @@ pub(crate) fn camera_url_error(code: i32, reply: &str) -> anyhow::Error {
         -10006 => anyhow::anyhow!(
             "Принтер не відповів на запит відео за 20 с. Перевірте, що він увімкнений і в мережі, і спробуйте ще раз."
         ),
+        // 403 від хмари — те саме обмеження, що й з друком (-26): відео через хмару Bambu Lab
+        // дає лише власним програмам. Перевіряти принтер тут марно.
+        -10010 if trailing_code(reply) == Some(403) => anyhow::anyhow!(
+            "Камера через хмару недоступна: Bambu Lab показує відео через хмару лише у власних програмах (Bambu 403). У локальній мережі камера показує відео напряму — додайте принтер на сторінці «Пристрій» → «Додати принтер у мережі»."
+        ),
         -10010 => {
             let detail = trailing_code(reply)
                 .map(|c| format!(" (Bambu {c})"))
@@ -288,6 +293,8 @@ mod url_error_tests {
         let text = camera_url_error(-10010, "secret-ish reply [7]").to_string();
         assert!(text.contains("(Bambu 7)") && !text.contains("secret"), "{text}");
         assert!(camera_url_error(-10006, "").to_string().contains("20 с"));
+        let denied = camera_url_error(-10010, "x [403]").to_string();
+        assert!(denied.contains("лише у власних програмах") && !denied.contains("онлайн"));
         assert!(!camera_url_error(-10010, "").to_string().contains("plugin operation"));
     }
 }

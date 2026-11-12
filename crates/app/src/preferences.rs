@@ -42,6 +42,9 @@ pub struct Preferences {
     pub library_roots: Option<Vec<PathBuf>>,
     /// Недавні теки бібліотеки, найновіша перша.
     pub library_recent: Vec<PathBuf>,
+    /// Галочки діалогу друку окремо для кожного принтера (ключ — ідентифікатор пристрою).
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub print_options: std::collections::BTreeMap<String, crate::device::PrintOptions>,
     #[serde(flatten)]
     extra: serde_json::Map<String, serde_json::Value>,
 }
@@ -66,11 +69,16 @@ impl Default for Preferences {
             open_3mf: Default::default(),
             library_roots: None,
             library_recent: Vec::new(),
+            print_options: Default::default(),
             extra: Default::default(),
         }
     }
 }
 impl Preferences {
+    /// Галочки діалогу друку для принтера; ще не вибирали — типові.
+    pub fn print_options_for(&self, dev: &str) -> crate::device::PrintOptions {
+        self.print_options.get(dev).copied().unwrap_or_default()
+    }
     pub(crate) fn path() -> PathBuf {
         paths::config_dir().join("preferences.json")
     }

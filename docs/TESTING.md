@@ -205,9 +205,11 @@ PNG без вікна: `cargo run --release -p viewer --example gcode_preview --
 | Змінна | Що дає |
 |---|---|
 | `SLICENV_FAKE_PRINTER=1` (`=idle`) | один хмарний принтер зі статусом, історією, мініатюрою |
+| `SLICENV_FAKE_PRINT_MODEL=<код>` | разом із `SLICENV_FAKE_PRINTER`: діалог друку вважає, що файл нарізано для цієї моделі (`N7`, `C12`…) — попередження про іншу модель |
 | `SLICENV_FAKE_PRINTERS=N` | ще N−1 фіктивних принтерів (масштаб списку доку) |
 | `SLICENV_FAKE_FOUND=N` | N «знайдених у мережі» Bambu (LAN вимкнено) |
 | `SLICENV_FAKE_CLOUD=cloud-off\|login\|no-server\|connecting` | стан рядка Bambu Cloud |
+| `SLICENV_FAKE_PRINT_ROUTE=<стан>[+abs]` | діалог «Надіслати на друк» фіктивного принтера в заданому стані маршрутів (`print_paths::demo`: `connect`, `lan`, `lan-offline`, `lan-found`, `cloud`, `cloud-setup`, `cloud-connecting`, `cloud-offline`, `open-plugin`, `none`, `none-download`); `+abs` — ще й попередження про матеріал. Головна кнопка лише закриває діалог |
 | `SLICENV_WIZARD_DEMO=login\|session\|plugin` | стани форми входу в майстрі |
 | `SLICENV_SKIN=gnome\|zed` | форми й палітра незалежно від середовища: `gnome` — заголовок, вкладки й плаваючі панелі як у libadwaita з палітрою Adwaita (типово лише коли `XDG_CURRENT_DESKTOP` містить `GNOME`), `zed` — щільний вигляд Zed |
 
