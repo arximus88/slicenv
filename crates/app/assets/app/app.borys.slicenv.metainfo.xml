@@ -157,6 +157,13 @@
   <content_rating type="oars-1.1"/>
 
   <releases>
+    <release version="0.1.6" date="2026-11-12" type="stable">
+      <url type="details">https://github.com/arximus88/slicenv/releases/tag/v0.1.6</url>
+      <description>
+        <p>The Send to printer dialog is reworked: pick the printer from a list with photos, see time and filament at a glance, and get a clear warning when the file was sliced for another model.</p>
+        <p>On GNOME the window has rounded corners and window buttons that match the system; the title bar gets a new tab button.</p>
+      </description>
+    </release>
     <release version="0.1.5" date="2026-11-12" type="stable">
       <url type="details">https://github.com/arximus88/slicenv/releases/tag/v0.1.5</url>
       <description>
