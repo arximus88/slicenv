@@ -221,9 +221,13 @@ fn main() {
                     }),
                     app_id: Some(APP_ID.into()),
                     window_decorations: Some(WindowDecorations::Client),
-                    // Клієнтська рамка без gutter (див. Workspace::render) — поверхня непрозора,
-                    // тож композитору нема що змішувати по краях.
-                    window_background: WindowBackgroundAppearance::Opaque,
+                    // Linux: поле під тінь і кути вікна поза заокругленням прозорі — крізь них
+                    // видно стільницю. Деінде рамку малює система.
+                    window_background: if cfg!(target_os = "linux") {
+                        WindowBackgroundAppearance::Transparent
+                    } else {
+                        WindowBackgroundAppearance::Opaque
+                    },
                     window_min_size: Some(size(px(960.), px(600.))),
                     ..Default::default()
                 },
@@ -236,7 +240,9 @@ fn main() {
                         }
                         workspace
                     });
-                    cx.new(|cx| Root::new(workspace, window, cx))
+                    // Фон поверхні малює Workspace (із заокругленими кутами в шкірі GNOME):
+                    // квадратний фон Root стирчав би з-під круглої рамки.
+                    cx.new(|cx| Root::new(workspace, window, cx).bg(gpui::transparent_black()))
                 },
             )
             .expect("не відкрилось вікно");

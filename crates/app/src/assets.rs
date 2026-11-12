@@ -32,6 +32,18 @@ impl AssetSource for Assets {
             "app/slicenv.svg" => Ok(Some(Cow::Borrowed(include_bytes!(
                 "../assets/app/slicenv.svg"
             )))),
+            "window/minimize.svg" => Ok(Some(Cow::Borrowed(include_bytes!(
+                "../assets/window/minimize.svg"
+            )))),
+            "window/maximize.svg" => Ok(Some(Cow::Borrowed(include_bytes!(
+                "../assets/window/maximize.svg"
+            )))),
+            "window/restore.svg" => Ok(Some(Cow::Borrowed(include_bytes!(
+                "../assets/window/restore.svg"
+            )))),
+            "window/close.svg" => Ok(Some(Cow::Borrowed(include_bytes!(
+                "../assets/window/close.svg"
+            )))),
             "engines/bambu.png" => Ok(Some(Cow::Borrowed(include_bytes!(
                 "../assets/engines/bambu.png"
             )))),

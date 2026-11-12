@@ -189,7 +189,7 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "app"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "ashpd",
@@ -958,7 +958,7 @@ dependencies = [
 
 [[package]]
 name = "cloud"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "cc",
@@ -2052,7 +2052,7 @@ dependencies = [
 
 [[package]]
 name = "gcode"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "glam",
@@ -2071,7 +2071,7 @@ dependencies = [
 
 [[package]]
 name = "geometry"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "image",
@@ -2282,8 +2282,6 @@ dependencies = [
 [[package]]
 name = "gpui-component"
 version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46ce53430332e30f303364eaabfa10ed2aa23dfaf2a147e04370e0e9c423578b"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3582,7 +3580,7 @@ dependencies = [
 
 [[package]]
 name = "lan"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "cloud",
  "md-5",
@@ -3893,7 +3891,7 @@ dependencies = [
 
 [[package]]
 name = "mcp"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "axum",
@@ -4024,7 +4022,7 @@ dependencies = [
 
 [[package]]
 name = "moonraker"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "image",
  "paths",
@@ -4901,7 +4899,7 @@ dependencies = [
 
 [[package]]
 name = "paths"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "libc",
  "tempfile",
@@ -4925,7 +4923,7 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
 name = "perf"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "gcode",
@@ -5213,7 +5211,7 @@ dependencies = [
 
 [[package]]
 name = "project"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "earcutr",
@@ -6369,7 +6367,7 @@ dependencies = [
 
 [[package]]
 name = "settings"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "paths",
@@ -6516,7 +6514,7 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "slicer"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "md-5",
@@ -7556,7 +7554,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "viewer"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "anyhow",
  "bytemuck",

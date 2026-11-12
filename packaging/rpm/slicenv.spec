@@ -3,7 +3,7 @@
 %global debug_package %{nil}
 %global __brp_strip %{nil}
 %global __brp_check_rpaths %{nil}
-%{!?pkgversion: %global pkgversion 0.1.5}
+%{!?pkgversion: %global pkgversion 0.1.6}
 %global _docdir_fmt %{name}
 
 Name:           slicenv
@@ -54,6 +54,8 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 %doc %{_docdir}/%{name}
 
 %changelog
+* Thu Nov 12 2026 Borys Kharchenko <7512615+arximus88@users.noreply.github.com> - 0.1.6-1
+- Reworked Send to printer dialog with a printer picker; rounded window corners and native-looking window buttons on GNOME; new tab button.
 * Thu Nov 12 2026 Borys Kharchenko <7512615+arximus88@users.noreply.github.com> - 0.1.5-1
 - GNOME window buttons and title bar actions follow system settings; camera error is localized; new screenshots.
 

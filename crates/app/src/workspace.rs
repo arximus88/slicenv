@@ -1349,6 +1349,8 @@ impl Workspace {
                     let tip: SharedString = crate::i18n::tr("Відкрити 3MF, STL чи G-code (Ctrl+O)").into();
                     ui::ghost_button("project-name", Some(IconName::FileBox), "Відкрити модель…")
                         .no_window_drag()
+                        // GNOME: та сама висота й заокруглення, що в кнопок заголовка й вкладок.
+                        .when(gnome, |d| d.h(px(34.)).px(px(10.)).rounded(px(9.)))
                         .text_color(z.text_muted)
                         .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
                         .on_click(cx.listener(|this, _, window, cx| this.prompt_open(window, cx)))
@@ -1406,7 +1408,7 @@ impl Workspace {
     }
 
     /// Рядок стану Zed: перемикачі доків зліва, поточна дія, справа — сцена й хмара.
-    fn status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn status_bar(&self, cx: &mut Context<Self>) -> gpui::Div {
         let z = zed();
         let has_left = matches!(self.page, Page::Home | Page::Prepare | Page::Device)
             || (self.page == Page::Preview && self.preview.is_some());
@@ -1613,6 +1615,7 @@ impl Render for Workspace {
             self.trace_ui_state(cx);
         }
 
+        crate::theme::sync_window_radius();
         let overlays = self.overlays(window, cx);
         // Рамку вікна (тінь, смуга зміни розміру) малює `Root` gpui-component 0.8 — один раз.
         // Друга рамка тут із іншою тінню (0 замість 20 px) щокадру перемикала
@@ -1796,12 +1799,13 @@ impl Render for Workspace {
                 .flex()
                 .flex_col()
                 .bg(z.background)
+                .map(|d| crate::theme::window_corners(d, window, true, true))
                 .text_color(z.text)
                 .text_sm()
                 .font_family(crate::theme::UI_FONT)
                 .child(self.title_bar(window, cx))
                 .child(div().flex().flex_1().min_h_0().child(content))
-                .child(self.status_bar(cx))
+                .child(crate::theme::window_corners(self.status_bar(cx), window, false, true))
                 .children(overlays)
                 .when(self.scrub.is_some(), |d| {
                     d.child(div().absolute().inset_0().cursor_ew_resize())
@@ -2041,12 +2045,13 @@ fn gnome_title_bar(content: gpui::Div, window: &mut Window) -> gpui::AnyElement 
     let maximized = window.is_maximized();
     let control = move |button: WindowButton| {
         let (id, icon, tip) = match button {
-            WindowButton::Minimize => ("window-minimize", IconName::WindowMinimize, "Згорнути"),
+            // Гліфи за сіткою символьних іконок Adwaita: 16 px, штрих 2 px.
+            WindowButton::Minimize => ("window-minimize", "window/minimize.svg", "Згорнути"),
             WindowButton::Maximize if maximized => {
-                ("window-maximize", IconName::WindowRestore, "Відновити розмір")
+                ("window-maximize", "window/restore.svg", "Відновити розмір")
             }
-            WindowButton::Maximize => ("window-maximize", IconName::WindowMaximize, "Розгорнути"),
-            WindowButton::Close => ("window-close", IconName::WindowClose, "Закрити"),
+            WindowButton::Maximize => ("window-maximize", "window/maximize.svg", "Розгорнути"),
+            WindowButton::Close => ("window-close", "window/close.svg", "Закрити"),
         };
         let tip: SharedString = crate::i18n::tr(tip).into();
         div()
@@ -2062,7 +2067,7 @@ fn gnome_title_bar(content: gpui::Div, window: &mut Window) -> gpui::AnyElement 
             .text_color(z.text)
             .hover(|s| s.bg(z.element_selected))
             .active(|s| s.bg(z.border))
-            .child(ui::icon(icon).size(px(12.)))
+            .child(gpui::svg().path(icon).flex_none().size(px(16.)).text_color(z.text))
             .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
             .on_click(move |_, window, cx| {
                 cx.stop_propagation();
@@ -2092,6 +2097,7 @@ fn gnome_title_bar(content: gpui::Div, window: &mut Window) -> gpui::AnyElement 
         .h(px(46.))
         .px(px(6.))
         .bg(z.background)
+        .map(|d| crate::theme::window_corners(d, window, true, false))
         .border_b_1()
         .border_color(z.border_variant)
         .on_mouse_down(gpui::MouseButton::Left, |_, _, _| {

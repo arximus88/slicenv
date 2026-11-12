@@ -1597,6 +1597,7 @@ pub fn render(ws: &mut Workspace, window: &mut Window, cx: &mut Context<Workspac
         .items_center()
         .justify_center()
         .bg(z.background.opacity(0.94))
+        .map(|d| crate::theme::window_corners(d, window, true, true))
         .track_focus(&focus)
         .key_context("Wizard")
         .child(

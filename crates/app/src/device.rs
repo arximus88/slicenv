@@ -125,7 +125,9 @@ pub struct CloudState {
     pub selected: Option<DeviceId>,
     pub status: Option<PrinterStatus>,
     pub updated: Option<Instant>,
-    pub print: PrintOptions,
+    /// Розкрито великий список принтерів у діалозі друку; межі поля — щоб стати під ним.
+    pub printer_menu: bool,
+    pub printer_menu_bounds: Rc<std::cell::Cell<gpui::Bounds<gpui::Pixels>>>,
     pub sending: bool,
     /// Хмарний друк плагіном хоч раз пройшов у цьому сеансі. За замовчуванням false:
     /// плагін Bambu відхиляє непідписані програми (-26), і пробувати наосліп не варто.
@@ -153,15 +155,14 @@ pub struct CloudState {
     pub found_open: Option<bool>,
     /// Пошук у доку (з’являється, коли рядків більше за [`FILTER_FROM`]).
     pub filter_input: Option<gpui::Entity<InputState>>,
-    /// Свідомо вибраний маршрут друку для принтера («Змінити…» в діалозі друку), на сеанс.
+    /// Свідомо вибраний маршрут друку для принтера (вибір маршруту в діалозі друку), на сеанс.
     pub print_route: std::collections::HashMap<DeviceId, print_paths::Route>,
-    /// У діалозі друку розгорнуто вибір маршруту.
-    pub route_picker: bool,
     commands: Option<mpsc::Sender<CloudCmd>>,
 }
 
 /// Галочки модалки «Надіслати на друк» (значення за замовчуванням як у Bambu Studio для A1).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct PrintOptions {
     pub bed_leveling: bool,
     pub flow_cali: bool,
@@ -2434,6 +2435,19 @@ fn plate_bed_type(gcode_3mf: &std::path::Path, plate: u32, fallback: &str) -> St
     })
 }
 
+/// Тип пластини із завдання друку ("textured_plate") — так, як його називає вибір пластини на
+/// «Підготовці» (`slicer::BED_TYPES`). Невідомий код показується як є.
+fn bed_type_label(code: &str) -> &str {
+    match code {
+        "textured_plate" => "Textured PEI Plate",
+        "hot_plate" => "High Temp Plate",
+        "cool_plate" => "Cool Plate",
+        "engineering_plate" => "Engineering Plate",
+        "supertack_plate" => "Supertack Plate",
+        other => other,
+    }
+}
+
 /// Причина невдалого хмарного друку людською мовою з порадою. Коди — `BAMBU_NETWORK_ERR_*`
 /// з `bambu_networking.hpp` Bambu Studio; так само їх розрізняє `PrintJob.cpp`.
 fn print_failure(error: &anyhow::Error) -> String {
@@ -2448,6 +2462,22 @@ fn print_failure(error: &anyhow::Error) -> String {
         None => format!("{error:#}"),
     };
     format!("{}: {text}", tr("Друк не надіслано"))
+}
+
+/// Код моделі принтера, для якої нарізано файл (`printer_model_id` у slice_info), напр. `N2S`.
+fn sliced_model_id(gcode_3mf: &std::path::Path) -> Option<String> {
+    use std::io::Read as _;
+    let mut zip = zip::ZipArchive::new(std::fs::File::open(gcode_3mf).ok()?).ok()?;
+    let mut text = String::new();
+    zip.by_name("Metadata/slice_info.config").ok()?.read_to_string(&mut text).ok()?;
+    slice_info_model(&text)
+}
+
+fn slice_info_model(text: &str) -> Option<String> {
+    let rest = &text[text.find(r#"key="printer_model_id""#)?..];
+    let rest = &rest[rest.find("value=\"")? + 7..];
+    let value = rest[..rest.find('"')?].trim();
+    (!value.is_empty()).then(|| value.to_owned())
 }
 
 /// Типи філаменту з нарізаного `.gcode.3mf` (`filament_type` у project_settings).
@@ -2525,13 +2555,8 @@ impl Workspace {
             && matches!(self.slice_state, crate::workspace::SliceState::Done(_))
             && self.cloud.selected.as_ref().is_some_and(|dev| {
                 let printer = self.cloud.printers.iter().find(|p| &p.dev_id == dev);
-                let profile_model = self
-                    .presets
-                    .as_ref()
-                    .and_then(|s| s.machine_model_id(&self.selection.machine));
-                printer
-                    .zip(profile_model.as_ref())
-                    .is_some_and(|(printer, model)| printer.model.eq_ignore_ascii_case(model))
+                // Профіль для іншої моделі не ховає діалог: там видно чому не можна й інші принтери.
+                printer.is_some_and(|printer| !printer.model.is_empty())
             })
             && !self.cloud.sending
     }
@@ -2875,14 +2900,6 @@ impl Workspace {
             .unwrap_or_else(|| "model".into());
         let bed_type = plate_bed_type(&gcode_3mf, plate, &self.selection.bed_type);
         let minutes = out.print_time.as_secs() / 60;
-        let summary = format!(
-            "{project} · {} {plate} · {} · {} · {}",
-            tr("пластина"),
-            duration_text(minutes),
-            crate::tr_format!("{grams:.1} г", grams = out.filament_grams),
-            self.selection.filament
-        );
-        let bed_label = bed_type.clone();
         let model_id = self
             .cloud
             .printers
@@ -2890,7 +2907,61 @@ impl Workspace {
             .find(|p| p.dev_id == dev)
             .map(|p| p.model.clone())
             .unwrap_or_default();
-        let material_warning = open_frame_warning(&model_id, &filament_types(&gcode_3mf));
+        let job_name = project.clone();
+        let plate_label = crate::tr_format!("Пластина {plate}");
+        // (іконка, виділене, решта): час і вага — цифри, за якими вирішують, чи друкувати.
+        let job_facts: Vec<(IconName, String, String)> = vec![
+            (IconName::Clock, duration_text(minutes), String::new()),
+            (
+                IconName::Disc,
+                crate::tr_format!("{grams:.1} г", grams = out.filament_grams),
+                format!("· {}", self.selection.filament),
+            ),
+            (IconName::Bed, String::new(), bed_type_label(&bed_type).to_owned()),
+        ];
+        // `SLICENV_FAKE_PRINT_ROUTE=<стан>[+abs]` разом із `SLICENV_FAKE_PRINTER` — діалог у заданому
+        // стані маршрутів (`print_paths::demo`), `+abs` — ще й попередження про матеріал. Лише
+        // перевірка інтерфейсу: головна кнопка тоді тільки закриває діалог.
+        let fake_route = paths::env("SLICENV_FAKE_PRINTER")
+            .and(paths::env("SLICENV_FAKE_PRINT_ROUTE"))
+            .and_then(|v| v.to_str().map(str::to_owned));
+        let fake_abs = fake_route.as_deref().is_some_and(|v| v.ends_with("+abs"));
+        let fake_route: Option<String> = fake_route.map(|v| v.trim_end_matches("+abs").to_owned());
+        let types = if fake_abs { vec!["ABS".to_owned()] } else { filament_types(&gcode_3mf) };
+        // Нарізано для іншої моделі, ніж вибраний принтер: мережею й хмарою такий файл не
+        // надсилається — діалог каже чому й дає вибрати інший принтер. Bambu Connect лишається:
+        // принтер вибирають уже там. `SLICENV_FAKE_PRINT_MODEL=<код>` підставляє модель нарізки.
+        let sliced_model = paths::env("SLICENV_FAKE_PRINTER")
+            .and(paths::env("SLICENV_FAKE_PRINT_MODEL"))
+            .and_then(|v| v.to_str().map(str::to_owned))
+            .or_else(|| sliced_model_id(&gcode_3mf))
+            .or_else(|| self.presets.as_ref().and_then(|s| s.machine_model_id(&self.selection.machine)));
+        let mismatch = sliced_model
+            .as_deref()
+            .filter(|sliced| print_paths::model_mismatch(sliced, &model_id))
+            .map(|sliced| (model_name(sliced).to_owned(), model_name(&model_id).to_owned()));
+        let caps = print_paths::caps(&model_id);
+        // Кілька принтерів — велике поле з фото, що розкривається списком таких самих карток
+        // (Klipper має власний діалог). Фото моделі — з профілів рушія; немає файла — іконка.
+        let cover_of = |model: &str| {
+            self.presets
+                .as_ref()
+                .and_then(|s| s.printer_cover("BBL", &format!("Bambu Lab {}", model_name(model))))
+        };
+        // (пристрій, назва, модель, у мережі, фото)
+        let choices: Vec<(DeviceId, String, String, bool, Option<std::path::PathBuf>)> = self
+            .cloud
+            .printers
+            .iter()
+            .map(|p| {
+                let name = if p.name.is_empty() { format!("{} {}", tr("Принтер"), p.dev_id) } else { p.name.clone() };
+                let model = model_name(&p.model).to_owned();
+                let online = p.online || self.cloud.klipper.has(&p.dev_id);
+                (p.dev_id.clone(), name, model, online, cover_of(&p.model))
+            })
+            .collect();
+        self.cloud.printer_menu = false;
+        let material_warning = open_frame_warning(&model_id, &types);
         // Маршрут друку перераховується при кожному малюванні: хмара могла підключитися, LAN —
         // упасти. Свідомий вибір користувача (`print_route`) ніколи тихо не підміняється.
         // Хмарний друк плагіном Bambu для непідписаних програм дає -26, тож хмара як маршрут —
@@ -2906,7 +2977,6 @@ impl Workspace {
         let open_plugin = crate::open_plugin::active();
         let obn_cloud = open_plugin && cloud::obn::cloud_enabled();
         let env_cloud = std::env::var_os("SLICENV_CLOUD_PRINT").is_some_and(|v| v == "1");
-        self.cloud.route_picker = false;
         let connect_send = {
             let gcode_3mf = gcode_3mf.clone();
             let name = format!("{project} {plate}");
@@ -2917,7 +2987,7 @@ impl Workspace {
         };
         let route_dev = dev.clone();
         let send = Rc::new(move |ws: &mut Workspace, via_cloud: bool, cx: &mut Context<Workspace>| {
-            let o = ws.cloud.print;
+            let o = ws.preferences.print_options_for(dev.as_str());
             let slots = filament_slots(&gcode_3mf);
             let mut req = cloud::PrintRequest::new(
                 dev.clone(),
@@ -2929,7 +2999,7 @@ impl Workspace {
             req.preset_name = format!("{project}_plate_{plate}");
             req.bed_type = bed_type.clone();
             req.bed_leveling = o.bed_leveling;
-            req.flow_cali = o.flow_cali;
+            req.flow_cali = o.flow_cali && caps.flow_cali;
             req.vibration_cali = o.vibration_cali;
             req.timelapse = o.timelapse;
             // A1 без AMS: усі слоти — зовнішня котушка.
@@ -2952,7 +3022,8 @@ impl Workspace {
         self.open_modal(
             Rc::new(move |ws, _, cx| {
                 let z = zed();
-                let opts = ws.cloud.print;
+                let opts = ws.preferences.print_options_for(route_dev.as_str());
+                let opts_dev = route_dev.clone();
                 let toggle = |id: &'static str,
                               label: &'static str,
                               checked: bool,
@@ -2961,41 +3032,49 @@ impl Workspace {
                     crate::widgets::checkbox(id, checked, false)
                         .h(px(28.))
                         .child(tr(label))
-                        .on_click(cx.listener(move |ws, _, _, cx| {
-                            set(&mut ws.cloud.print, !checked);
-                            cx.notify();
-                        }))
+                        .on_click({
+                            let dev = opts_dev.clone();
+                            cx.listener(move |ws, _, _, cx| {
+                                // Вибір запам’ятовується окремо для кожного принтера.
+                                let mut o = ws.preferences.print_options_for(dev.as_str());
+                                set(&mut o, !checked);
+                                ws.preferences.print_options.insert(dev.as_str().to_owned(), o);
+                                ws.save_preferences(cx);
+                                cx.notify();
+                            })
+                        })
                 };
-                let note = |text: &str| div().pb(px(6.)).text_xs().text_color(z.text_muted).child(tr(text));
                 let cloud_print = obn_cloud || (!open_plugin && ws.cloud.cloud_print_works) || env_cloud;
-                let plan = print_paths::plan(ws.cloud.print_inputs(
-                    &route_dev,
-                    found.is_some(),
-                    connect_installed,
-                    open_plugin,
-                    cloud_print,
-                ));
+                let inputs = {
+                    let i = ws.cloud.print_inputs(&route_dev, found.is_some(), connect_installed, open_plugin, cloud_print);
+                    fake_route.as_deref().and_then(|n| print_paths::demo(n, i.chosen)).unwrap_or(i)
+                };
+                let open_plugin = inputs.open_plugin;
+                let plan = print_paths::plan(inputs);
+                let source_action = ws.cloud.source.action();
                 let route_name = |r: print_paths::Route| match r {
                     print_paths::Route::Cloud => (IconName::Cloud, "Bambu Cloud"),
                     print_paths::Route::Lan => (IconName::Wifi, "Локальна мережа"),
                     print_paths::Route::Connect => (IconName::Send, "Bambu Connect"),
                 };
-                // Одна дія, якої бракує вибраному маршруту (для хмари — та сама, що в доку).
-                let fix: Option<(&'static str, &'static str)> = match plan.blocker {
-                    Some(print_paths::Blocker::CloudSetup) => Some((
-                        "print-fix-cloud",
-                        match ws.cloud.source.action() {
-                            Some(source::Action::EnableCloud) => "Увімкнути хмару",
-                            Some(source::Action::SignIn) => "Увійти в Bambu Cloud",
-                            Some(source::Action::Retry) => "Повторити",
-                            _ => "Налаштувати хмару…",
-                        },
-                    )),
-                    Some(print_paths::Blocker::LanAddFound) => Some(("print-add-lan", "Додати принтер…")),
-                    Some(print_paths::Blocker::LanAddManual) => Some(("print-lan-manual", "Додати принтер у мережі")),
-                    _ => None,
+                // Одна дія, якої бракує маршруту (для хмари — та сама, що в доку).
+                let fix_for = |b: print_paths::Blocker| -> Option<(&'static str, &'static str)> {
+                    match b {
+                        print_paths::Blocker::CloudSetup => Some((
+                            "print-fix-cloud",
+                            match source_action {
+                                Some(source::Action::EnableCloud) => "Увімкнути хмару",
+                                Some(source::Action::SignIn) => "Увійти в Bambu Cloud",
+                                Some(source::Action::Retry) => "Повторити",
+                                _ => "Налаштувати хмару…",
+                            },
+                        )),
+                        print_paths::Blocker::LanAddFound => Some(("print-add-lan", "Додати принтер…")),
+                        print_paths::Blocker::LanAddManual => Some(("print-lan-manual", "Додати принтер у мережі")),
+                        _ => None,
+                    }
                 };
-                let reason = plan.blocker.map(|b| match b {
+                let reason_for = |b: print_paths::Blocker| match b {
                     print_paths::Blocker::CloudSetup => "Bambu Cloud не підключено.",
                     print_paths::Blocker::CloudConnecting => "Хмара підключається…",
                     print_paths::Blocker::CloudPrinterOffline => "Bambu Cloud бачить принтер офлайн. Якщо принтер у режимі LAN Only, друкуйте через локальну мережу.",
@@ -3005,149 +3084,389 @@ impl Workspace {
                     print_paths::Blocker::LanAddManual if open_plugin => "Відкритий плагін друкує по локальній мережі: додайте принтер за IP і кодом доступу з його екрана. Друк через хмару вмикається в налаштуваннях відкритого плагіна.",
                     print_paths::Blocker::LanAddManual => "Додайте принтер у локальній мережі за IP, серійним номером і кодом доступу з його екрана.",
                     print_paths::Blocker::NoRoute => "",
-                });
+                };
+                // Короткий стан поруч із назвою маршруту: видно й без вибору, не лише кольором.
+                let status_for = |b: Option<print_paths::Blocker>| match b {
+                    None => "Готово до друку",
+                    Some(print_paths::Blocker::CloudSetup) => "Не підключено",
+                    Some(print_paths::Blocker::CloudConnecting) => "Підключається…",
+                    Some(print_paths::Blocker::CloudPrinterOffline) => "Офлайн",
+                    Some(print_paths::Blocker::CloudNotInAccount) => "Немає в акаунті",
+                    Some(print_paths::Blocker::LanOffline) => "Немає з’єднання",
+                    Some(print_paths::Blocker::LanAddFound) => "Потрібен код доступу",
+                    Some(print_paths::Blocker::LanAddManual) => "Не додано",
+                    Some(print_paths::Blocker::NoRoute) => "Не встановлено",
+                };
+                // Що станеться, коли маршрут готовий.
+                let note_for = |r: print_paths::Route| match r {
+                    print_paths::Route::Lan if open_plugin => "Через локальну мережу з відкритим плагіном: він підписує команду друку, Developer Mode не потрібен. Файл ляже на microSD принтера, і друк почнеться одразу.",
+                    print_paths::Route::Lan => "Через локальну мережу: файл буде завантажено на microSD принтера, і друк почнеться одразу.",
+                    print_paths::Route::Cloud => "Через Bambu Cloud: модель вивантажується в хмару Bambu, і принтер почне друк.",
+                    print_paths::Route::Connect => "Файл відкриється в Bambu Connect — там виберіть принтер, калібрування й натисніть «Друк».",
+                };
+                let section = |title: &str| {
+                    div()
+                        .pt(px(6.))
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(z.text_muted)
+                        .child(tr(title))
+                };
                 let found = found.clone();
-                let route_row = plan.route.map(|r| {
-                    let (icon, label) = route_name(r);
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.))
-                        .pb(px(6.))
-                        .text_sm()
-                        .child(div().text_color(z.text_muted).child(tr("Маршрут:")))
-                        .child(ui::icon(icon).text_color(if plan.ready() { z.accent } else { z.text_muted }))
-                        .child(div().font_weight(gpui::FontWeight::MEDIUM).child(tr(label)))
-                        .when(!plan.alternatives.is_empty(), |d| {
-                            d.child(
-                                ui::ghost_button("print-route-change", None, "Змінити…")
-                                    .text_xs()
-                                    .text_color(z.text_muted)
-                                    .on_click(cx.listener(|ws, _, _, cx| {
-                                        ws.cloud.route_picker = !ws.cloud.route_picker;
-                                        cx.notify();
-                                    })),
-                            )
-                        })
-                });
-                let picker = (ws.cloud.route_picker && !plan.alternatives.is_empty()).then(|| {
-                    let inputs = ws.cloud.print_inputs(&route_dev, found.is_some(), connect_installed, open_plugin, cloud_print);
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .gap(px(6.))
-                        .pb(px(6.))
-                        .children(plan.alternatives.iter().map(|&r| {
-                            let (icon, label) = route_name(r);
-                            let ready = print_paths::blocker(&inputs, r).is_none();
-                            let dev = route_dev.clone();
-                            ui::ghost_button(
-                                match r {
-                                    print_paths::Route::Cloud => "print-route-cloud",
-                                    print_paths::Route::Lan => "print-route-lan",
-                                    print_paths::Route::Connect => "print-route-connect",
-                                },
-                                Some(icon),
-                                label,
-                            )
-                            .border_1()
-                            .border_color(z.border_variant)
-                            .child(
+
+                // Що друкуємо: назва головна, решта — короткі факти з іконками, які
+                // переносяться цілими, а не посеред назви філаменту.
+                let job = div()
+                    .flex()
+                    .flex_col()
+                    .gap(px(6.))
+                    .p(px(10.))
+                    .rounded(crate::theme::radius())
+                    .bg(z.element)
+                    .border_1()
+                    .border_color(z.border_variant)
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(8.))
+                            .child({
+                                let full = job_name.clone();
                                 div()
-                                    .text_xs()
-                                    .text_color(z.text_placeholder)
-                                    .child(tr(if ready { "готово" } else { "недоступно зараз" })),
+                                    .id("print-job-name")
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_sm()
+                                    .font_weight(gpui::FontWeight::MEDIUM)
+                                    .child(job_name.clone())
+                                    .tooltip(move |window, cx| {
+                                        gpui_component::tooltip::Tooltip::new(full.clone()).build(window, cx)
+                                    })
+                            })
+                            .child(div().flex_none().text_xs().text_color(z.text_muted).child(plate_label.clone())),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .gap_x(px(14.))
+                            .gap_y(px(4.))
+                            .text_xs()
+                            .text_color(z.text_muted)
+                            .children(job_facts.iter().map(|(icon, strong, rest)| {
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(6.))
+                                    .min_w_0()
+                                    .max_w_full()
+                                    .child(ui::icon(*icon).flex_none().text_color(z.text_placeholder))
+                                    .when(!strong.is_empty(), |d| {
+                                        d.child(
+                                            div()
+                                                .flex_none()
+                                                .text_sm()
+                                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                                .text_color(z.text)
+                                                .child(strong.clone()),
+                                        )
+                                    })
+                                    .when(!rest.is_empty(), |d| d.child(div().min_w_0().truncate().child(rest.clone())))
+                            })),
+                    )
+                    .when_some(material_warning.clone(), |d, text| {
+                        d.child(
+                            div()
+                                .flex()
+                                .items_start()
+                                .gap(px(6.))
+                                .pt(px(2.))
+                                .child(ui::icon(IconName::TriangleAlert).flex_none().text_color(z.warning))
+                                .child(div().flex_1().min_w_0().text_xs().whitespace_normal().child(text)),
+                        )
+                    });
+
+                // Куди: принтер одним рядком.
+                // Куди: одна велика картка — фото моделі, назва, модель і стан. Коли принтерів
+                // кілька, уся картка — поле вибору: розкриває список таких самих карток.
+                let card = |name: &str, model: &str, online: bool, cover: Option<&std::path::PathBuf>, strong: bool| {
+                    let state = tr(if online { "У мережі" } else { "Офлайн" });
+                    let line = if model.is_empty() || model == name { state } else { format!("{model} · {state}") };
+                    div()
+                        .flex()
+                        .flex_1()
+                        .min_w_0()
+                        .items_center()
+                        .gap(px(10.))
+                        .child(
+                            div()
+                                .flex()
+                                .flex_none()
+                                .items_center()
+                                .justify_center()
+                                .size(px(48.))
+                                .rounded(px(4.))
+                                .bg(gpui::white())
+                                .overflow_hidden()
+                                .child(match cover {
+                                    Some(path) => gpui::img(path.clone())
+                                        .size(px(46.))
+                                        .object_fit(gpui::ObjectFit::Contain)
+                                        .into_any_element(),
+                                    None => gpui_component::Icon::new(IconName::Printer)
+                                        .size(px(22.))
+                                        .text_color(gpui::black().opacity(0.55))
+                                        .into_any_element(),
+                                }),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .flex_1()
+                                .min_w_0()
+                                .gap(px(2.))
+                                .child(
+                                    div()
+                                        .truncate()
+                                        .text_sm()
+                                        .when(strong, |d| d.font_weight(gpui::FontWeight::SEMIBOLD))
+                                        .child(name.to_owned()),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(6.))
+                                        .text_xs()
+                                        .text_color(z.text_muted)
+                                        .child(div().flex_none().size(px(8.)).rounded_full().bg(if online { z.success } else { z.text_placeholder }))
+                                        .child(div().min_w_0().truncate().child(line)),
+                                ),
+                        )
+                };
+                let current = choices.iter().find(|c| c.0 == route_dev);
+                let (name, model, online, cover) = match current {
+                    Some((_, name, model, online, cover)) => (name.as_str(), model.as_str(), *online, cover.as_ref()),
+                    None => (printer.as_str(), "", false, None),
+                };
+                let pick = choices.len() > 1;
+                let menu_open = pick && ws.cloud.printer_menu;
+                let bounds = ws.cloud.printer_menu_bounds.clone();
+                let anchor = bounds.get();
+                let target = div()
+                    .id("print-printer")
+                    .relative()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.))
+                    .h(px(64.))
+                    .px(px(8.))
+                    .rounded(crate::theme::radius())
+                    .border_1()
+                    .border_color(if menu_open { z.accent } else { z.border_variant })
+                    .bg(z.editor)
+                    .child(card(name, model, online, cover, true))
+                    .when(pick, |d| {
+                        d.cursor_pointer()
+                            .hover(|h| h.bg(z.element_hover))
+                            .child(ui::icon(IconName::ChevronsUpDown).flex_none().text_color(z.text_muted))
+                            .child(
+                                gpui::canvas(move |b, _, _| bounds.set(b), |_, _, _, _| {})
+                                    .absolute()
+                                    .top_0()
+                                    .left_0()
+                                    .size_full(),
                             )
-                            .on_click(cx.listener(move |ws, _, _, cx| {
-                                ws.cloud.print_route.insert(dev.clone(), r);
-                                ws.cloud.route_picker = false;
+                            .on_click(cx.listener(|ws, _, _, cx| {
+                                ws.cloud.printer_menu = !ws.cloud.printer_menu;
                                 cx.notify();
                             }))
-                        }))
-                });
-                crate::widgets::modal(
-                    "Надіслати на друк",
-                    520.,
+                    })
+                    .when(menu_open, |d| {
+                        d.child(gpui::deferred(
+                            gpui::anchored()
+                                .position(gpui::point(anchor.origin.x, anchor.bottom() + px(4.)))
+                                .snap_to_window_with_margin(px(8.))
+                                .child(
+                                    div()
+                                        .id("print-printer-menu")
+                                        .occlude()
+                                        .w(anchor.size.width)
+                                        .max_h(px(320.))
+                                        .overflow_y_scroll()
+                                        .flex()
+                                        .flex_col()
+                                        .gap(px(2.))
+                                        .p(px(4.))
+                                        .rounded(crate::theme::radius())
+                                        .bg(z.panel)
+                                        .border_1()
+                                        .border_color(z.border)
+                                        .shadow_lg()
+                                        .on_mouse_down_out(cx.listener(|ws, e: &gpui::MouseDownEvent, _, cx| {
+                                            // Клік по самому полю закриє список власним обробником.
+                                            if !ws.cloud.printer_menu_bounds.get().contains(&e.position) {
+                                                ws.cloud.printer_menu = false;
+                                                cx.notify();
+                                            }
+                                        }))
+                                        .children(choices.iter().enumerate().map(|(i, (dev, name, model, online, cover))| {
+                                            let picked = *dev == route_dev;
+                                            let dev = dev.clone();
+                                            div()
+                                                .id(("print-printer-item", i))
+                                                .flex()
+                                                .flex_none()
+                                                .items_center()
+                                                .gap(px(8.))
+                                                .h(px(60.))
+                                                .px(px(6.))
+                                                .rounded(crate::theme::radius())
+                                                .cursor_pointer()
+                                                .when(picked, |d| d.bg(z.element_selected))
+                                                .hover(|h| h.bg(z.element_hover))
+                                                .child(card(name, model, *online, cover.as_ref(), picked))
+                                                .when(picked, |d| d.child(ui::icon(IconName::Check).flex_none().text_color(z.accent)))
+                                                .on_click(cx.listener(move |ws, _, window, cx| {
+                                                    ws.cloud.printer_menu = false;
+                                                    if ws.cloud.selected.as_ref() == Some(&dev) {
+                                                        cx.notify();
+                                                        return;
+                                                    }
+                                                    // Інший принтер — той самий діалог заново: маршрути й галочки його власні.
+                                                    ws.close_modal(cx);
+                                                    ws.cloud.select(Some(dev.clone()), window);
+                                                    ws.cloud.send(CloudCmd::Select(dev.clone()));
+                                                    ws.open_print_dialog(window, cx);
+                                                }))
+                                        })),
+                                ),
+                        )
+                        .with_priority(2))
+                    });
+                let mismatch_note = mismatch.clone().map(|(sliced, target)| {
                     div()
                         .flex()
+                        .items_start()
+                        .gap(px(6.))
+                        .p(px(8.))
+                        .rounded(crate::theme::radius())
+                        .border_1()
+                        .border_color(z.warning)
+                        .child(ui::icon(IconName::TriangleAlert).flex_none().text_color(z.warning))
+                        .child(div().min_w_0().text_xs().whitespace_normal().child(crate::tr_format!(
+                            "Файл нарізано для {sliced}, а вибрано {target}. Виберіть інший принтер або наріжте заново з профілем цього принтера — напряму такий файл не надсилається."
+                        )))
+                });
+
+                // Як: усі маршрути видно одразу, кожен зі станом. Вибраний розгорнуто: що
+                // станеться або чого бракує й одна дія. Порядок рядків не змінюється.
+                let options = plan.options();
+                let pick = options.len() > 1;
+                let wrong_model = mismatch.is_some();
+                let rows = options.iter().map(|&r| {
+                    let b = print_paths::blocker(&inputs, r);
+                    // Маршрут справний, але файл для іншої моделі: напряму не надсилається,
+                    // тож «Готово» тут суперечило б вимкненій кнопці.
+                    let other_model = wrong_model
+                        && b.is_none()
+                        && matches!(r, print_paths::Route::Lan | print_paths::Route::Cloud);
+                    let selected = plan.route == Some(r);
+                    let open = selected || plan.route.is_none();
+                    let (icon, label) = route_name(r);
+                    let detail = match b {
+                        None if other_model => "",
+                        None => note_for(r),
+                        Some(b) => reason_for(b),
+                    };
+                    let fix = b.and_then(fix_for).filter(|_| open);
+                    let ok = b.is_none() && !other_model;
+                    let dev = route_dev.clone();
+                    let found = found.clone();
+                    let id = match r {
+                        print_paths::Route::Cloud => "print-route-cloud",
+                        print_paths::Route::Lan => "print-route-lan",
+                        print_paths::Route::Connect => "print-route-connect",
+                    };
+                    div()
+                        .id(id)
+                        .flex()
                         .flex_col()
-                        .p(px(12.))
-                        .gap(px(4.))
+                        .gap(px(6.))
+                        .px(px(10.))
+                        .py(px(8.))
+                        .rounded(crate::theme::radius())
+                        .border_1()
+                        .map(|d| {
+                            if selected {
+                                d.bg(z.accent_bg).border_color(z.accent_border)
+                            } else {
+                                d.border_color(z.border_variant)
+                                    .cursor_pointer()
+                                    .hover(|s| s.bg(z.element_hover))
+                                    .on_click(cx.listener(move |ws, _, _, cx| {
+                                        ws.cloud.print_route.insert(dev.clone(), r);
+                                        cx.notify();
+                                    }))
+                            }
+                        })
                         .child(
                             div()
                                 .flex()
                                 .items_center()
                                 .gap(px(8.))
-                                .child(ui::icon(IconName::Printer).text_color(z.accent))
+                                .when(pick, |d| d.child(crate::widgets::radio((id, 0usize), selected, false)))
+                                .child(ui::icon(icon).flex_none().text_color(if selected { z.accent } else { z.text_muted }))
                                 .child(
                                     div()
+                                        .flex_1()
+                                        .min_w_0()
+                                        .truncate()
                                         .text_sm()
-                                        .font_weight(gpui::FontWeight::MEDIUM)
-                                        .child(printer.clone()),
+                                        .when(selected, |d| d.font_weight(gpui::FontWeight::MEDIUM))
+                                        .child(tr(label)),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .flex_none()
+                                        .items_center()
+                                        .gap(px(4.))
+                                        .text_xs()
+                                        .text_color(if ok { z.success } else { z.text_muted })
+                                        .child(ui::icon(if ok {
+                                            IconName::CircleCheck
+                                        } else if b == Some(print_paths::Blocker::CloudConnecting) {
+                                            IconName::LoaderCircle
+                                        } else {
+                                            IconName::CircleAlert
+                                        }).text_color(if ok { z.success } else if selected { z.warning } else { z.text_placeholder }))
+                                        .child(tr(if other_model { "Інша модель" } else { status_for(b) })),
                                 ),
                         )
-                        .child(
-                            div()
-                                .text_sm()
-                                .text_color(z.text_muted)
-                                .child(summary.clone()),
-                        )
-                        .child(
-                            div()
-                                .pb(px(6.))
-                                .text_xs()
-                                .text_color(z.text_placeholder)
-                                .child(format!("{}: {bed_label}", tr("Пластина"))),
-                        )
-                        .when_some(material_warning.clone(), |d, text| {
+                        .when(open && !detail.is_empty(), |d| {
                             d.child(
                                 div()
-                                    .flex()
-                                    .items_start()
-                                    .gap(px(6.))
-                                    .pb(px(6.))
-                                    .child(ui::icon(IconName::TriangleAlert).text_color(z.warning))
-                                    .child(div().text_xs().child(text)),
+                                    .pl(px(if pick { 46. } else { 22. }))
+                                    .text_xs()
+                                    .text_color(z.text_muted)
+                                    .whitespace_normal()
+                                    .child(tr(detail)),
                             )
                         })
-                        .when_some(route_row, |d, row| d.child(row))
-                        .when_some(picker, |d, p| d.child(p))
-                        .map(|d| match (plan.route, plan.blocker) {
-                            (Some(print_paths::Route::Lan), None) if open_plugin => d.child(note(
-                                "Через локальну мережу з відкритим плагіном: він підписує команду друку, Developer Mode не потрібен. Файл ляже на microSD принтера, і друк почнеться одразу.",
-                            )),
-                            (Some(print_paths::Route::Lan), None) => d.child(note(
-                                "Через локальну мережу: файл буде завантажено на microSD принтера, і друк почнеться одразу.",
-                            )),
-                            (Some(print_paths::Route::Cloud), None) => d.child(note(
-                                "Через Bambu Cloud: модель вивантажується в хмару Bambu, і принтер почне друк.",
-                            )),
-                            (Some(print_paths::Route::Connect), None) => d.child(note(
-                                "Файл відкриється в Bambu Connect — там виберіть принтер, калібрування й натисніть «Друк».",
-                            )),
-                            _ => d,
-                        })
-                        .when_some(reason.filter(|r| !r.is_empty()), |d, text| {
+                        .when_some(fix, |d, (fix_id, fix_label)| {
                             d.child(
-                                div()
-                                    .flex()
-                                    .items_start()
-                                    .gap(px(6.))
-                                    .pb(px(6.))
-                                    .child(ui::icon(IconName::Info).text_color(z.text_muted))
-                                    .child(div().flex_1().min_w_0().text_xs().whitespace_normal().child(tr(text))),
-                            )
-                        })
-                        .when_some(fix, |d, (id, label)| {
-                            let found = found.clone();
-                            d.child(
-                                div().flex().pb(px(6.)).child(
-                                    ui::ghost_button(id, None, label)
+                                div().flex().pl(px(if pick { 46. } else { 22. })).child(
+                                    ui::ghost_button(fix_id, None, fix_label)
+                                        .bg(z.element)
                                         .border_1()
-                                        .border_color(z.border_variant)
+                                        .border_color(z.border)
                                         .on_click(cx.listener(move |ws, _, window, cx| {
+                                            cx.stop_propagation();
                                             ws.close_modal(cx);
-                                            match id {
+                                            match fix_id {
                                                 "print-fix-cloud" => ws.cloud_source_action(window, cx),
                                                 "print-add-lan" => ws.open_lan_dialog(found.clone(), window, cx),
                                                 _ => ws.open_lan_dialog(None, window, cx),
@@ -3156,110 +3475,126 @@ impl Workspace {
                                 ),
                             )
                         })
-                        .when(plan.notice != print_paths::ConnectNotice::None, |d| {
-                            d.child(
+                });
+                let notice = (plan.notice != print_paths::ConnectNotice::None).then(|| {
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap(px(6.))
+                        .p(px(10.))
+                        .rounded(crate::theme::radius())
+                        .border_1()
+                        .border_color(z.border_variant)
+                        .child(div().text_sm().whitespace_normal().child(tr(
+                            "Щоб друкувати через інтернет, потрібен Bambu Connect — безкоштовна програма Bambu Lab.",
+                        )))
+                        .map(|d| match plan.notice {
+                            print_paths::ConnectNotice::NoLinuxBuild => d
+                                .child(div().text_xs().whitespace_normal().text_color(z.text_muted).child(tr(
+                                    "Версії Bambu Connect для Linux поки немає. Друкуйте по локальній мережі або експортуйте файл і відкрийте його на іншому комп’ютері.",
+                                )))
+                                .when(cloud::obn::SUPPORTED, |d| {
+                                    d.child(div().text_xs().whitespace_normal().text_color(z.text_muted).child(tr(
+                                        "Інший шлях — відкритий плагін Open Bamboo Networking (сторонній, на ваш розсуд): друк без Developer Mode.",
+                                    )))
+                                    .child(div().flex().child(
+                                        ui::ghost_button("print-open-plugin", Some(IconName::Plug), "Відкритий плагін…")
+                                            .border_1()
+                                            .border_color(z.border_variant)
+                                            .on_click(cx.listener(|ws, _, window, cx| {
+                                                ws.close_modal(cx);
+                                                ws.open_open_plugin(window, cx);
+                                            })),
+                                    ))
+                                }),
+                            _ => d.child(
+                                div().flex().child(
+                                    ui::accent_button(
+                                        "print-get-connect",
+                                        IconName::ExternalLink,
+                                        "Завантажити Bambu Connect",
+                                        true,
+                                    )
+                                    .on_click(cx.listener(|_, _, _, cx| {
+                                        cx.open_url(crate::bambu_connect::DOWNLOAD_URL)
+                                    })),
+                                ),
+                            ),
+                        })
+                });
+                // Підпис головної кнопки — те, що справді станеться.
+                let (send_icon, send_label) = match plan.route {
+                    Some(print_paths::Route::Connect) => (IconName::ExternalLink, "Відкрити в Bambu Connect"),
+                    _ => (IconName::Printer, "Друкувати"),
+                };
+                crate::widgets::modal(
+                    "Надіслати на друк",
+                    560.,
+                    div()
+                        .flex()
+                        .flex_col()
+                        .p(px(14.))
+                        .gap(px(8.))
+                        .child(job)
+                        .child(section("Принтер"))
+                        .child(target)
+                        .children(mismatch_note)
+                        .child(section("Як надіслати"))
+                        .children(rows)
+                        .children(notice)
+                        .when(plan.print_options, |d| {
+                            d.child(section("Перед друком")).child(
                                 div()
                                     .flex()
-                                    .flex_col()
-                                    .gap(px(6.))
-                                    .mb(px(6.))
-                                    .p(px(10.))
-                                    .rounded(px(6.))
-                                    .border_1()
-                                    .border_color(z.border_variant)
-                                    .child(div().text_sm().child(tr(
-                                        "Щоб друкувати через інтернет, потрібен Bambu Connect — безкоштовна програма Bambu Lab.",
-                                    )))
-                                    .map(|d| match plan.notice {
-                                        print_paths::ConnectNotice::NoLinuxBuild => d
-                                            .child(div().text_xs().text_color(z.text_muted).child(tr(
-                                                "Версії Bambu Connect для Linux поки немає. Друкуйте по локальній мережі або експортуйте файл і відкрийте його на іншому комп’ютері.",
-                                            )))
-                                            .when(cloud::obn::SUPPORTED, |d| {
-                                                d.child(div().text_xs().text_color(z.text_muted).child(tr(
-                                                    "Інший шлях — відкритий плагін Open Bamboo Networking (сторонній, на ваш розсуд): друк без Developer Mode.",
-                                                )))
-                                                .child(div().flex().child(
-                                                    ui::ghost_button("print-open-plugin", Some(IconName::Plug), "Відкритий плагін…")
-                                                        .border_1()
-                                                        .border_color(z.border_variant)
-                                                        .on_click(cx.listener(|ws, _, window, cx| {
-                                                            ws.close_modal(cx);
-                                                            ws.open_open_plugin(window, cx);
-                                                        })),
-                                                ))
-                                            }),
-                                        _ => d.child(
-                                            div().flex().child(
-                                                ui::accent_button(
-                                                    "print-get-connect",
-                                                    IconName::ExternalLink,
-                                                    "Завантажити Bambu Connect",
-                                                    true,
-                                                )
-                                                .on_click(cx.listener(|_, _, _, cx| {
-                                                    cx.open_url(crate::bambu_connect::DOWNLOAD_URL)
-                                                })),
-                                            ),
-                                        ),
-                                    })
+                                    .flex_wrap()
+                                    .children(
+                                        [
+                                            Some(toggle("opt-level", "Вирівнювання столу", opts.bed_leveling, |o, v| o.bed_leveling = v, cx)),
+                                            // Лише моделі, які це вміють (P1P і P1S — ні).
+                                            caps.flow_cali
+                                                .then(|| toggle("opt-flow", "Калібрування потоку", opts.flow_cali, |o, v| o.flow_cali = v, cx)),
+                                            Some(toggle("opt-vib", "Калібрування вібрацій", opts.vibration_cali, |o, v| o.vibration_cali = v, cx)),
+                                            Some(toggle("opt-timelapse", "Таймлапс", opts.timelapse, |o, v| o.timelapse = v, cx)),
+                                        ]
+                                        .into_iter()
+                                        .flatten()
+                                        .map(|t| div().w_1_2().min_w_0().child(t)),
+                                    ),
                             )
-                        })
-                        .when(plan.print_options, |d| {
-                            d.child(ui::divider())
-                                .child(toggle(
-                                    "opt-level",
-                                    "Вирівнювання столу",
-                                    opts.bed_leveling,
-                                    |o, v| o.bed_leveling = v,
-                                    cx,
-                                ))
-                                .child(toggle(
-                                    "opt-flow",
-                                    "Калібрування потоку",
-                                    opts.flow_cali,
-                                    |o, v| o.flow_cali = v,
-                                    cx,
-                                ))
-                                .child(toggle(
-                                    "opt-vib",
-                                    "Калібрування вібрацій",
-                                    opts.vibration_cali,
-                                    |o, v| o.vibration_cali = v,
-                                    cx,
-                                ))
-                                .child(toggle(
-                                    "opt-timelapse",
-                                    "Таймлапс",
-                                    opts.timelapse,
-                                    |o, v| o.timelapse = v,
-                                    cx,
-                                ))
                         }),
                     Some(
                         div()
                             .flex()
+                            .flex_1()
                             .items_center()
                             .gap(px(6.))
                             .child(
-                                ui::ghost_button("print-cancel", None, "Скасувати")
-                                    .on_click(cx.listener(|ws, _, _, cx| ws.close_modal(cx))),
-                            )
-                            .child(
-                                ui::ghost_button("print-export", Some(IconName::Download), "Експортувати .gcode.3mf…")
+                                // Коротко, щоб ряд кнопок мав запас ширини (довші англійська й шрифти Windows).
+                                ui::ghost_button("print-export", Some(IconName::Download), "Експортувати…")
+                                    .tooltip(|window, cx| {
+                                        gpui_component::tooltip::Tooltip::new(tr("Експортувати .gcode.3mf…")).build(window, cx)
+                                    })
                                     .on_click(cx.listener(|ws, _, window, cx| {
                                         ws.close_modal(cx);
                                         ws.prompt_export(window, cx);
                                     })),
                             )
                             .child(div().flex_1())
+                            .child(
+                                ui::ghost_button("print-cancel", None, "Скасувати")
+                                    .on_click(cx.listener(|ws, _, _, cx| ws.close_modal(cx))),
+                            )
                             .child({
-                                let ready = plan.ready();
+                                // Інша модель: мережею й хмарою не надсилаємо; Bambu Connect сам питає принтер.
+                                let direct = matches!(plan.route, Some(print_paths::Route::Lan | print_paths::Route::Cloud));
+                                let ready = plan.ready() && !(direct && mismatch.is_some());
                                 let route = plan.route;
                                 let send = send.clone();
                                 let connect_send = connect_send.clone();
-                                ui::accent_button("print-send", IconName::Send, "Друкувати", ready).when(ready, |b| {
+                                let demo = fake_route.is_some();
+                                ui::accent_button("print-send", send_icon, send_label, ready).when(ready, |b| {
                                     b.on_click(cx.listener(move |ws, _, _, cx| match route {
+                                        _ if demo => ws.close_modal(cx),
                                         Some(print_paths::Route::Lan) => send(ws, false, cx),
                                         Some(print_paths::Route::Cloud) => send(ws, true, cx),
                                         Some(print_paths::Route::Connect) => connect_send(ws, cx),
@@ -3274,6 +3609,35 @@ impl Workspace {
             window,
             cx,
         );
+    }
+}
+
+#[cfg(test)]
+mod print_dialog_tests {
+    use super::*;
+
+    #[test]
+    fn sliced_model_comes_from_slice_info() {
+        let text = r#"<config><header/><plate><metadata key="index" value="1"/><metadata key="printer_model_id" value="N2S"/></plate></config>"#;
+        assert_eq!(slice_info_model(text).as_deref(), Some("N2S"));
+        assert_eq!(slice_info_model(r#"<metadata key="printer_model_id" value=""/>"#), None);
+        assert_eq!(slice_info_model("<config/>"), None);
+    }
+
+    #[test]
+    fn bed_type_reads_like_the_plate_picker() {
+        // Код із завдання друку → назва, як у виборі пластини на «Підготовці».
+        for (code, name) in [
+            ("textured_plate", "Textured PEI Plate"),
+            ("hot_plate", "High Temp Plate"),
+            ("cool_plate", "Cool Plate"),
+            ("engineering_plate", "Engineering Plate"),
+            ("supertack_plate", "Supertack Plate"),
+        ] {
+            assert_eq!(bed_type_label(code), name);
+            assert!(slicer::BED_TYPES.contains(&name), "{name}");
+        }
+        assert_eq!(bed_type_label("pei_plate_x"), "pei_plate_x");
     }
 }
 
