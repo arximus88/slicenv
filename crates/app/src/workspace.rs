@@ -1406,7 +1406,7 @@ impl Workspace {
     }
 
     /// Рядок стану Zed: перемикачі доків зліва, поточна дія, справа — сцена й хмара.
-    fn status_bar(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn status_bar(&self, cx: &mut Context<Self>) -> gpui::Div {
         let z = zed();
         let has_left = matches!(self.page, Page::Home | Page::Prepare | Page::Device)
             || (self.page == Page::Preview && self.preview.is_some());
@@ -1613,6 +1613,7 @@ impl Render for Workspace {
             self.trace_ui_state(cx);
         }
 
+        crate::theme::sync_window_radius();
         let overlays = self.overlays(window, cx);
         // Рамку вікна (тінь, смуга зміни розміру) малює `Root` gpui-component 0.8 — один раз.
         // Друга рамка тут із іншою тінню (0 замість 20 px) щокадру перемикала
@@ -1796,12 +1797,13 @@ impl Render for Workspace {
                 .flex()
                 .flex_col()
                 .bg(z.background)
+                .map(|d| crate::theme::window_corners(d, window, true, true))
                 .text_color(z.text)
                 .text_sm()
                 .font_family(crate::theme::UI_FONT)
                 .child(self.title_bar(window, cx))
                 .child(div().flex().flex_1().min_h_0().child(content))
-                .child(self.status_bar(cx))
+                .child(crate::theme::window_corners(self.status_bar(cx), window, false, true))
                 .children(overlays)
                 .when(self.scrub.is_some(), |d| {
                     d.child(div().absolute().inset_0().cursor_ew_resize())
@@ -2092,6 +2094,7 @@ fn gnome_title_bar(content: gpui::Div, window: &mut Window) -> gpui::AnyElement 
         .h(px(46.))
         .px(px(6.))
         .bg(z.background)
+        .map(|d| crate::theme::window_corners(d, window, true, false))
         .border_b_1()
         .border_color(z.border_variant)
         .on_mouse_down(gpui::MouseButton::Left, |_, _, _| {

@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# Латана копія gpui-component (заокруглені кути вікна) — не член workspace.
+exclude = ["vendor"]
 # `cargo run` / `cargo build` без -p — сам застосунок; тести всього: `cargo test --workspace`.
 default-members = ["crates/app"]
 
@@ -58,3 +60,8 @@ opt-level = 2
 
 [profile.dev.package.project]
 opt-level = 2
+
+# gpui-component 0.8.1 з однією зміною: радіус кутів рамки вікна налаштовується
+# (`window_border::set_window_radius`). Що змінено й як оновлювати — vendor/README.md.
+[patch.crates-io]
+gpui-component = { path = "vendor/gpui-component" }

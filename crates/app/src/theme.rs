@@ -384,6 +384,42 @@ pub fn gnome() -> bool {
     skin() == Skin::Gnome
 }
 
+/// Радіус кутів вікна в шкірі GNOME — `--window-radius` libadwaita.
+const GNOME_WINDOW_RADIUS: f32 = 15.;
+
+/// Радіус рамки вікна для поточної шкіри; рамку малює латана gpui-component (`vendor/`).
+pub fn sync_window_radius() {
+    gpui_component::set_window_radius(gpui::px(if gnome() { GNOME_WINDOW_RADIUS } else { 0. }));
+}
+
+/// Заокруглює фон біля кутів вікна. GPUI обрізає вміст лише прямокутником, тож кожен фон, що
+/// торкається кута (поверхня, заголовок, рядок стану), округлюється сам. Кут біля краю, до
+/// якого вікно приклеєне, а також розгорнуте чи повноекранне вікно лишаються прямими.
+pub fn window_corners<E: gpui::Styled>(el: E, window: &gpui::Window, top: bool, bottom: bool) -> E {
+    let gpui::Decorations::Client { tiling } = window.window_decorations() else {
+        return el;
+    };
+    if !gnome() || window.is_maximized() || window.is_fullscreen() {
+        return el;
+    }
+    // Усередині обводки рамки (1 px) радіус на піксель менший.
+    let r = gpui::px(GNOME_WINDOW_RADIUS - 1.);
+    let mut el = el;
+    if top && !(tiling.top || tiling.left) {
+        el = el.rounded_tl(r);
+    }
+    if top && !(tiling.top || tiling.right) {
+        el = el.rounded_tr(r);
+    }
+    if bottom && !(tiling.bottom || tiling.left) {
+        el = el.rounded_bl(r);
+    }
+    if bottom && !(tiling.bottom || tiling.right) {
+        el = el.rounded_br(r);
+    }
+    el
+}
+
 /// Кнопка керування вікном у заголовку шкіри GNOME.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WindowButton {
