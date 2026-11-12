@@ -1048,7 +1048,7 @@ fn session(
                 match cloud::CameraStream::open_with_firmware(&client, &dev, &version) {
                     Ok(cam) => camera = Some(cam),
                     // Заголовок панелі вже «Камера» — без префікса.
-                    Err(err) => send(CloudMsg::CameraStopped(Some(format!("{err:#}")))),
+                    Err(err) => send(CloudMsg::CameraStopped(Some(crate::i18n::tr_error(&err)))),
                 }
             }
             if camera_pending.is_some_and(|t| t.elapsed() > Duration::from_secs(20)) {

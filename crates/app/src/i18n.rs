@@ -209,6 +209,32 @@ pub fn formatted(source: &str, rendered: &str) -> String {
         format_into(source, &translated, rendered).unwrap_or_else(|| rendered.into())
     }
 }
+/// Переклад уже відформатованого тексту з інших крейтів (помилки `cloud`, `lan`): точний ключ
+/// або шаблон з `{полями}` зі словника. Не знайшлося — текст лишається як є.
+pub fn tr_rendered(rendered: &str) -> String {
+    let selected = current().read().unwrap();
+    if selected.code == "uk" {
+        return rendered.into();
+    }
+    [&selected.strings, english()]
+        .into_iter()
+        .find_map(|strings| strings.get(rendered).cloned().or_else(|| match_template(strings, rendered)))
+        .unwrap_or_else(|| rendered.into())
+}
+/// Найдовший шаблон словника, під який підходить текст. Шаблони майже без сталого тексту
+/// (`{}`, `{a}: {b}`) не розглядаються — вони підійшли б до будь-чого.
+fn match_template(strings: &HashMap<String, String>, rendered: &str) -> Option<String> {
+    strings
+        .iter()
+        .filter(|(source, _)| source.contains('{') && source.chars().count() >= 24)
+        .filter_map(|(source, translated)| Some((source.len(), format_into(source, translated, rendered)?)))
+        .max_by_key(|(len, _)| *len)
+        .map(|(_, text)| text)
+}
+/// Ланцюжок помилки мовою інтерфейсу: кожна ланка перекладається окремо.
+pub fn tr_error(error: &anyhow::Error) -> String {
+    error.chain().map(|link| tr_rendered(&link.to_string())).collect::<Vec<_>>().join(": ")
+}
 #[macro_export]
 macro_rules! tr_format {
     ($template:literal $(, $($args:tt)*)?) => {{
@@ -218,6 +244,21 @@ macro_rules! tr_format {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rendered_errors_match_the_longest_template_and_ignore_bare_fields() {
+        let strings: HashMap<String, String> = [
+            ("{}", "{}"),
+            ("Камера через хмару недоступна{detail}. Перевірте принтер.", "Camera unavailable{detail}. Check the printer."),
+        ]
+        .into_iter()
+        .map(|(a, b)| (a.to_owned(), b.to_owned()))
+        .collect();
+        assert_eq!(
+            match_template(&strings, "Камера через хмару недоступна (Bambu 403). Перевірте принтер.").unwrap(),
+            "Camera unavailable (Bambu 403). Check the printer."
+        );
+        assert_eq!(match_template(&strings, "Невідомий текст"), None);
+    }
     #[test]
     fn templates_preserve_values_precision_and_escaped_braces() {
         assert_eq!(

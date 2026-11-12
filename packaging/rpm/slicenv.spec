@@ -3,7 +3,7 @@
 %global debug_package %{nil}
 %global __brp_strip %{nil}
 %global __brp_check_rpaths %{nil}
-%{!?pkgversion: %global pkgversion 0.1.4}
+%{!?pkgversion: %global pkgversion 0.1.5}
 %global _docdir_fmt %{name}
 
 Name:           slicenv
@@ -54,6 +54,9 @@ rm -f %{buildroot}%{_docdir}/%{name}/LICENSE
 %doc %{_docdir}/%{name}
 
 %changelog
+* Thu Nov 12 2026 Borys Kharchenko <7512615+arximus88@users.noreply.github.com> - 0.1.5-1
+- GNOME window buttons and title bar actions follow system settings; camera error is localized; new screenshots.
+
 * Wed Nov 11 2026 Borys Kharchenko <7512615+arximus88@users.noreply.github.com> - 0.1.4-1
 - GNOME look (Adwaita palette, header bar, tabs); engine installation stays visible and can be cancelled.
 
