@@ -2045,12 +2045,13 @@ fn gnome_title_bar(content: gpui::Div, window: &mut Window) -> gpui::AnyElement 
     let maximized = window.is_maximized();
     let control = move |button: WindowButton| {
         let (id, icon, tip) = match button {
-            WindowButton::Minimize => ("window-minimize", IconName::WindowMinimize, "Згорнути"),
+            // Гліфи за сіткою символьних іконок Adwaita: 16 px, штрих 2 px.
+            WindowButton::Minimize => ("window-minimize", "window/minimize.svg", "Згорнути"),
             WindowButton::Maximize if maximized => {
-                ("window-maximize", IconName::WindowRestore, "Відновити розмір")
+                ("window-maximize", "window/restore.svg", "Відновити розмір")
             }
-            WindowButton::Maximize => ("window-maximize", IconName::WindowMaximize, "Розгорнути"),
-            WindowButton::Close => ("window-close", IconName::WindowClose, "Закрити"),
+            WindowButton::Maximize => ("window-maximize", "window/maximize.svg", "Розгорнути"),
+            WindowButton::Close => ("window-close", "window/close.svg", "Закрити"),
         };
         let tip: SharedString = crate::i18n::tr(tip).into();
         div()
@@ -2066,7 +2067,7 @@ fn gnome_title_bar(content: gpui::Div, window: &mut Window) -> gpui::AnyElement 
             .text_color(z.text)
             .hover(|s| s.bg(z.element_selected))
             .active(|s| s.bg(z.border))
-            .child(ui::icon(icon).size(px(12.)))
+            .child(gpui::svg().path(icon).flex_none().size(px(16.)).text_color(z.text))
             .tooltip(move |window, cx| Tooltip::new(tip.clone()).build(window, cx))
             .on_click(move |_, window, cx| {
                 cx.stop_propagation();
