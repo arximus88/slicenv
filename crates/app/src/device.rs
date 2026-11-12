@@ -3365,16 +3365,24 @@ impl Workspace {
                 // станеться або чого бракує й одна дія. Порядок рядків не змінюється.
                 let options = plan.options();
                 let pick = options.len() > 1;
+                let wrong_model = mismatch.is_some();
                 let rows = options.iter().map(|&r| {
                     let b = print_paths::blocker(&inputs, r);
+                    // Маршрут справний, але файл для іншої моделі: напряму не надсилається,
+                    // тож «Готово» тут суперечило б вимкненій кнопці.
+                    let other_model = wrong_model
+                        && b.is_none()
+                        && matches!(r, print_paths::Route::Lan | print_paths::Route::Cloud);
                     let selected = plan.route == Some(r);
                     let open = selected || plan.route.is_none();
                     let (icon, label) = route_name(r);
                     let detail = match b {
+                        None if other_model => "",
                         None => note_for(r),
                         Some(b) => reason_for(b),
                     };
                     let fix = b.and_then(fix_for).filter(|_| open);
+                    let ok = b.is_none() && !other_model;
                     let dev = route_dev.clone();
                     let found = found.clone();
                     let id = match r {
@@ -3427,15 +3435,15 @@ impl Workspace {
                                         .items_center()
                                         .gap(px(4.))
                                         .text_xs()
-                                        .text_color(if b.is_none() { z.success } else { z.text_muted })
-                                        .child(ui::icon(if b.is_none() {
+                                        .text_color(if ok { z.success } else { z.text_muted })
+                                        .child(ui::icon(if ok {
                                             IconName::CircleCheck
                                         } else if b == Some(print_paths::Blocker::CloudConnecting) {
                                             IconName::LoaderCircle
                                         } else {
                                             IconName::CircleAlert
-                                        }).text_color(if b.is_none() { z.success } else if selected { z.warning } else { z.text_placeholder }))
-                                        .child(tr(status_for(b))),
+                                        }).text_color(if ok { z.success } else if selected { z.warning } else { z.text_placeholder }))
+                                        .child(tr(if other_model { "Інша модель" } else { status_for(b) })),
                                 ),
                         )
                         .when(open && !detail.is_empty(), |d| {

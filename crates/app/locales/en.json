@@ -1818,5 +1818,8 @@
   "Перед друком": "Before printing",
   "Відкрити в Bambu Connect": "Open in Bambu Connect",
   "У мережі": "Online",
-  "Файл нарізано для {sliced}, а вибрано {target}. Виберіть інший принтер або наріжте заново з профілем цього принтера — напряму такий файл не надсилається.": "The file was sliced for {sliced}, but {target} is selected. Pick another printer or slice again with this printer's profile — such a file is not sent directly."
+  "Файл нарізано для {sliced}, а вибрано {target}. Виберіть інший принтер або наріжте заново з профілем цього принтера — напряму такий файл не надсилається.": "The file was sliced for {sliced}, but {target} is selected. Pick another printer or slice again with this printer's profile — such a file is not sent directly.",
+  "Інша модель": "Other model",
+  "Камера через хмару недоступна: Bambu Lab показує відео через хмару лише у власних програмах (Bambu 403). У локальній мережі камера показує відео напряму — додайте принтер на сторінці «Пристрій» → «Додати принтер у мережі».": "The camera is unavailable through the cloud: Bambu Lab streams cloud video only to its own apps (Bambu 403). On the local network the camera streams directly — add the printer on the Device page → Add printer on network.",
+  "Новий проєкт (Ctrl+N)": "New project (Ctrl+N)"
 }
