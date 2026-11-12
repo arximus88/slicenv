@@ -154,8 +154,8 @@ modules:
       - install -Dm644 -t /app/share/licenses/app.borys.slicenv LICENSE THIRD-PARTY-NOTICES.md
         packaging/THIRD-PARTY-RUST-CRATES.md
     sources:
-      # Джерела 0.1.5: коміт тегу v0.1.5.
+      # Джерела 0.1.6: коміт тегу v0.1.6.
       - type: git
         url: https://github.com/arximus88/slicenv.git
-        commit: baa361d6161f218e2051183c1780259552abd987
+        commit: f6e266fcfc057c8c968b577398fc8baa375dac35
       - cargo-sources.json
