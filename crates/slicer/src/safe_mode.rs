@@ -221,7 +221,8 @@ fn strip_metadata(xml: &str, key: &str) -> String {
         // Відступ перед елементом теж іде, щоб не лишати порожніх рядків.
         let head = &rest[..start];
         let trimmed = head.trim_end_matches([' ', '\t']);
-        let trimmed = trimmed.trim_suffix('\n').trim_suffix('\r');
+        let trimmed = trimmed.strip_suffix('\n').unwrap_or(trimmed);
+        let trimmed = trimmed.strip_suffix('\r').unwrap_or(trimmed);
         out.push_str(trimmed);
         rest = &rest[start + len + 2..];
     }

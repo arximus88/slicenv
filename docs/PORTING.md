@@ -31,7 +31,7 @@ clippy не запускає.
 
 **Rust для macOS: ≥ 1.99.1.** `gpui-pre-macos 0.3.10` викликає `Option::map_or_default`,
 нестабільний у 1.97.1 (`error[E0658]: result_option_map_or_default`), а з 1.99.1 збирається.
-Тепер усе дерево на 1.100.0 (`rust-toolchain.toml`, `rust-version` у `Cargo.toml`): той самий
+Розробка й CI на 1.100.0 (`rust-toolchain.toml`; мінімум для збірки — `rust-version` у `Cargo.toml`): той самий
 toolchain у `ci.yml`, `package.yml` і `package-cross.yml` для всіх ОС.
 
 ## Матриця можливостей

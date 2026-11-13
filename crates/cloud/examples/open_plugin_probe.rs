@@ -107,7 +107,7 @@ fn find(out: &mut File, home: PathBuf) -> Result<()> {
             f.flavor,
             f.release,
             f.extras.len(),
-            f.library.trim_prefix(&home).display()
+            f.library.strip_prefix(&home).unwrap_or(&f.library).display()
         )?;
     }
     let first = found.first().context("OBN не знайдено")?;

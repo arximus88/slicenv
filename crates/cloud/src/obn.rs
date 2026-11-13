@@ -902,7 +902,7 @@ pub fn parse_release(body: &[u8]) -> Result<Release> {
         "останній реліз — чернетка або пре-реліз"
     );
     let tag = v["tag_name"].as_str().context("у релізі немає тегу")?.to_owned();
-    let version = tag.trim_prefix('v').to_owned();
+    let version = tag.strip_prefix('v').unwrap_or(&tag).to_owned();
     ensure!(release_version_ok(&version), "незвичний тег релізу");
     let asset = v["assets"]
         .as_array()

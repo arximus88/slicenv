@@ -212,7 +212,7 @@ fn select_arg(path: &Path) -> String {
     let text = text
         .strip_prefix(r"\\?\UNC\")
         .map(|rest| format!(r"\\{rest}"))
-        .unwrap_or_else(|| text.trim_prefix(r"\\?\").to_owned());
+        .unwrap_or_else(|| text.strip_prefix(r"\\?\").unwrap_or(&text).to_owned());
     format!("/select,\"{}\"", text.replace('"', ""))
 }
 
