@@ -268,7 +268,23 @@ fn sees_profiles_of_engine_installed_by_manager() {
     } else {
         h.join("d")
     };
-    fake_managed_orca(&data, "2.5.0");
+    let exe = fake_managed_orca(&data, "2.5.0");
+    // Активний рушій — як після встановлення через менеджер (`engines.json`). Без цього на
+    // машині зі справжнім рушієм (/Applications/OrcaSlicer.app на macOS, Program Files на
+    // Windows, /opt на Linux) пошук системних установок випереджав керований і тест падав.
+    let config = if cfg!(target_os = "macos") {
+        data.clone()
+    } else if cfg!(windows) {
+        h.join("Roaming")
+    } else {
+        h.join("c")
+    };
+    std::fs::create_dir_all(config.join("slicenv")).unwrap();
+    std::fs::write(
+        config.join("slicenv/engines.json"),
+        json!({"active": {"kind": "orca", "path": exe}}).to_string(),
+    )
+    .unwrap();
     let empty_path = h.join("empty-bin");
     std::fs::create_dir_all(&empty_path).unwrap();
     let env = [
