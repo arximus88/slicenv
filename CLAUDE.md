@@ -57,7 +57,7 @@ grep "^test result" /tmp/t.log | awk '{p+=$4; f+=$6} END {print "passed", p, "fa
 ## Git
 - Агенти працюють у worktree. Наприкінці — `rm -rf target/` у своєму worktree.
 - Коміти українською, апостроф `’` (не `'`), останній рядок — `Co-Authored-By: <модель> <noreply@…>`.
-- Нотатки релізів — **англійською**: `docs/releases/v<версія>.md` = текст релізу на GitHub (`--notes-file`), розділи `What's new` / `Downloads` / `Known limits`, як у v0.1.4. `<release>` у metainfo — теж англійською. Внутрішні подробиці перевірки — у коміт, не в нотатки.
+- Нотатки релізів — **англійською**: `docs/releases/v<версія>.md` = текст релізу на GitHub (`--notes-file`, без заголовка `# …` — назву дає `--title`), розділи `What's new` / `Downloads` / `Known limits`, як у v0.1.4. `<release>` у metainfo — теж англійською. Внутрішні подробиці перевірки — у коміт, не в нотатки.
 - Не пушити й не зливати в main без явного дозволу людини. Злиття — skill `merge-agent-branch`.
 - `crates/app/locales/en.json`: нові ключі лише в кінець, не сортувати — інакше конфлікт на весь файл. Деталі — skill `add-ui-string`.
 
