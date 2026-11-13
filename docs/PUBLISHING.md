@@ -48,8 +48,10 @@ Flathub — 0; crates.io, PyPI, npm, Snap Store — вільно; на GitHub п
    навмисно без `contents: write`):
    ```sh
    gh run download <run-id> -n slicenv-linux-x86_64 -D /tmp/rel
-   gh release create v0.1.0 --title 'Slicenv 0.1.0' --notes-file <нотатки> /tmp/rel/*
+   gh release create v0.1.0 --title 'Slicenv 0.1.0' --notes-file docs/releases/v0.1.0.md /tmp/rel/*
    ```
+   Нотатки — англійською (розділи як у `docs/releases/v0.1.4.md`); той самий файл лишається в
+   `docs/releases/`.
    Ім’я архіву має бути саме `slicenv-0.1.0-x86_64-linux.tar.gz` — на нього посилається
    `slicenv-bin`.
 5. Перевірити: `curl -sIL https://github.com/arximus88/slicenv/releases/download/v0.1.0/slicenv-0.1.0-x86_64-linux.tar.gz`
