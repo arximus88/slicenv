@@ -509,8 +509,10 @@ fn cap(mesh: &mut IndexedMesh, p: DVec3, n: DVec3, upper: bool, eps: f64) -> Res
             .map_err(|e| anyhow::anyhow!("тріангуляція кришки: {e:?}"))?;
         ensure!(!indices.is_empty(), "порожня кришка");
         let mut triangles: Vec<[u32; 3]> = indices
-            .chunks_exact(3)
-            .map(|t| [ids[t[0]], ids[t[1]], ids[t[2]]])
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .map(|&[a, b, c]| [ids[a], ids[b], ids[c]])
             .collect();
         // Earcut may omit collinear boundary vertices. Reinsert them by splitting
         // incident cap triangles, so every side edge has an exact cap counterpart.

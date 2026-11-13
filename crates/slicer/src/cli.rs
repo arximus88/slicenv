@@ -500,15 +500,12 @@ pub fn slice_with_engine_cancellable(
             std::process::id()
         ));
     fs::create_dir_all(&work)?;
-    struct Cleanup<'a>(&'a SliceCancellation, &'a std::path::Path);
-    impl Drop for Cleanup<'_> {
-        fn drop(&mut self) {
-            if self.0.check().is_err() {
-                let _ = fs::remove_dir_all(self.1);
-            }
+    // Скасована нарізка не лишає по собі теку в кеші — хоч би де функція вийшла.
+    let _cleanup = std::mem::DropGuard::new(&work, |work| {
+        if cancellation.check().is_err() {
+            let _ = fs::remove_dir_all(work);
         }
-    }
-    let _cleanup = Cleanup(cancellation, &work);
+    });
 
     let selection = &request.selection;
     let overrides = &request.overrides;

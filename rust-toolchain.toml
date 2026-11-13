@@ -1,0 +1,6 @@
+# Той самий Rust, що в CI (.github/workflows/*.yml): rustup сам поставить його при першому
+# cargo в дереві, і локальний clippy бачить ті самі лінти, що й CI. Оновлення — окремим
+# комітом разом з усіма dtolnay/rust-toolchain@… і виправленням нових лінтів.
+[toolchain]
+channel = "1.100.0"
+components = ["clippy", "rustfmt"]

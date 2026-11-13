@@ -228,7 +228,7 @@ pub(crate) fn classify_channel(tag: &str, name: &str, prerelease: bool) -> &'sta
 }
 
 pub(crate) fn clean_tag(tag: &str) -> &str {
-    tag.strip_prefix(['v', 'V']).unwrap_or(tag)
+    tag.trim_prefix(['v', 'V'])
 }
 
 fn github(url: &str) -> Result<Value> {
@@ -870,7 +870,7 @@ fn audit_tree(root: &Path) -> Result<()> {
                     Ok(real) => real.starts_with(&base),
                     Err(_) => normalize(&resolved).starts_with(normalize(root)),
                 };
-                ensure!(inside, "посилання {} веде за межі пакета", path.strip_prefix(root).unwrap_or(&path).display());
+                ensure!(inside, "посилання {} веде за межі пакета", path.trim_prefix(root).display());
                 continue;
             }
             #[cfg(unix)]

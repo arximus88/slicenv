@@ -33,10 +33,13 @@ step() {
   fi
 }
 
+# Версія CI — з rust-toolchain.toml; rustup бере її сама, розбіжність — лише при перевизначенні
+# (RUSTUP_TOOLCHAIN, `cargo +…`, rustc не від rustup).
+ci=$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)
 rust=$(rustc --version 2>/dev/null)
 case $rust in
-  "rustc 1.97."*) ;;
-  *) echo "увага: $rust, а CI — 1.97.1; інша версія може дати інші лінти clippy" ;;
+  "rustc $ci "*) ;;
+  *) echo "увага: $rust, а CI — $ci; інша версія може дати інші лінти clippy" ;;
 esac
 
 step translations python3 -I crates/app/tools/check_translations.py

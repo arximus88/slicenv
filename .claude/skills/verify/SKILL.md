@@ -22,7 +22,7 @@ description: Повна перевірка Slicenv перед комітом, з
    - `translations` — skill `add-ui-string`;
    - `clippy` — виправити код; не додавати лінт у `CLIPPY_ALLOW`, не запускати `cargo fmt --all`;
    - `tests` — `rg -n "panicked|FAILED" /tmp/slicenv-verify.*/tests.log`.
-5. Попередження про версію rustc ≠ 1.97 означає, що clippy може розходитися з CI.
+5. Попередження про версію rustc ≠ `rust-toolchain.toml` означає, що clippy може розходитися з CI.
 6. У звіті людині — фактичні рядки підсумку, не переказ.
 
 Не входять (див. [docs/TESTING.md](../../../docs/TESTING.md)): `perf` проти baseline, GUI-бенч, `crates/app/verification/*.py`, тести `#[ignore]` зі справжніми рушіями (skill `real-engine-test`).

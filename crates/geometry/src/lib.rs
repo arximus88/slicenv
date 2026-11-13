@@ -146,7 +146,7 @@ fn export(solid: &Manifold) -> Result<LocalMesh> {
 
 fn append(out: &mut Mesh, local: &LocalMesh, transform: DAffine3) -> Result<()> {
     let mirrored = validate_transform(transform)?;
-    for indices in local.indices.chunks_exact(3) {
+    for indices in local.indices.as_chunks::<3>().0 {
         let mut p = [DVec3::ZERO; 3];
         for (j, &index) in indices.iter().enumerate() {
             let start = index as usize * local.stride;

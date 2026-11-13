@@ -35,7 +35,8 @@ R=$HOME; T=$(mktemp -d); HOME=$T XDG_CONFIG_HOME=$T/c XDG_DATA_HOME=$T/d XDG_CAC
 grep "^test result" /tmp/t.log | awk '{p+=$4; f+=$6} END {print "passed", p, "failed", f}'
 ```
 
-- Rust зафіксовано на **1.97.1** (CI, `dtolnay/rust-toolchain@1.97.1`). Новий stable приносить нові лінти clippy — оновлення версії окремим комітом.
+- Rust зафіксовано на **1.100.0**: `rust-toolchain.toml` (rustup бере сам) = `dtolnay/rust-toolchain@1.100.0` у CI = `rust-version` у `Cargo.toml`. Новий stable приносить нові лінти clippy — оновлення версії окремим комітом, усі місця разом.
+- `.cargo/config.toml`: `global-min-publish-age = "3 days"` — `cargo update` не бере щойно опубліковані версії крейтів. Терміновий фікс: `CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo update <крейт> --precise <версія>`.
 - **Не запускати `cargo fmt --all`**: дерево свідомо не відформатоване, масове форматування — окремий коміт. Форматуй лише свої рядки.
 - Новий лінт clippy не додавати в `CLIPPY_ALLOW` у ci.yml — виправити код. Прибрав останнє місце лінту — прибери його зі списку.
 - Manifold (`manifold-csg-sys`) при першій збірці клонує й збирає C++ з GitHub. Без мережі: `MANIFOLD_CSG_LIB_DIR=<тека з libmanifoldc і libmanifold тієї самої версії>`, для статичних бібліотек ще `MANIFOLD_CSG_LIB_KIND=static`.

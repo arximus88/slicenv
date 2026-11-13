@@ -31,7 +31,7 @@ fn main() -> anyhow::Result<()> {
         let mut camera = Camera::default();
         camera.frame(plate.mesh.bounds());
         let mut pixels = renderer.render(w, h, &camera);
-        for px in pixels.chunks_exact_mut(4) {
+        for px in pixels.as_chunks_mut::<4>().0 {
             px.swap(0, 2); // BGRA → RGBA
         }
         image::RgbaImage::from_raw(w, h, pixels)

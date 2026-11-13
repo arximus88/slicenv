@@ -8,6 +8,9 @@ default-members = ["crates/app"]
 
 [workspace.package]
 edition = "2024"
+# Найстаріший Rust, що збирає дерево (std::mem::DropGuard, str::trim_prefix — 1.100).
+# Старіший toolchain падає одразу з зрозумілим повідомленням, а не на першому новому API.
+rust-version = "1.100"
 version = "0.1.6"
 license = "AGPL-3.0-or-later"
 

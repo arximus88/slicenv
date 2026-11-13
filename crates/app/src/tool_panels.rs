@@ -385,8 +385,7 @@ impl Workspace {
         let instance = project.instance(key).ok()?;
         let object = project.object(key.object).ok()?;
         let (mut lo, mut hi) = (DVec3::MAX, DVec3::MIN);
-        let world;
-        match self.selected_volume {
+        let world = match self.selected_volume {
             Some(index) => {
                 let volume = object.volumes.get(index)?;
                 for point in &volume.mesh.positions {
@@ -394,7 +393,7 @@ impl Workspace {
                     lo = lo.min(p);
                     hi = hi.max(p);
                 }
-                world = instance.transform * volume.transform;
+                instance.transform * volume.transform
             }
             None => {
                 for volume in object
@@ -408,9 +407,9 @@ impl Workspace {
                         hi = hi.max(p);
                     }
                 }
-                world = instance.transform;
+                instance.transform
             }
-        }
+        };
         (lo.is_finite() && hi.is_finite()).then_some(())?;
         Some(Target {
             world,

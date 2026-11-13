@@ -80,7 +80,7 @@ fn main() -> anyhow::Result<()> {
     ] {
         renderer.set_mesh(&mesh);
         let mut pixels = renderer.render(1280, 1000, &camera);
-        for pixel in pixels.chunks_exact_mut(4) {
+        for pixel in pixels.as_chunks_mut::<4>().0 {
             pixel.swap(0, 2);
         }
         image::RgbaImage::from_raw(1280, 1000, pixels)
@@ -93,7 +93,7 @@ fn main() -> anyhow::Result<()> {
         let mut underside = camera.clone();
         underside.set_angles(-100., -65.);
         let mut pixels = renderer.render(1280, 1000, &underside);
-        for pixel in pixels.chunks_exact_mut(4) {
+        for pixel in pixels.as_chunks_mut::<4>().0 {
             pixel.swap(0, 2);
         }
         let underside_path = path.with_extension("underside.png");
@@ -104,7 +104,7 @@ fn main() -> anyhow::Result<()> {
             let mut detail = camera.clone();
             detail.frame_tight(lo.as_vec3(), hi.as_vec3());
             let mut pixels = renderer.render(1280, 1000, &detail);
-            for pixel in pixels.chunks_exact_mut(4) {
+            for pixel in pixels.as_chunks_mut::<4>().0 {
                 pixel.swap(0, 2);
             }
             let detail_path = path.with_extension("cut-detail.png");

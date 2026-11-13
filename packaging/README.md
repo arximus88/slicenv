@@ -289,7 +289,7 @@ tar.gz, AppImage, .deb, .rpm зібрано локально в контейне
 Що з коду працює на цих ОС і що перевірено лише в CI — [`docs/PORTING.md`](../docs/PORTING.md).
 Збирає `.github/workflows/package-cross.yml` (лише `workflow_dispatch`, лише
 `upload-artifact`): macos-15 (aarch64), macos-15-intel (x86_64; macos-13 знято з підтримки),
-windows-latest. Rust 1.99.1 (gpui-pre-macos не збирається на 1.97). **Ще не запускався.**
+windows-latest. Rust 1.100.0, як у CI (gpui-pre-macos потребує ≥ 1.99.1). **Ще не запускався.**
 
 | Артефакт | Файли | Стан |
 |---|---|---|

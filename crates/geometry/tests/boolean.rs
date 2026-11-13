@@ -90,7 +90,9 @@ fn sample() -> Project {
 }
 fn volume(mesh: &Mesh) -> f64 {
     mesh.positions
-        .chunks_exact(3)
+        .as_chunks::<3>()
+        .0
+        .iter()
         .map(|p| {
             DVec3::from(p[0].map(f64::from))
                 .dot(DVec3::from(p[1].map(f64::from)).cross(DVec3::from(p[2].map(f64::from))))
@@ -102,7 +104,7 @@ fn closed(mesh: &Mesh) {
     // Every geometric edge occurs exactly twice, with opposite directions.
     let key = |p: [f32; 3]| p.map(|v| (v as f64 * 1e6).round() as i64);
     let mut edges = BTreeMap::<_, (usize, i32)>::new();
-    for tri in mesh.positions.chunks_exact(3) {
+    for tri in mesh.positions.as_chunks::<3>().0 {
         for (a, b) in [(0, 1), (1, 2), (2, 0)] {
             let (a, b) = (key(tri[a]), key(tri[b]));
             assert_ne!(a, b);
