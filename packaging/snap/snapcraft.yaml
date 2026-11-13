@@ -40,7 +40,7 @@ parts:
   slicenv:
     plugin: rust
     source: .
-    rust-channel: '1.97.1'
+    rust-channel: '1.100.0'
     rust-cargo-parameters: [--locked]
     override-build: |
       cargo build --release --locked -p app -p mcp

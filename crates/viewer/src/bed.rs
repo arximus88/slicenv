@@ -115,8 +115,10 @@ pub(super) fn shaded_bed(mesh: &Mesh, offset: Vec3, color: [f32; 3]) -> Vec<Flat
     let mut tris: Vec<(f32, [FlatVertex; 3])> = Vec::with_capacity(mesh.triangle_count());
     for (p, n) in mesh
         .positions
-        .chunks_exact(3)
-        .zip(mesh.normals.chunks_exact(3))
+        .as_chunks::<3>()
+        .0
+        .iter()
+        .zip(mesh.normals.as_chunks::<3>().0)
     {
         let nz = n[0][2];
         let shade = if nz > 0.5 {
@@ -196,7 +198,7 @@ impl Mask {
         let (w, h) = (width as usize, height as usize);
         let (cw, ch) = (cells.min(w).max(1), cells.min(h).max(1));
         let mut out = vec![false; cw * ch];
-        for (i, px) in pixels.chunks_exact(4).enumerate() {
+        for (i, px) in pixels.as_chunks::<4>().0.iter().enumerate() {
             if px[3] > 24 {
                 let (x, y) = (i % w, i / w);
                 out[(y * ch / h) * cw + x * cw / w] = true;

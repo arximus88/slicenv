@@ -1315,7 +1315,7 @@ impl Renderer {
         let limit = self.device.limits().max_texture_dimension_2d;
         anyhow::ensure!(width <= limit && height <= limit, "знімок більший за {limit} px");
         let mut pixels = self.render_target(width, height, camera, self.live_clear(), true);
-        for px in pixels.chunks_exact_mut(4) {
+        for px in pixels.as_chunks_mut::<4>().0 {
             px.swap(0, 2);
             px[3] = 255;
         }
@@ -1945,7 +1945,7 @@ impl Renderer {
             },
             false,
         );
-        for px in pixels.chunks_exact_mut(4) {
+        for px in pixels.as_chunks_mut::<4>().0 {
             px.swap(0, 2); // BGRA -> RGBA
         }
         let img = image::RgbaImage::from_raw(size, size, pixels)?;

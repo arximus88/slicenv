@@ -1,0 +1,7 @@
+# Захист від зламаних свіжих релізів крейтів (supply chain): `cargo update` / нові
+# залежності не беруть версії, опубліковані менше ніж 3 дні тому (Cargo 1.100).
+# Терміновий фікс безпеки, якому ще немає 3 днів:
+#   CARGO_RESOLVER_INCOMPATIBLE_PUBLISH_AGE=allow cargo update <крейт> --precise <версія>
+# Cargo.lock і `--locked`-збірки це не зачіпає.
+[registry]
+global-min-publish-age = "3 days"

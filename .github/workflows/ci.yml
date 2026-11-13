@@ -19,10 +19,11 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
-  # Rust зафіксовано (dtolnay/rust-toolchain@1.97.1 нижче) — як локально: новий stable
-  # приносить нові лінти clippy (1.99: chunks_exact_to_as_chunks) і валив би CI без змін у
-  # коді. Оновлювати версію окремим комітом разом із виправленням нових лінтів.
-  # Наявні попередження clippy (37 місць, 13 лінтів на 2026-11-04) дозволені поіменно,
+  # Rust зафіксовано (rust-toolchain.toml і dtolnay/rust-toolchain@1.100.0 нижче — однакові):
+  # новий stable приносить нові лінти clippy (1.99/1.100: chunks_exact → as_chunks,
+  # needless_late_init) і валив би CI без змін у коді. Оновлювати версію окремим комітом
+  # разом із виправленням нових лінтів.
+  # Наявні попередження clippy (43 місця, 12 лінтів на 2026-11-13, Rust 1.100) дозволені поіменно,
   # усе інше — помилка: нові лінти не проходять. Прибрав лінт із коду — прибери й звідси.
   CLIPPY_ALLOW: >-
     -A clippy::collapsible_if
@@ -37,7 +38,6 @@ env:
     -A clippy::unit_arg
     -A clippy::bool_comparison
     -A clippy::suspicious_assignment_formatting
-    -A clippy::wrong_self_convention
 
 jobs:
   translations:
@@ -53,7 +53,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@1.100.0
       - name: OpenSSL (reqwest у dev-залежностях mcp), cmake (manifold у geometry)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libssl-dev cmake
       - uses: Swatinem/rust-cache@v2
@@ -78,7 +78,7 @@ jobs:
       - name: Звільнити диск раннера
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL && df -h /
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: dtolnay/rust-toolchain@1.100.0
         with:
           components: clippy, rustfmt
       - name: Системні бібліотеки GPUI / wgpu / manifold

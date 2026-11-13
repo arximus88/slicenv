@@ -30,7 +30,7 @@ fn ghost_is_opt_in_visible_on_all_axes_and_both_sides_and_independent_of_clippin
             assert_eq!(renderer.render(SIZE, SIZE, &camera), background);
             renderer.set_section_plane(Some((plane, bounds)));
             let ghost = renderer.render(SIZE, SIZE, &camera);
-            assert!(ghost.chunks_exact(4).filter(|p| cyan(p)).count() > 1000);
+            assert!(ghost.as_chunks::<4>().0.iter().filter(|p| cyan(*p)).count() > 1000);
             let center = ((SIZE / 2 * SIZE + SIZE / 2) * 4) as usize;
             assert!(
                 cyan(&ghost[center..center + 4]),
@@ -39,8 +39,10 @@ fn ghost_is_opt_in_visible_on_all_axes_and_both_sides_and_independent_of_clippin
             let fill = ghost[center];
             assert!(
                 ghost
-                    .chunks_exact(4)
-                    .filter(|p| cyan(p) && p[0] > fill + 35)
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .filter(|p| cyan(*p) && p[0] > fill + 35)
                     .count()
                     > 100,
                 "bright border missing for {normal:?}"
@@ -133,9 +135,11 @@ fn ghost_is_occluded_by_mesh_and_does_not_write_depth() {
     renderer.set_section_plane(Some(([1., 0., 0., 0.], bounds)));
     let with_guide = renderer.render(SIZE, SIZE, &camera);
     let preserved = lines
-        .chunks_exact(4)
-        .zip(background.chunks_exact(4))
-        .zip(with_guide.chunks_exact(4))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .zip(background.as_chunks::<4>().0)
+        .zip(with_guide.as_chunks::<4>().0)
         .filter(|((line, bg), guide)| line != bg && line == guide)
         .count();
     assert!(

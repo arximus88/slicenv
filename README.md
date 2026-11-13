@@ -98,7 +98,7 @@ The Flathub and AUR packaging is already in [packaging/](packaging/README.md); p
 ## Build from source
 
 You need:
-- Rust 1.97.1 on Linux and Windows (this is the CI version), or 1.99.1+ on macOS;
+- Rust 1.100.0 (pinned in `rust-toolchain.toml`; rustup installs it on the first `cargo` run);
 - CMake 3.18+, a C++17 compiler and git. The first build fetches and compiles the Manifold geometry kernel, so it needs network access.
 - System libraries on Linux:
   - **Debian/Ubuntu:**

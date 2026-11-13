@@ -25,16 +25,14 @@
 (`#[cfg(target_os = "macos")]` у build.rs), тож для локального `check` у `target/` підкладено
 порожні `shaders.metallib`/`stitched_shaders.metal`. На CI їх компілює справжній `xcrun metal`.
 
-(3) Clippy 1.99 додає `chunks_exact_to_as_chunks` (`project/src/cut.rs`) і
-`needless_late_init` (`app/src/tool_panels.rs`) у наявному коді — для крос-перевірки дозволені
-поверх allow-list CI; виправляти разом із переходом `ci.yml` на 1.99. `package-cross.yml`
+(3) Clippy 1.99 додав `chunks_exact_to_as_chunks` і `needless_late_init`; з переходом на 1.100
+вони виправлені в коді, окремі дозволи для крос-перевірки більше не потрібні. `package-cross.yml`
 clippy не запускає.
 
 **Rust для macOS: ≥ 1.99.1.** `gpui-pre-macos 0.3.10` викликає `Option::map_or_default`,
 нестабільний у 1.97.1 (`error[E0658]: result_option_map_or_default`), а з 1.99.1 збирається.
-`ci.yml` лишається на 1.97.1 (там clippy, і новий stable приносить нові лінти);
-`package-cross.yml` використовує 1.99.1 для обох ОС. Перехід `ci.yml` на 1.99 — окремим
-комітом разом із новими лінтами (наприклад `chunks_exact_to_as_chunks`).
+Розробка й CI на 1.100.0 (`rust-toolchain.toml`; мінімум для збірки — `rust-version` у `Cargo.toml`): той самий
+toolchain у `ci.yml`, `package.yml` і `package-cross.yml` для всіх ОС.
 
 ## Матриця можливостей
 
@@ -196,7 +194,7 @@ Studio й OrcaSlicer кладуть свій `data_dir`. Перевірено з
 ## Windows: перевірка на залізі (2026-11-08)
 
 Windows 11 10.0.26200, RX 6800 XT, 2560×1440 при 115 % (AppliedDPI 110), світла тема ОС.
-Збірка — `cargo +1.99.1 build --release` з VS Build Tools 2022 (MSVC, Windows SDK `rc.exe`).
+Збірка — `cargo build --release` (toolchain з `rust-toolchain.toml`) з VS Build Tools 2022 (MSVC, Windows SDK `rc.exe`).
 
 - **GUI:** вікно, 3D (Vulkan), текст DirectWrite з кирилицею, іконки, HiDPI — без зауважень.
   Системний заголовок прибрано (`appears_transparent` лише на Windows): перетягування, подвійний

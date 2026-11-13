@@ -2,6 +2,7 @@
 name = "moonraker"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 description = "Клієнт Moonraker HTTP API для принтерів Klipper (без GUI)"
 

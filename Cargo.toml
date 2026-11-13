@@ -8,6 +8,12 @@ default-members = ["crates/app"]
 
 [workspace.package]
 edition = "2024"
+# Найстаріший Rust, що збирає дерево (перевірено `cargo +1.97.1 check --workspace --all-targets`).
+# Не піднімати слідом за rust-toolchain.toml: пакети збираються чужими toolchain — Flatpak
+# (rust-stable 26.08 = 1.98.0 на 2026-11-13), AUR slicenv-git (rust з Arch extra = 1.99.1).
+# API новіші за цю версію (std::mem::DropGuard, str::trim_prefix — 1.100) — лише коли їх
+# дадуть обидва. macOS окремо потребує ≥ 1.99.1 (gpui-pre-macos, docs/PORTING.md).
+rust-version = "1.97"
 version = "0.1.6"
 license = "AGPL-3.0-or-later"
 
